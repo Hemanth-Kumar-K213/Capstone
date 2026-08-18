@@ -1,0 +1,217 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // DEFAULT DENY
+    // ============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+
+    // ============================================================
+    // USER PROFILES
+    // users/{authUid}
+    // ============================================================
+
+    match /users/{userId} {
+
+      // A user can read only their own profile.
+      allow read: if isSignedIn()
+                  && request.auth.uid == userId;
+
+      // User creates only their own USER profile.
+      allow create: if isSignedIn()
+                    && request.auth.uid == userId
+                    && request.resource.data.authUserId == userId
+                    && request.resource.data.accountType == 'USER';
+
+      // User can update only their own profile.
+      allow update: if isSignedIn()
+                    && request.auth.uid == userId
+                    && resource.data.authUserId == userId
+                    && request.resource.data.authUserId == userId
+                    && request.resource.data.accountType == 'USER';
+
+      // Client cannot delete profiles.
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // TRUSTED CONTACT PROFILES
+    // trustedContacts/{authUid}
+    // ============================================================
+
+    match /trustedContacts/{tcId} {
+
+      // Trusted contact can access only their own profile.
+      allow read: if isSignedIn()
+                  && request.auth.uid == tcId;
+
+      // Trusted contact creates only their own profile.
+      allow create: if isSignedIn()
+                    && request.auth.uid == tcId
+                    && request.resource.data.authUserId == tcId
+                    && request.resource.data.accountType == 'TRUSTED_CONTACT';
+
+      // Trusted contact can update only their own profile.
+      allow update: if isSignedIn()
+                    && request.auth.uid == tcId
+                    && resource.data.authUserId == tcId
+                    && request.resource.data.authUserId == tcId
+                    && request.resource.data.accountType == 'TRUSTED_CONTACT';
+
+      // Client cannot delete profiles.
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // WEEKLY UID
+    //
+    // IMPORTANT:
+    // Document ID should be the actual weekly UID.
+    //
+    // Example:
+    // weeklyUids/202608181234
+    //
+    // The client can READ one specific UID document.
+    // The client can NEVER create/update/delete UID documents.
+    // Cloud Functions/Admin SDK handles UID creation and rotation.
+    // ============================================================
+
+    match /weeklyUids/{weeklyUid} {
+
+      // Authenticated users can retrieve a specific UID document.
+      //
+      // The UID document should contain:
+      // {
+      //   uid: "202608181234",
+      //   userId: "firebase-auth-uid",
+      //   expiresAt: ...
+      // }
+      //
+      allow get: if isSignedIn()
+                 && resource.data.uid == weeklyUid;
+
+      // No collection-wide listing.
+      // No client writes.
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+
+    // ============================================================
+    // RELATIONSHIPS
+    //
+    // IMPORTANT:
+    // Use a deterministic document ID:
+    //
+    // {userId}_{trustedContactId}
+    //
+    // Example:
+    // relationships/userFirebaseUid_trustedContactFirebaseUid
+    //
+    // This allows security rules to verify the relationship
+    // without exposing the whole relationship collection.
+    // ============================================================
+
+    match /relationships/{relationshipId} {
+
+      // User or trusted contact can read ONLY their own relationship.
+      allow read: if isSignedIn()
+                  && (
+                    resource.data.userId == request.auth.uid
+                    || resource.data.trustedContactId == request.auth.uid
+                  );
+
+
+      // Trusted contact creates a PENDING request.
+      allow create: if isSignedIn()
+                    && request.resource.data.trustedContactId == request.auth.uid
+                    && request.resource.data.status == 'PENDING'
+                    && request.resource.data.userId != request.auth.uid
+                    && relationshipId ==
+                       request.resource.data.userId + "_" +
+                       request.resource.data.trustedContactId;
+
+
+      // Only the USER can approve / deny / revoke.
+      allow update: if isSignedIn()
+                    && resource.data.userId == request.auth.uid
+
+                    // Relationship identities cannot be changed.
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.trustedContactId ==
+                       resource.data.trustedContactId
+
+                    // Only valid relationship states.
+                    && request.resource.data.status
+                       in ['APPROVED', 'DENIED', 'REVOKED']
+
+                    // Relationship ID remains deterministic.
+                    && relationshipId ==
+                       request.resource.data.userId + "_" +
+                       request.resource.data.trustedContactId;
+
+
+
+      // Client cannot delete relationships.
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // DEV UID MAPPINGS (Spark/Free plan fallback)
+    //
+    // IMPORTANT:
+    // This collection is used ONLY when Cloud Functions are not
+    // deployed (Spark plan). When Cloud Functions are available
+    // (Blaze plan), the weeklyUids collection is used instead.
+    //
+    // Document ID = the UID value (e.g., devUidMappings/202608181234)
+    //
+    // Security:
+    // - Only the owner (userId == auth.uid) can create/update
+    // - Any authenticated user can read by document ID (for TC lookup)
+    // - No collection-wide listing
+    // - Cannot write mappings for other users
+    // ============================================================
+
+    match /devUidMappings/{uid} {
+
+      // Any authenticated user can look up a specific UID.
+      allow get: if isSignedIn();
+
+      // No collection-wide listing.
+      allow list: if false;
+
+      // Only the owner can create their own UID mapping.
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.uid == uid;
+
+      // Only the owner can update their own UID mapping.
+      allow update: if isSignedIn()
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.uid == uid;
+
+      // No deletion.
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // HELPER FUNCTIONS
+    // ============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+  }
+}

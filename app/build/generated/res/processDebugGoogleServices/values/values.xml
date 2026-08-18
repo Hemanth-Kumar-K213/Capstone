@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="gcm_defaultSenderId" translatable="false">503599125127</string>
+    <string name="google_api_key" translatable="false">AIzaSyAZnnC1q4CvsRjpezhKAe_IMCvFAuZfIrA</string>
+    <string name="google_app_id" translatable="false">1:503599125127:android:253b41720843c6f8db9e22</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyAZnnC1q4CvsRjpezhKAe_IMCvFAuZfIrA</string>
+    <string name="google_storage_bucket" translatable="false">women-safety-system-65893.firebasestorage.app</string>
+    <string name="project_id" translatable="false">women-safety-system-65893</string>
+</resources>
