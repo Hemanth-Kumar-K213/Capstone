@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import android.util.Log
+import com.womensafety.system.data.model.EmergencyContact
 import com.womensafety.system.data.model.Relationship
 import com.womensafety.system.data.model.TrustedContactProfile
 import com.womensafety.system.data.model.UserProfile
@@ -97,6 +98,82 @@ class FirestoreManager {
             db.collection(USERS_COLLECTION)
                 .document(userId)
                 .update("trustedContactIds", FieldValue.arrayUnion(tcId))
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateUserSetupPreferences(userId: String, updates: Map<String, Any?>): Result<Unit> {
+        return try {
+            db.collection(USERS_COLLECTION)
+                .document(userId)
+                .set(updates, SetOptions.merge())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getEmergencyContactsForUser(userId: String): Result<List<EmergencyContact>> {
+        return try {
+            val userResult = getUserProfile(userId)
+            val contacts = userResult.getOrNull()?.emergencyContacts ?: emptyList()
+            Result.success(contacts)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun addEmergencyContactToUser(userId: String, contact: EmergencyContact): Result<Unit> {
+        return try {
+            val currentContacts = getEmergencyContactsForUser(userId).getOrNull() ?: emptyList()
+            val updatedContacts = currentContacts + contact
+            db.collection(USERS_COLLECTION)
+                .document(userId)
+                .update("emergencyContacts", updatedContacts.map { it.toMap() })
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateEmergencyContactInUser(
+        userId: String,
+        contactId: String,
+        updates: Map<String, Any?>
+    ): Result<Unit> {
+        return try {
+            val currentContacts = getEmergencyContactsForUser(userId).getOrNull() ?: emptyList()
+            val updatedContacts = currentContacts.map { contact ->
+                if (contact.id == contactId) {
+                    val newName = updates["name"] as? String ?: contact.name
+                    val newPhone = updates["phone"] as? String ?: contact.phone
+                    contact.copy(name = newName, phone = newPhone)
+                } else {
+                    contact
+                }
+            }
+            db.collection(USERS_COLLECTION)
+                .document(userId)
+                .update("emergencyContacts", updatedContacts.map { it.toMap() })
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteEmergencyContactFromUser(userId: String, contactId: String): Result<Unit> {
+        return try {
+            val currentContacts = getEmergencyContactsForUser(userId).getOrNull() ?: emptyList()
+            val updatedContacts = currentContacts.filterNot { it.id == contactId }
+            db.collection(USERS_COLLECTION)
+                .document(userId)
+                .update("emergencyContacts", updatedContacts.map { it.toMap() })
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {

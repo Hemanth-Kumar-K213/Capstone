@@ -24,7 +24,13 @@ data class UserProfile(
     val phoneVerified: Boolean = false,
     val currentWeeklyUid: String = "",
     val trustedContactIds: List<String> = emptyList(),
-    val emergencyContacts: List<EmergencyContact> = emptyList()
+    val emergencyContacts: List<EmergencyContact> = emptyList(),
+    val setupCompleted: Boolean = false,
+    val locationTrackingEnabled: Boolean = false,
+    val shakeDetectionEnabled: Boolean = false,
+    val shakeSensitivity: String = "MEDIUM",
+    val sosAutoCall: Boolean = false,
+    val fcmToken: String? = null
 ) {
     /** No-arg constructor required by Firestore deserialization. */
     constructor() : this(authUserId = "")
@@ -40,11 +46,16 @@ data class UserProfile(
         "phoneVerified" to phoneVerified,
         "currentWeeklyUid" to currentWeeklyUid,
         "trustedContactIds" to trustedContactIds,
-        "emergencyContacts" to emergencyContacts.map { it.toMap() }
+        "emergencyContacts" to emergencyContacts.map { it.toMap() },
+        "setupCompleted" to setupCompleted,
+        "locationTrackingEnabled" to locationTrackingEnabled,
+        "shakeDetectionEnabled" to shakeDetectionEnabled,
+        "shakeSensitivity" to shakeSensitivity,
+        "sosAutoCall" to sosAutoCall,
+        "fcmToken" to fcmToken
     )
 
     companion object {
-        @Suppress("UNCHECKED_CAST")
         @Suppress("UNCHECKED_CAST")
         fun fromMap(map: Map<String, Any?>): UserProfile {
             val rawContacts = map["emergencyContacts"] as? List<Map<String, Any?>> ?: emptyList()
@@ -59,7 +70,13 @@ data class UserProfile(
                 phoneVerified = map["phoneVerified"] as? Boolean ?: false,
                 currentWeeklyUid = map["currentWeeklyUid"] as? String ?: "",
                 trustedContactIds = map["trustedContactIds"] as? List<String> ?: emptyList(),
-                emergencyContacts = rawContacts.map { EmergencyContact.fromMap(it) }
+                emergencyContacts = rawContacts.map { EmergencyContact.fromMap(it) },
+                setupCompleted = map["setupCompleted"] as? Boolean ?: false,
+                locationTrackingEnabled = map["locationTrackingEnabled"] as? Boolean ?: false,
+                shakeDetectionEnabled = map["shakeDetectionEnabled"] as? Boolean ?: false,
+                shakeSensitivity = map["shakeSensitivity"] as? String ?: "MEDIUM",
+                sosAutoCall = map["sosAutoCall"] as? Boolean ?: false,
+                fcmToken = map["fcmToken"] as? String
             )
         }
     }

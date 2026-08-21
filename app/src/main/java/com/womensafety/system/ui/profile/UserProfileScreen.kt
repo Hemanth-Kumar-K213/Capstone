@@ -26,16 +26,21 @@ import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.viewmodel.UserProfileViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserProfileScreen(
     viewModel: UserProfileViewModel,
     onNavigateToChangePhone: () -> Unit,
     onNavigateToContacts: () -> Unit,
+    onNavigateToEmergencyContacts: () -> Unit,
+    onNavigateToSetupWizard: () -> Unit,
     onLogout: () -> Unit
 ) {
     val state by viewModel.profileState.collectAsState()
     val context = LocalContext.current
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var sensitivityDropdownExpanded by remember { mutableStateOf(false) }
+    val sensitivityOptions = listOf("LOW", "MEDIUM", "HIGH")
 
     LaunchedEffect(Unit) { viewModel.loadProfile() }
 
@@ -111,6 +116,271 @@ fun UserProfileScreen(
                     color = GlassBorder
                 )
                 ProfileInfoRow(label = "Phone", value = state.userProfile?.phone ?: "—")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Emergency Contacts Section (SMS)
+        GlassCard(
+            accentGradient = Brush.horizontalGradient(
+                colors = listOf(
+                    GradientAmber.copy(alpha = 0.08f),
+                    GradientGold.copy(alpha = 0.04f)
+                )
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GradientAmber.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.ContactPhone,
+                            contentDescription = null,
+                            tint = GradientAmber,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Emergency Contacts (SMS)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            "${state.emergencyContactCount} contact(s) added",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariantDark
+                        )
+                    }
+                    Text(
+                        "${state.emergencyContactCount}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = GradientAmber
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = onNavigateToEmergencyContacts,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = GradientAmber
+                    )
+                ) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("MANAGE EMERGENCY CONTACTS", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Safety Preferences Section
+        val profile = state.userProfile
+        GlassCard(
+            accentGradient = Brush.horizontalGradient(
+                colors = listOf(
+                    GradientRose.copy(alpha = 0.08f),
+                    GradientMagenta.copy(alpha = 0.04f)
+                )
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GradientRose.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Security,
+                            contentDescription = null,
+                            tint = GradientRose,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        "Safety Preferences",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = OnSurfaceDark
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Location tracking switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Location Tracking",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            "Broadcast GPS coordinates during SOS",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariantDark
+                        )
+                    }
+                    Switch(
+                        checked = profile?.locationTrackingEnabled ?: false,
+                        onCheckedChange = { isChecked ->
+                            viewModel.updateSafetyPreferences(
+                                locationTrackingEnabled = isChecked,
+                                shakeDetectionEnabled = profile?.shakeDetectionEnabled ?: false,
+                                shakeSensitivity = profile?.shakeSensitivity ?: "MEDIUM",
+                                sosAutoCall = profile?.sosAutoCall ?: false
+                            )
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = GradientAmber
+                        )
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
+
+                // Shake detection switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Shake Detection",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            "Shake phone vigorously to trigger SOS",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariantDark
+                        )
+                    }
+                    Switch(
+                        checked = profile?.shakeDetectionEnabled ?: false,
+                        onCheckedChange = { isChecked ->
+                            viewModel.updateSafetyPreferences(
+                                locationTrackingEnabled = profile?.locationTrackingEnabled ?: false,
+                                shakeDetectionEnabled = isChecked,
+                                shakeSensitivity = profile?.shakeSensitivity ?: "MEDIUM",
+                                sosAutoCall = profile?.sosAutoCall ?: false
+                            )
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = GradientAmber
+                        )
+                    )
+                }
+
+                if (profile?.shakeDetectionEnabled == true) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    ExposedDropdownMenuBox(
+                        expanded = sensitivityDropdownExpanded,
+                        onExpandedChange = { sensitivityDropdownExpanded = !sensitivityDropdownExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = profile.shakeSensitivity,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Shake Sensitivity") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sensitivityDropdownExpanded) },
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                .fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GradientAmber,
+                                unfocusedBorderColor = OutlineDark
+                            )
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = sensitivityDropdownExpanded,
+                            onDismissRequest = { sensitivityDropdownExpanded = false }
+                        ) {
+                            sensitivityOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option) },
+                                    onClick = {
+                                        viewModel.updateSafetyPreferences(
+                                            locationTrackingEnabled = profile.locationTrackingEnabled,
+                                            shakeDetectionEnabled = profile.shakeDetectionEnabled,
+                                            shakeSensitivity = option,
+                                            sosAutoCall = profile.sosAutoCall
+                                        )
+                                        sensitivityDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
+
+                // Auto-Call First Emergency Contact
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Auto-Call First Contact",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            "Place phone call automatically on SOS",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariantDark
+                        )
+                    }
+                    Switch(
+                        checked = profile?.sosAutoCall ?: false,
+                        onCheckedChange = { isChecked ->
+                            viewModel.updateSafetyPreferences(
+                                locationTrackingEnabled = profile?.locationTrackingEnabled ?: false,
+                                shakeDetectionEnabled = profile?.shakeDetectionEnabled ?: false,
+                                shakeSensitivity = profile?.shakeSensitivity ?: "MEDIUM",
+                                sosAutoCall = isChecked
+                            )
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = GradientAmber
+                        )
+                    )
+                }
             }
         }
 
@@ -286,6 +556,24 @@ fun UserProfileScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+
+        // Re-run Setup Wizard button
+        OutlinedButton(
+            onClick = onNavigateToSetupWizard,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = MaterialTheme.shapes.medium,
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = GradientGold
+            )
+        ) {
+            Icon(Icons.Filled.SettingsBackupRestore, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("RE-RUN SETUP WIZARD", fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Action buttons
         OutlinedButton(
