@@ -37,6 +37,7 @@ class UserProfileViewModel(
         val trustedContacts: List<Relationship> = emptyList(),
         val trustedContactCount: Int = 0,
         val pendingRequestCount: Int = 0,
+        val emergencyContactCount: Int = 0,
         val isLoading: Boolean = true,
         val error: String? = null,
         val successMessage: String? = null
@@ -80,16 +81,52 @@ class UserProfileViewModel(
             val pendingCount = relationships.count {
                 it.permissionState == PermissionState.PENDING
             }
+            val profile = profileResult.getOrNull()
 
             _profileState.value = ProfileState(
-                userProfile = profileResult.getOrNull(),
+                userProfile = profile,
                 currentUid = uidResult.getOrNull(),
                 trustedContacts = approvedContacts,
                 trustedContactCount = approvedContacts.size,
                 pendingRequestCount = pendingCount,
+                emergencyContactCount = profile?.emergencyContacts?.size ?: 0,
                 isLoading = false,
                 error = if (profileResult.isFailure) profileResult.exceptionOrNull()?.message else null
             )
+        }
+    }
+
+    fun updateSafetyPreferences(
+        locationTrackingEnabled: Boolean,
+        shakeDetectionEnabled: Boolean,
+        shakeSensitivity: String,
+        sosAutoCall: Boolean = false
+    ) {
+        val currentProfile = _profileState.value.userProfile ?: return
+        val updatedProfile = currentProfile.copy(
+            locationTrackingEnabled = locationTrackingEnabled,
+            shakeDetectionEnabled = shakeDetectionEnabled,
+            shakeSensitivity = shakeSensitivity,
+            sosAutoCall = sosAutoCall
+        )
+        _profileState.value = _profileState.value.copy(userProfile = updatedProfile)
+
+        viewModelScope.launch {
+            val preferences = mapOf(
+                "locationTrackingEnabled" to locationTrackingEnabled,
+                "shakeDetectionEnabled" to shakeDetectionEnabled,
+                "shakeSensitivity" to shakeSensitivity,
+                "sosAutoCall" to sosAutoCall
+            )
+            val result = userRepository.updateSetupStatus(
+                setupCompleted = currentProfile.setupCompleted,
+                preferences = preferences
+            )
+            if (result.isFailure) {
+                _profileState.value = _profileState.value.copy(
+                    error = "Failed to update safety preferences."
+                )
+            }
         }
     }
 

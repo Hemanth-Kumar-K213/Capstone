@@ -9,6 +9,7 @@ import com.google.firebase.auth.PhoneAuthProvider
 import com.womensafety.system.data.repository.AuthRepository
 import com.womensafety.system.data.repository.DuplicateCheckResult
 import com.womensafety.system.data.repository.UidRepository
+import com.womensafety.system.data.repository.UserRepository
 import com.womensafety.system.utils.Validators
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +22,8 @@ import kotlinx.coroutines.launch
  */
 class AuthViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
-    private val uidRepository: UidRepository = UidRepository()
+    private val uidRepository: UidRepository = UidRepository(),
+    private val userRepository: UserRepository = UserRepository()
 ) : ViewModel() {
 
     // ─── Signup State ────────────────────────────────────────────
@@ -83,6 +85,7 @@ class AuthViewModel(
     data class SessionState(
         val isLoggedIn: Boolean = false,
         val accountType: String? = null,
+        val setupCompleted: Boolean = false,
         val isChecking: Boolean = true
     )
 
@@ -98,9 +101,17 @@ class AuthViewModel(
             val loggedIn = authRepository.isLoggedIn
             if (loggedIn) {
                 val typeResult = authRepository.getCurrentAccountType()
+                val accountType = typeResult.getOrNull()?.name
+                val uid = authRepository.currentUserId
+                var setupDone = true
+                if (accountType == "USER" && uid != null) {
+                    val profile = userRepository.getUserProfile(uid).getOrNull()
+                    setupDone = profile?.setupCompleted ?: false
+                }
                 _sessionState.value = SessionState(
                     isLoggedIn = true,
-                    accountType = typeResult.getOrNull()?.name,
+                    accountType = accountType,
+                    setupCompleted = setupDone,
                     isChecking = false
                 )
             } else {
@@ -449,14 +460,19 @@ class AuthViewModel(
         viewModelScope.launch {
             val result = authRepository.loginWithEmailAndPassword(state.email, state.password)
             if (result.isSuccess) {
+                val uid = result.getOrNull()
+                val profile = if (uid != null) userRepository.getUserProfile(uid).getOrNull() else null
+                val setupDone = profile?.setupCompleted ?: false
+
                 _loginState.value = _loginState.value.copy(
                     isLoading = false,
                     isLoggedIn = true,
-                    authUserId = result.getOrNull()
+                    authUserId = uid
                 )
                 _sessionState.value = SessionState(
                     isLoggedIn = true,
                     accountType = "USER",
+                    setupCompleted = setupDone,
                     isChecking = false
                 )
             } else {

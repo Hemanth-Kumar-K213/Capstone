@@ -28,6 +28,7 @@ fun SplashScreen(
     sessionState: AuthViewModel.SessionState,
     onNavigateToRoleSelection: () -> Unit,
     onNavigateToUserHome: () -> Unit,
+    onNavigateToWelcomeSetup: () -> Unit,
     onNavigateToTCHome: () -> Unit
 ) {
     // Logo scale animation
@@ -58,7 +59,13 @@ fun SplashScreen(
         if (!sessionState.isChecking) {
             delay(2000)
             when {
-                sessionState.isLoggedIn && sessionState.accountType == "USER" -> onNavigateToUserHome()
+                sessionState.isLoggedIn && sessionState.accountType == "USER" -> {
+                    if (sessionState.setupCompleted) {
+                        onNavigateToUserHome()
+                    } else {
+                        onNavigateToWelcomeSetup()
+                    }
+                }
                 sessionState.isLoggedIn && sessionState.accountType == "TRUSTED_CONTACT" -> onNavigateToTCHome()
                 else -> onNavigateToRoleSelection()
             }

@@ -12,8 +12,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.womensafety.system.ui.auth.*
+import com.womensafety.system.ui.contacts.AddEmergencyContactScreen
 import com.womensafety.system.ui.contacts.AddUserScreen
+import com.womensafety.system.ui.contacts.EditEmergencyContactScreen
+import com.womensafety.system.ui.contacts.EmergencyContactsListScreen
 import com.womensafety.system.ui.contacts.PermissionRequestScreen
 import com.womensafety.system.ui.contacts.TrustedContactsScreen
 import com.womensafety.system.ui.home.TCHomeScreen
@@ -22,6 +26,7 @@ import com.womensafety.system.ui.profile.ChangePhoneScreen
 import com.womensafety.system.ui.profile.TCProfileScreen
 import com.womensafety.system.ui.profile.UserProfileScreen
 import com.womensafety.system.ui.safety.SafetyPlaceholderScreen
+import com.womensafety.system.ui.setup.*
 import com.womensafety.system.viewmodel.*
 
 @Composable
@@ -33,6 +38,10 @@ fun AppNavGraph(
     val sessionState by authViewModel.sessionState.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // Shared SetupWizardViewModel for all 5 setup steps
+    val setupWizardViewModel: SetupWizardViewModel = viewModel()
+    val emergencyContactViewModel: EmergencyContactViewModel = viewModel()
 
     // Determine if we should show bottom nav
     val userMainRoutes = listOf(
@@ -73,6 +82,11 @@ fun AppNavGraph(
                     },
                     onNavigateToUserHome = {
                         navController.navigate(UserHome) {
+                            popUpTo(Splash) { inclusive = true }
+                        }
+                    },
+                    onNavigateToWelcomeSetup = {
+                        navController.navigate(WelcomeSetupScreen) {
                             popUpTo(Splash) { inclusive = true }
                         }
                     },
@@ -149,10 +163,95 @@ fun AppNavGraph(
                 UserSignupStep6Screen(
                     viewModel = authViewModel,
                     onContinueToHome = {
+                        navController.navigate(WelcomeSetupScreen) {
+                            popUpTo(RoleSelection) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            // ─── Initial Setup Wizard (5 Screens) ────────────
+            composable<WelcomeSetupScreen> {
+                WelcomeSetupScreen(
+                    onGetStarted = {
+                        navController.navigate(PermissionsSetupScreen)
+                    },
+                    onSkip = {
+                        setupWizardViewModel.skipSetup {
+                            navController.navigate(UserHome) {
+                                popUpTo(RoleSelection) { inclusive = true }
+                            }
+                        }
+                    }
+                )
+            }
+
+            composable<PermissionsSetupScreen> {
+                PermissionsSetupScreen(
+                    viewModel = setupWizardViewModel,
+                    onNext = {
+                        navController.navigate(EmergencyContactsSetupScreen)
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<EmergencyContactsSetupScreen> {
+                EmergencyContactsSetupScreen(
+                    viewModel = setupWizardViewModel,
+                    onNext = {
+                        navController.navigate(SOSPreferencesScreen)
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SOSPreferencesScreen> {
+                SOSPreferencesScreen(
+                    viewModel = setupWizardViewModel,
+                    onNext = {
+                        navController.navigate(SetupCompleteScreen)
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SetupCompleteScreen> {
+                SetupCompleteScreen(
+                    viewModel = setupWizardViewModel,
+                    onNavigateToHome = {
                         navController.navigate(UserHome) {
                             popUpTo(RoleSelection) { inclusive = true }
                         }
                     }
+                )
+            }
+
+            // ─── Emergency Contacts Management ───────────────
+            composable<EmergencyContactsListScreen> {
+                EmergencyContactsListScreen(
+                    viewModel = emergencyContactViewModel,
+                    onNavigateToAdd = { navController.navigate(AddEmergencyContactScreen) },
+                    onNavigateToEdit = { contactId ->
+                        navController.navigate(EditEmergencyContactScreen(contactId = contactId))
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<AddEmergencyContactScreen> {
+                AddEmergencyContactScreen(
+                    viewModel = emergencyContactViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<EditEmergencyContactScreen> { backStackEntry ->
+                val editRoute = backStackEntry.toRoute<EditEmergencyContactScreen>()
+                EditEmergencyContactScreen(
+                    contactId = editRoute.contactId,
+                    viewModel = emergencyContactViewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -214,6 +313,12 @@ fun AppNavGraph(
                             restoreState = true
                         }
                     },
+                    onNavigateToEmergencyContacts = {
+                        navController.navigate(EmergencyContactsListScreen)
+                    },
+                    onNavigateToSetupWizard = {
+                        navController.navigate(WelcomeSetupScreen)
+                    },
                     onLogout = {
                         authViewModel.signOut()
                         navController.navigate(RoleSelection) {
@@ -271,3 +376,4 @@ fun AppNavGraph(
         }
     }
 }
+

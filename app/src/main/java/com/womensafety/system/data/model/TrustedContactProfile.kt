@@ -17,7 +17,8 @@ data class TrustedContactProfile(
     val accountType: String = AccountType.TRUSTED_CONTACT.name,
     val createdAt: Long = System.currentTimeMillis(),
     val phoneVerified: Boolean = false,
-    val connectedUserIds: List<String> = emptyList()
+    val connectedUserIds: List<String> = emptyList(),
+    val fcmToken: String? = null
 ) {
     /** No-arg constructor required by Firestore deserialization. */
     constructor() : this(authUserId = "")
@@ -29,7 +30,8 @@ data class TrustedContactProfile(
         "accountType" to accountType,
         "createdAt" to createdAt,
         "phoneVerified" to phoneVerified,
-        "connectedUserIds" to connectedUserIds
+        "connectedUserIds" to connectedUserIds,
+        "fcmToken" to fcmToken
     )
 
     companion object {
@@ -42,7 +44,8 @@ data class TrustedContactProfile(
                 accountType = map["accountType"] as? String ?: AccountType.TRUSTED_CONTACT.name,
                 createdAt = map["createdAt"] as? Long ?: System.currentTimeMillis(),
                 phoneVerified = map["phoneVerified"] as? Boolean ?: false,
-                connectedUserIds = map["connectedUserIds"] as? List<String> ?: emptyList()
+                connectedUserIds = map["connectedUserIds"] as? List<String> ?: emptyList(),
+                fcmToken = map["fcmToken"] as? String
             )
         }
     }

@@ -31,7 +31,20 @@ import kotlinx.serialization.Serializable
 @Serializable object ChangePhone
 @Serializable object PermissionRequests
 
+// ─── User Setup Wizard Routes ────────────────────────────────────
+@Serializable object WelcomeSetupScreen
+@Serializable object PermissionsSetupScreen
+@Serializable object EmergencyContactsSetupScreen
+@Serializable object SOSPreferencesScreen
+@Serializable object SetupCompleteScreen
+
+// ─── Emergency Contacts Management Routes ─────────────────────────
+@Serializable object EmergencyContactsListScreen
+@Serializable object AddEmergencyContactScreen
+@Serializable data class EditEmergencyContactScreen(val contactId: String)
+
 // ─── Trusted Contact Main Routes ─────────────────────────────────
 @Serializable object TCHome
 @Serializable object AddUser
 @Serializable object TCProfile
+
