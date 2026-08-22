@@ -284,11 +284,36 @@ fun AppNavGraph(
             // ─── User Main Screens ───────────────────────────
             composable<UserHome> {
                 val homeViewModel: UserHomeViewModel = viewModel()
-                UserHomeScreen(viewModel = homeViewModel)
+                UserHomeScreen(
+                    viewModel = homeViewModel,
+                    onNavigateToLocationSettings = { navController.navigate(LocationSettingsScreen) },
+                    onNavigateToShakeSettings = { navController.navigate(ShakeDetectionSettingsScreen) },
+                    onNavigateToSafety = {
+                        navController.navigate(UserSafety) {
+                            popUpTo(navController.graph.startDestinationId) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
 
             composable<UserSafety> {
-                SafetyPlaceholderScreen()
+                val sosViewModel: SOSViewModel = viewModel()
+                val profileViewModel: UserProfileViewModel = viewModel()
+                com.womensafety.system.ui.safety.SafetyScreen(
+                    sosViewModel = sosViewModel,
+                    profileViewModel = profileViewModel,
+                    onNavigateToAlert = { eventId ->
+                        navController.navigate(SOSAlertScreen(eventId = eventId))
+                    },
+                    onNavigateToHistory = { navController.navigate(SOSHistoryScreen) },
+                    onNavigateToHistoryDetail = { eventId ->
+                        navController.navigate(SOSHistoryDetailScreen(eventId = eventId))
+                    }
+                )
             }
 
             composable<UserContacts> {
@@ -344,12 +369,101 @@ fun AppNavGraph(
                 )
             }
 
+            // ─── Location Tracking Screens ───────────────────
+            composable<LocationSettingsScreen> {
+                val locationViewModel: LocationViewModel = viewModel()
+                com.womensafety.system.ui.location.LocationSettingsScreen(
+                    viewModel = locationViewModel,
+                    onNavigateToHistory = { navController.navigate(LocationHistoryScreen) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<LocationHistoryScreen> {
+                val locationViewModel: LocationViewModel = viewModel()
+                com.womensafety.system.ui.location.LocationHistoryScreen(
+                    viewModel = locationViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<LiveLocationMapScreen> { backStackEntry ->
+                val route = backStackEntry.toRoute<LiveLocationMapScreen>()
+                val locationViewModel: LocationViewModel = viewModel()
+                com.womensafety.system.ui.location.LiveLocationMapScreen(
+                    userId = route.userId,
+                    viewModel = locationViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // ─── Shake Detection Screens ─────────────────────
+            composable<ShakeDetectionSettingsScreen> {
+                val shakeViewModel: ShakeDetectionViewModel = viewModel()
+                com.womensafety.system.ui.shake.ShakeDetectionSettingsScreen(
+                    viewModel = shakeViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // ─── Emergency SOS Screens ───────────────────────
+            composable<SOSAlertScreen> { backStackEntry ->
+                val route = backStackEntry.toRoute<SOSAlertScreen>()
+                val sosViewModel: SOSViewModel = viewModel()
+                com.womensafety.system.ui.sos.SOSAlertScreen(
+                    eventId = route.eventId,
+                    viewModel = sosViewModel,
+                    onNavigateToHome = {
+                        navController.navigate(UserHome) {
+                            popUpTo(UserHome) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable<SOSHistoryScreen> {
+                val sosViewModel: SOSViewModel = viewModel()
+                com.womensafety.system.ui.sos.SOSHistoryScreen(
+                    viewModel = sosViewModel,
+                    onNavigateToDetail = { eventId ->
+                        navController.navigate(SOSHistoryDetailScreen(eventId = eventId))
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SOSHistoryDetailScreen> { backStackEntry ->
+                val route = backStackEntry.toRoute<SOSHistoryDetailScreen>()
+                val sosViewModel: SOSViewModel = viewModel()
+                com.womensafety.system.ui.sos.SOSHistoryDetailScreen(
+                    eventId = route.eventId,
+                    viewModel = sosViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SOSReceivedScreen> { backStackEntry ->
+                val route = backStackEntry.toRoute<SOSReceivedScreen>()
+                val locationViewModel: LocationViewModel = viewModel()
+                val sosViewModel: SOSViewModel = viewModel()
+                com.womensafety.system.ui.sos.SOSReceivedScreen(
+                    eventId = route.eventId,
+                    userId = route.userId,
+                    locationViewModel = locationViewModel,
+                    sosViewModel = sosViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             // ─── TC Main Screens ─────────────────────────────
             composable<TCHome> {
                 val tcHomeViewModel: TrustedContactHomeViewModel = viewModel()
                 TCHomeScreen(
                     viewModel = tcHomeViewModel,
-                    onNavigateToAddUser = { navController.navigate(AddUser) }
+                    onNavigateToAddUser = { navController.navigate(AddUser) },
+                    onNavigateToLiveMap = { userId ->
+                        navController.navigate(LiveLocationMapScreen(userId = userId))
+                    }
                 )
             }
 

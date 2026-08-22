@@ -11,5 +11,6 @@ class WomenSafetyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         FirebaseApp.initializeApp(this)
+        com.womensafety.system.utils.NotificationChannelManager.createNotificationChannels(this)
     }
 }

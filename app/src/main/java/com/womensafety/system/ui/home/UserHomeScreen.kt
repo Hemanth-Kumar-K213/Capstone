@@ -28,7 +28,12 @@ import com.womensafety.system.utils.Constants
 import com.womensafety.system.viewmodel.UserHomeViewModel
 
 @Composable
-fun UserHomeScreen(viewModel: UserHomeViewModel) {
+fun UserHomeScreen(
+    viewModel: UserHomeViewModel,
+    onNavigateToLocationSettings: () -> Unit = {},
+    onNavigateToShakeSettings: () -> Unit = {},
+    onNavigateToSafety: () -> Unit = {}
+) {
     val state by viewModel.homeState.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.loadHomeData() }
@@ -118,6 +123,104 @@ fun UserHomeScreen(viewModel: UserHomeViewModel) {
                         fontWeight = FontWeight.SemiBold,
                         color = StatusApproved
                     )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Location Tracking Status Card
+        GlassCard(
+            accentGradient = Brush.horizontalGradient(
+                colors = listOf(
+                    GradientAmber.copy(alpha = 0.08f),
+                    GradientGold.copy(alpha = 0.04f)
+                )
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GradientAmber.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.LocationOn,
+                            contentDescription = null,
+                            tint = GradientAmber,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Location Tracking",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            if (state.userProfile?.locationTrackingEnabled == true) "Active • Sharing coordinates"
+                            else "Inactive",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (state.userProfile?.locationTrackingEnabled == true) StatusApproved else OnSurfaceVariantDark
+                        )
+                    }
+                    TextButton(onClick = onNavigateToLocationSettings) {
+                        Text("Configure", color = GradientAmber, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Shake Detection Status Card
+        GlassCard(
+            accentGradient = Brush.horizontalGradient(
+                colors = listOf(
+                    GradientRose.copy(alpha = 0.08f),
+                    GradientMagenta.copy(alpha = 0.04f)
+                )
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GradientRose.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Vibration,
+                            contentDescription = null,
+                            tint = GradientRose,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Shake Detection",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            if (state.userProfile?.shakeDetectionEnabled == true) "Active • Sensitivity ${state.userProfile?.shakeSensitivity}"
+                            else "Inactive",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (state.userProfile?.shakeDetectionEnabled == true) StatusApproved else OnSurfaceVariantDark
+                        )
+                    }
+                    TextButton(onClick = onNavigateToShakeSettings) {
+                        Text("Configure", color = GradientRose, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -234,8 +337,12 @@ fun UserHomeScreen(viewModel: UserHomeViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Safety System placeholder
-        GlassCard {
+        // Safety Center Action Card
+        GlassCard(
+            accentGradient = Brush.horizontalGradient(
+                colors = listOf(StatusDenied.copy(alpha = 0.15f), StatusDenied.copy(alpha = 0.04f))
+            )
+        ) {
             Column(
                 modifier = Modifier
                     .padding(20.dp)
@@ -246,28 +353,39 @@ fun UserHomeScreen(viewModel: UserHomeViewModel) {
                     modifier = Modifier
                         .size(52.dp)
                         .clip(CircleShape)
-                        .background(GradientPurple.copy(alpha = 0.15f)),
+                        .background(StatusDenied.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.Shield,
+                        Icons.Filled.Sos,
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
-                        tint = GradientMagenta
+                        tint = StatusDenied
                     )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    "Safety System",
+                    "Safety Center & SOS",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = OnSurfaceDark
                 )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Coming Soon",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceVariantDark.copy(alpha = 0.5f)
+                    "Instant cellular SMS alerts, siren alarms, and GPS broadcasting",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceVariantDark,
+                    textAlign = TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(14.dp))
+                Button(
+                    onClick = onNavigateToSafety,
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("OPEN SAFETY CENTER", fontWeight = FontWeight.Bold)
+                }
             }
         }
 

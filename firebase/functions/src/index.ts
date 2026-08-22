@@ -14,3 +14,4 @@ admin.initializeApp();
 // Export Cloud Functions
 export { onUserCreated } from "./generateUid";
 export { rotateWeeklyUids } from "./rotateUids";
+export { onSOSEventCreated, onSOSEventUpdated } from "./sendSOSNotifications";
