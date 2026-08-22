@@ -7,8 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +27,8 @@ import com.womensafety.system.viewmodel.TrustedContactHomeViewModel
 @Composable
 fun TCHomeScreen(
     viewModel: TrustedContactHomeViewModel,
-    onNavigateToAddUser: () -> Unit
+    onNavigateToAddUser: () -> Unit,
+    onNavigateToLiveMap: (String) -> Unit = {}
 ) {
     val state by viewModel.homeState.collectAsState()
 
@@ -147,39 +147,60 @@ fun TCHomeScreen(
                         }
 
                         GlassCard {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .background(GradientAmber.copy(alpha = 0.15f)),
-                                    contentAlignment = Alignment.Center
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        Icons.Filled.Person,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp),
-                                        tint = GradientAmber
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(GradientAmber.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Person,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(24.dp),
+                                            tint = GradientAmber
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            connectedUser.relationship.userName.ifBlank { "Unknown User" },
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = OnSurfaceDark
+                                        )
+                                        Text(
+                                            connectedUser.relationship.permissionState.name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = statusColor
+                                        )
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        connectedUser.relationship.userName.ifBlank { "Unknown User" },
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = OnSurfaceDark
-                                    )
-                                    Text(
-                                        connectedUser.relationship.permissionState.name,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = statusColor
-                                    )
+
+                                if (connectedUser.relationship.permissionState == PermissionState.APPROVED) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    HorizontalDivider(color = GlassBorder)
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Button(
+                                        onClick = { onNavigateToLiveMap(connectedUser.relationship.userId) },
+                                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
+                                        shape = MaterialTheme.shapes.medium
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.LocationOn,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("VIEW LIVE LOCATION", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
                                 }
                             }
                         }

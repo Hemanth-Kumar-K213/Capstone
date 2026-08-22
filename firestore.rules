@@ -207,6 +207,44 @@ service cloud.firestore {
 
 
     // ============================================================
+    // USER LOCATIONS
+    // userLocations/{userId}/locations/{locationId}
+    // ============================================================
+
+    match /userLocations/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+
+      match /locations/{locationId} {
+        // User can write their own locations
+        allow write: if isSignedIn() && request.auth.uid == userId;
+        // User and authenticated contacts can read
+        allow read: if isSignedIn();
+      }
+    }
+
+
+    // ============================================================
+    // SOS EVENTS
+    // sosEvents/{eventId}
+    // ============================================================
+
+    match /sosEvents/{eventId} {
+      // User can create their own SOS event
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User who created the SOS or authenticated participants can update/resolve
+      allow update: if isSignedIn();
+
+      // Authenticated users (User and approved Trusted Contacts) can read SOS events
+      allow read: if isSignedIn();
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
     // HELPER FUNCTIONS
     // ============================================================
 

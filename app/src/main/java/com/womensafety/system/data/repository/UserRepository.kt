@@ -38,6 +38,10 @@ class UserRepository(
         return firestoreManager.updateUserProfile(authUserId, mapOf("phoneVerified" to verified))
     }
 
+    suspend fun updateUserProfile(authUserId: String, updates: Map<String, Any?>): Result<Unit> {
+        return firestoreManager.updateUserProfile(authUserId, updates)
+    }
+
     suspend fun updateSetupStatus(
         setupCompleted: Boolean,
         preferences: Map<String, Any> = emptyMap()

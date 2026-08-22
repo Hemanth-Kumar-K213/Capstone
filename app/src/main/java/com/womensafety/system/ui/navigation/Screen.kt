@@ -43,8 +43,23 @@ import kotlinx.serialization.Serializable
 @Serializable object AddEmergencyContactScreen
 @Serializable data class EditEmergencyContactScreen(val contactId: String)
 
+// ─── Location Tracking Routes ────────────────────────────────────
+@Serializable object LocationSettingsScreen
+@Serializable object LocationHistoryScreen
+@Serializable data class LiveLocationMapScreen(val userId: String)
+
+// ─── Shake Detection Routes ──────────────────────────────────────
+@Serializable object ShakeDetectionSettingsScreen
+
+// ─── Emergency SOS Alert Routes ──────────────────────────────────
+@Serializable data class SOSAlertScreen(val eventId: String)
+@Serializable object SOSHistoryScreen
+@Serializable data class SOSHistoryDetailScreen(val eventId: String)
+@Serializable data class SOSReceivedScreen(val eventId: String, val userId: String)
+
 // ─── Trusted Contact Main Routes ─────────────────────────────────
 @Serializable object TCHome
 @Serializable object AddUser
 @Serializable object TCProfile
+
 

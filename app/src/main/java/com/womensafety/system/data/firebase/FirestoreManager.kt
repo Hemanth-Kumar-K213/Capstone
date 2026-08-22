@@ -3,13 +3,20 @@ package com.womensafety.system.data.firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import android.util.Log
 import com.womensafety.system.data.model.EmergencyContact
 import com.womensafety.system.data.model.Relationship
+import com.womensafety.system.data.model.SOSEvent
+import com.womensafety.system.data.model.SOSStatus
 import com.womensafety.system.data.model.TrustedContactProfile
+import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.model.UserProfile
 import com.womensafety.system.data.model.WeeklyUid
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -34,6 +41,9 @@ class FirestoreManager {
         const val WEEKLY_UIDS_COLLECTION = "weeklyUids"
         const val DEV_UID_MAPPINGS_COLLECTION = "devUidMappings"
         const val RELATIONSHIPS_COLLECTION = "relationships"
+        const val USER_LOCATIONS_COLLECTION = "userLocations"
+        const val LOCATIONS_SUBCOLLECTION = "locations"
+        const val SOS_EVENTS_COLLECTION = "sosEvents"
 
         private const val UID_VALIDITY_DAYS = 7
 
@@ -656,4 +666,299 @@ class FirestoreManager {
             Result.failure(e)
         }
     }
+
+    // ─── Location Tracking ──────────────────────────────────────
+
+    /**
+     * Saves a user's location point to their location subcollection.
+     * Path: userLocations/{userId}/locations/{locationId}
+     */
+    suspend fun saveUserLocation(userId: String, location: UserLocation): Result<Unit> {
+        return try {
+            val docId = if (location.id.isNotBlank()) location.id else location.timestamp.toString()
+            val locationToSave = location.copy(id = docId, userId = userId)
+
+            db.collection(USER_LOCATIONS_COLLECTION)
+                .document(userId)
+                .collection(LOCATIONS_SUBCOLLECTION)
+                .document(docId)
+                .set(locationToSave.toMap())
+                .await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "saveUserLocation failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieves the latest known location point for a user.
+     */
+    suspend fun getLatestUserLocation(userId: String): Result<UserLocation?> {
+        return try {
+            val snapshot = db.collection(USER_LOCATIONS_COLLECTION)
+                .document(userId)
+                .collection(LOCATIONS_SUBCOLLECTION)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(1)
+                .get()
+                .await()
+
+            if (!snapshot.isEmpty) {
+                val doc = snapshot.documents.first()
+                val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                Result.success(loc)
+            } else {
+                Result.success(null)
+            }
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getLatestUserLocation failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieves recent location history points for a user.
+     */
+    suspend fun getUserLocationHistory(userId: String, limit: Int = 50): Result<List<UserLocation>> {
+        return try {
+            val snapshot = db.collection(USER_LOCATIONS_COLLECTION)
+                .document(userId)
+                .collection(LOCATIONS_SUBCOLLECTION)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(limit.toLong())
+                .get()
+                .await()
+
+            val locations = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { UserLocation.fromMap(doc.id, it) }
+            }
+            Result.success(locations)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getUserLocationHistory failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Real-time listener for a user's latest location using callbackFlow.
+     */
+    fun listenToUserLocation(userId: String): Flow<UserLocation?> = callbackFlow {
+        val listener = db.collection(USER_LOCATIONS_COLLECTION)
+            .document(userId)
+            .collection(LOCATIONS_SUBCOLLECTION)
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(1)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreManager", "listenToUserLocation error", error)
+                    trySend(null)
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && !snapshot.isEmpty) {
+                    val doc = snapshot.documents.first()
+                    val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                    trySend(loc)
+                } else {
+                    trySend(null)
+                }
+            }
+
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * Deletes location points older than a given timestamp.
+     */
+    suspend fun deleteOldLocations(userId: String, beforeTimestamp: Long): Result<Unit> {
+        return try {
+            val snapshot = db.collection(USER_LOCATIONS_COLLECTION)
+                .document(userId)
+                .collection(LOCATIONS_SUBCOLLECTION)
+                .whereLessThan("timestamp", beforeTimestamp)
+                .get()
+                .await()
+
+            val batch = db.batch()
+            for (doc in snapshot.documents) {
+                batch.delete(doc.reference)
+            }
+            batch.commit().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "deleteOldLocations failed", e)
+            Result.failure(e)
+        }
+    }
+
+    // ─── SOS Events ─────────────────────────────────────────────
+
+    /**
+     * Creates a new emergency SOS event document.
+     */
+    suspend fun createSOSEvent(event: SOSEvent): Result<Unit> {
+        return try {
+            db.collection(SOS_EVENTS_COLLECTION)
+                .document(event.id)
+                .set(event.toMap())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "createSOSEvent failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Updates an SOS event's resolution status and timestamp.
+     */
+    suspend fun updateSOSEventStatus(
+        eventId: String,
+        status: SOSStatus,
+        resolvedAt: Long = System.currentTimeMillis()
+    ): Result<Unit> {
+        return try {
+            val updates = mapOf(
+                "status" to status.name,
+                "resolvedAt" to resolvedAt
+            )
+            db.collection(SOS_EVENTS_COLLECTION)
+                .document(eventId)
+                .update(updates)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "updateSOSEventStatus failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Updates notification, SMS, and auto-call delivery statistics for an SOS event.
+     */
+    suspend fun updateSOSDeliveryStats(
+        eventId: String,
+        notificationsSent: Int,
+        smsSent: Int,
+        callMade: Boolean,
+        fcmTokens: List<String>
+    ): Result<Unit> {
+        return try {
+            val updates = mapOf(
+                "notificationsSent" to notificationsSent,
+                "smsSent" to smsSent,
+                "callMade" to callMade,
+                "fcmTokensSent" to fcmTokens
+            )
+            db.collection(SOS_EVENTS_COLLECTION)
+                .document(eventId)
+                .set(updates, SetOptions.merge())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "updateSOSDeliveryStats failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Gets the currently active SOS event for a user if one exists.
+     */
+    suspend fun getActiveUserSOSEvent(userId: String): Result<SOSEvent?> {
+        return try {
+            val snapshot = db.collection(SOS_EVENTS_COLLECTION)
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("status", SOSStatus.ACTIVE.name)
+                .limit(1)
+                .get()
+                .await()
+
+            if (!snapshot.isEmpty) {
+                val doc = snapshot.documents.first()
+                val event = doc.data?.let { SOSEvent.fromMap(doc.id, it) }
+                Result.success(event)
+            } else {
+                Result.success(null)
+            }
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getActiveUserSOSEvent failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieves past SOS events for a user in reverse chronological order.
+     */
+    suspend fun getUserSOSHistory(userId: String, limit: Int = 50): Result<List<SOSEvent>> {
+        return try {
+            val snapshot = db.collection(SOS_EVENTS_COLLECTION)
+                .whereEqualTo("userId", userId)
+                .orderBy("triggeredAt", Query.Direction.DESCENDING)
+                .limit(limit.toLong())
+                .get()
+                .await()
+
+            val events = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { SOSEvent.fromMap(doc.id, it) }
+            }
+            Result.success(events)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getUserSOSHistory failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Real-time listener for active SOS events of a user.
+     */
+    fun listenToUserSOSEvents(userId: String): Flow<SOSEvent?> = callbackFlow {
+        val listener = db.collection(SOS_EVENTS_COLLECTION)
+            .whereEqualTo("userId", userId)
+            .whereEqualTo("status", SOSStatus.ACTIVE.name)
+            .limit(1)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreManager", "listenToUserSOSEvents error", error)
+                    trySend(null)
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && !snapshot.isEmpty) {
+                    val doc = snapshot.documents.first()
+                    val event = doc.data?.let { SOSEvent.fromMap(doc.id, it) }
+                    trySend(event)
+                } else {
+                    trySend(null)
+                }
+            }
+
+        awaitClose { listener.remove() }
+    }
+
+    // ─── FCM Token Management ───────────────────────────────────
+
+    /**
+     * Updates the FCM device push token for a user or trusted contact.
+     */
+    suspend fun saveFCMToken(userId: String, token: String, accountType: String): Result<Unit> {
+        return try {
+            val collection = if (accountType == "TRUSTED_CONTACT") {
+                TRUSTED_CONTACTS_COLLECTION
+            } else {
+                USERS_COLLECTION
+            }
+
+            db.collection(collection)
+                .document(userId)
+                .update("fcmToken", token)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "saveFCMToken failed", e)
+            Result.failure(e)
+        }
+    }
 }
+

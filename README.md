@@ -129,15 +129,40 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
 - **Safety Preferences Section**: Direct toggles for Location Tracking, Shake Detection, Sensitivity dropdown, and Auto-Call that persist to Firestore.
 - **Re-Run Setup Wizard Button**: Allows users to reconfigure their entire safety system anytime.
 
+### 9. Phase 2: Location Tracking Service & Live Maps
+- **LocationTrackingService**: Foreground service using FusedLocationProviderClient with WakeLock protection.
+- **Dual Update Intervals**: 30 seconds for normal tracking, automatically boosted to 5 seconds during active SOS alerts.
+- **Firestore Streaming**: Streams GPS coordinates, accuracy, speed, and addresses to `userLocations/{userId}/locations/{locationId}`.
+- **LocationSettingsScreen**: Status card, update interval customization (5s-60s), and tracking control toggles.
+- **LocationHistoryScreen**: Historical timeline of past location updates with SOS filtering and data cleanup options.
+- **LiveLocationMapScreen**: Google Maps Compose interface for Trusted Contacts to view real-time location markers, accuracy rings, reverse geocoded addresses, and external navigation intents.
+
+### 10. Phase 3: Shake Detection Service & Sensor Management
+- **ShakeDetector**: High-precision accelerometer sensor listener with gravity subtraction and debounce filtering.
+- **ShakeDetectionService**: Background foreground service with persistent status notification and 3-burst haptic vibration feedback.
+- **Configurable Sensitivity**: LOW (20 m/s²), MEDIUM (15 m/s²), HIGH (12 m/s²).
+- **ShakeDetectionSettingsScreen**: Interactive testing mode allowing users to safely test shake sensitivity without triggering actual SOS.
+
+### 11. Phase 4: Complete SOS Alert System (Full Integration)
+- **SOSManager Core Orchestration**:
+  1. Requests immediate high-accuracy GPS fix with fallback to last known location.
+  2. Creates `SOSEvent` in Firestore `sosEvents/{eventId}`.
+  3. Activates loud siren audio on `STREAM_ALARM` (bypassing silent mode) and urgent vibration patterns.
+  4. Switches location tracking service to 5-second interval.
+  5. Formats and dispatches cellular SMS with live Google Maps coordinate links to all Emergency Contacts.
+  6. Automatically places phone call to the primary emergency contact if `sosAutoCall` is enabled.
+  7. Records delivery stats (FCM count, SMS count, Call status).
+- **SafetyScreen**: Dedicated main tab in User navigation featuring a large circular SOS button with a 3-second countdown confirmation dialog.
+- **SOSAlertScreen**: Full-screen emergency UI with pulsing red gradient, 5-minute auto-resolve countdown timer, siren mute toggle, real-time location snapshot, and "I'M SAFE" / "FALSE ALARM" resolution buttons.
+- **SOSHistoryScreen & SOSHistoryDetailScreen**: Complete audit trail of past emergency events with event timelines, participant logs, and report export.
+- **SOSReceivedScreen & FCM Messaging**: Handles high-priority push notifications on Trusted Contact devices with loud alerts and direct navigation to live maps.
+- **Cloud Function**: Automated FCM multicast trigger on new `sosEvents/{eventId}` documents.
+
 ---
 
-## 📋 Features Roadmap (Future Phases)
+## 🔒 Security & Firestore Rules
 
-1. **Phase 2: Live SOS Trigger & Service Engine**:
-   - Hardware sensor shake detection foreground service.
-   - SMS dispatch engine with GPS coordinates.
-   - Automated emergency phone dialer.
-   - Live location sharing link for Trusted Contacts.
-2. **Phase 3: Firebase Cloud Functions & Push Notifications**:
-   - Automated weekly UID rotation cron job.
-   - FCM Push notifications for incoming trusted contact connection requests and emergency SOS alerts.
+All data access is guarded by strict Firestore security rules:
+- Users can read/write their own profile and location history.
+- Approved Trusted Contacts (verified via `relationships/{userId}_{tcId}`) can read location streams and active SOS events.
+- Client cannot perform collection-wide scans or modify other users' emergency data.
