@@ -23,6 +23,8 @@ import com.womensafety.system.data.model.LocationServiceState
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.repository.LocationRepository
 import com.womensafety.system.data.repository.UserRepository
+import com.womensafety.system.manager.SafetyMonitoringManager
+import com.womensafety.system.manager.TravelModeManager
 import com.womensafety.system.utils.NotificationChannelManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -198,7 +200,15 @@ class LocationTrackingService : Service() {
 
     private fun startTrackingService() {
         _serviceState.value = LocationServiceState.STARTING
-        startForeground(NOTIFICATION_ID, buildNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
         isRunning = true
 
         acquireWakeLock()
@@ -282,6 +292,10 @@ class LocationTrackingService : Service() {
             // 2. Persist to Firestore subcollection
             locationRepository.saveLocation(currentUserId, userLocation)
             Log.d(TAG, "Location saved to Firestore: ${location.latitude}, ${location.longitude}")
+
+            // 3. Notify SafetyMonitoringManager
+            SafetyMonitoringManager.onLocationUpdated(userLocation)
+            TravelModeManager.onLocationUpdated(userLocation)
         }
     }
 
@@ -354,7 +368,7 @@ class LocationTrackingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = if (isSosMode) "🚨 EMERGENCY • High-Frequency Tracking" else "Women Safety • Location Active"
+        val title = if (isSosMode) "🚨 EMERGENCY • High-Frequency Tracking" else "Trinetra • Location Active"
         val subtitle = when {
             isSosMode -> "Updating location every 5 seconds during active SOS"
             isPaused -> "Location tracking paused"

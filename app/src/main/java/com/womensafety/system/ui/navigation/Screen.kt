@@ -47,6 +47,8 @@ import kotlinx.serialization.Serializable
 @Serializable object LocationSettingsScreen
 @Serializable object LocationHistoryScreen
 @Serializable data class LiveLocationMapScreen(val userId: String)
+@Serializable object LocationTestScreen
+@Serializable object MapTestScreen
 
 // ─── Shake Detection Routes ──────────────────────────────────────
 @Serializable object ShakeDetectionSettingsScreen
@@ -56,6 +58,10 @@ import kotlinx.serialization.Serializable
 @Serializable object SOSHistoryScreen
 @Serializable data class SOSHistoryDetailScreen(val eventId: String)
 @Serializable data class SOSReceivedScreen(val eventId: String, val userId: String)
+@Serializable object ProactivePromptScreen
+@Serializable object TravelMode
+@Serializable object ActiveJourney
+@Serializable object TravelHistory
 
 // ─── Trusted Contact Main Routes ─────────────────────────────────
 @Serializable object TCHome

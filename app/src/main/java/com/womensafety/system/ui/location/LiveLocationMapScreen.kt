@@ -85,33 +85,66 @@ fun LiveLocationMapScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Google Map View
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                uiSettings = MapUiSettings(
-                    zoomControlsEnabled = false,
-                    myLocationButtonEnabled = true,
-                    compassEnabled = true
-                ),
-                properties = MapProperties(
-                    isMyLocationEnabled = false
-                )
-            ) {
-                if (liveLocation != null && liveLocation!!.latitude != 0.0) {
-                    Marker(
-                        state = MarkerState(position = userLatLng),
-                        title = liveLocation!!.userName.ifBlank { "User Location" },
-                        snippet = "Updated: ${DateUtils.formatDateTime(liveLocation!!.timestamp)}"
-                    )
+            val isMapAvailable = remember {
+                com.womensafety.system.manager.TrinetraLocationManager.isPlayServicesAvailable(context) &&
+                        com.womensafety.system.manager.TrinetraLocationManager.isMapsApiKeyConfigured(context)
+            }
 
-                    Circle(
-                        center = userLatLng,
-                        radius = (liveLocation!!.accuracy.coerceAtLeast(15f)).toDouble(),
-                        fillColor = GradientAmber.copy(alpha = 0.2f),
-                        strokeColor = GradientAmber,
-                        strokeWidth = 2f
+            if (isMapAvailable) {
+                // Google Map View
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState,
+                    uiSettings = MapUiSettings(
+                        zoomControlsEnabled = false,
+                        myLocationButtonEnabled = true,
+                        compassEnabled = true
+                    ),
+                    properties = MapProperties(
+                        isMyLocationEnabled = false
                     )
+                ) {
+                    if (liveLocation != null && liveLocation!!.latitude != 0.0) {
+                        Marker(
+                            state = MarkerState(position = userLatLng),
+                            title = liveLocation!!.userName.ifBlank { "User Location" },
+                            snippet = "Updated: ${DateUtils.formatDateTime(liveLocation!!.timestamp)}"
+                        )
+
+                        Circle(
+                            center = userLatLng,
+                            radius = (liveLocation!!.accuracy.coerceAtLeast(15f)).toDouble(),
+                            fillColor = GradientAmber.copy(alpha = 0.2f),
+                            strokeColor = GradientAmber,
+                            strokeWidth = 2f
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(BackgroundDark),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Map,
+                            contentDescription = null,
+                            tint = StatusDenied,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Map service is unavailable. Please check Google Maps configuration.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OnSurfaceDark,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             }
 

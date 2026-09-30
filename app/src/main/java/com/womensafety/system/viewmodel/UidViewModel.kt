@@ -67,6 +67,6 @@ class UidViewModel(
      */
     fun getShareText(): String? {
         val uid = _uidState.value.currentUid?.uid ?: return null
-        return "My current Women Safety UID is: $uid"
+        return "My current Trinetra UID is: $uid"
     }
 }

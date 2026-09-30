@@ -59,6 +59,11 @@
             </intent-filter>
         </service>
 
+        <!-- Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="PLACEHOLDER_MAPS_API_KEY" />
+
     </application>
 
 </manifest>

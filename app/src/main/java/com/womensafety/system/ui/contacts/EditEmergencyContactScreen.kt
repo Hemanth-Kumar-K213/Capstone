@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -39,6 +40,8 @@ fun EditEmergencyContactScreen(
 
     var name by remember(existingContact) { mutableStateOf(existingContact?.name ?: "") }
     var phone by remember(existingContact) { mutableStateOf(existingContact?.phone ?: "") }
+    var isPrimary by remember(existingContact) { mutableStateOf(existingContact?.isPrimary ?: false) }
+    var enableEscalation by remember(existingContact) { mutableStateOf(existingContact?.enableEscalation ?: true) }
     var formError by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -177,6 +180,42 @@ fun EditEmergencyContactScreen(
                             Icon(Icons.Filled.Phone, contentDescription = null, tint = GradientAmber)
                         }
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Switch(
+                            checked = isPrimary,
+                            onCheckedChange = { isPrimary = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = GradientAmber)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Primary Contact", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark, fontWeight = FontWeight.Bold)
+                            Text("Make this the default emergency call recipient", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Switch(
+                            checked = enableEscalation,
+                            onCheckedChange = { enableEscalation = it },
+                            colors = SwitchDefaults.colors(checkedThumbColor = GradientAmber)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Enable Alert Escalation", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark, fontWeight = FontWeight.Bold)
+                            Text("Sends automated SMS with live coordinates", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
+                        }
+                    }
                 }
             }
 
@@ -203,6 +242,8 @@ fun EditEmergencyContactScreen(
                         contactId = contactId,
                         name = trimmedName,
                         phone = normalizedPhone,
+                        isPrimary = isPrimary,
+                        enableEscalation = enableEscalation,
                         onSuccess = onBack
                     )
                 }

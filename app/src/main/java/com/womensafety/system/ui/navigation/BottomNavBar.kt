@@ -23,7 +23,6 @@ data class BottomNavItem(
 fun UserBottomNavBar(navController: NavHostController) {
     val items = listOf(
         BottomNavItem("Home", Icons.Filled.Home, UserHome),
-        BottomNavItem("Safety", Icons.Filled.Shield, UserSafety),
         BottomNavItem("Contacts", Icons.Filled.Contacts, UserContacts),
         BottomNavItem("Profile", Icons.Filled.Person, UserProfile)
     )

@@ -60,7 +60,7 @@ class ShakeDetector(
         val z = event.values[2]
 
         // Calculate raw acceleration magnitude
-        val gForce = sqrt((x * x + y * z + z * z).toDouble()).toFloat()
+        val gForce = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
 
         // Net acceleration beyond Earth gravity (approx 9.81 m/s²)
         val netAcceleration = kotlin.math.abs(gForce - SensorManager.GRAVITY_EARTH)

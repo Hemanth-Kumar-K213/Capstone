@@ -12,5 +12,7 @@ class WomenSafetyApp : Application() {
         super.onCreate()
         FirebaseApp.initializeApp(this)
         com.womensafety.system.utils.NotificationChannelManager.createNotificationChannels(this)
+        com.womensafety.system.manager.SafetyMonitoringManager.initialize(this)
+        com.womensafety.system.manager.TravelModeManager.initialize(this)
     }
 }

@@ -250,18 +250,40 @@ private fun EmergencyContactCard(
             Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = contact.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = OnSurfaceDark
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = contact.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = OnSurfaceDark
+                    )
+                    if (contact.isPrimary) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = "Primary Contact",
+                            tint = GradientGold,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = contact.phone,
                     style = MaterialTheme.typography.bodyMedium,
                     color = OnSurfaceVariantDark
                 )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val statusText = if (contact.enableEscalation) "SOS Alerts Enabled" else "SOS Alerts Disabled"
+                    val statusColor = if (contact.enableEscalation) StatusApproved else StatusDenied
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = statusColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Added on ${DateUtils.formatDate(contact.addedAt)}",

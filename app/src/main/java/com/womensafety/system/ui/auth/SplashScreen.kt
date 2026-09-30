@@ -122,7 +122,7 @@ fun SplashScreen(
             // Logo
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
-                contentDescription = "Women Safety System",
+                contentDescription = "Trinetra",
                 modifier = Modifier
                     .size(160.dp)
                     .scale(logoScale.value)
@@ -132,10 +132,10 @@ fun SplashScreen(
 
             // App title with gradient text effect
             Text(
-                text = "WOMEN SAFETY",
+                text = "TRINETRA",
                 style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 32.sp,
-                    letterSpacing = 4.sp,
+                    fontSize = 36.sp,
+                    letterSpacing = 6.sp,
                     shadow = Shadow(
                         color = GradientAmber.copy(alpha = 0.4f),
                         offset = Offset(0f, 4f),
@@ -145,23 +145,6 @@ fun SplashScreen(
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 color = GradientGold,
-                modifier = Modifier.alpha(textAlpha.value)
-            )
-
-            Text(
-                text = "SYSTEM",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 32.sp,
-                    letterSpacing = 8.sp,
-                    shadow = Shadow(
-                        color = GradientRose.copy(alpha = 0.3f),
-                        offset = Offset(0f, 4f),
-                        blurRadius = 12f
-                    )
-                ),
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                color = GradientRose,
                 modifier = Modifier.alpha(textAlpha.value)
             )
 

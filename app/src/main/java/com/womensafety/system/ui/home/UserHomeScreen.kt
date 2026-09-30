@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,13 +27,21 @@ import com.womensafety.system.R
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.Constants
 import com.womensafety.system.viewmodel.UserHomeViewModel
+import androidx.compose.ui.platform.LocalContext
+import com.womensafety.system.data.model.UserLocation
+import com.womensafety.system.data.model.SafetyMode
+import com.womensafety.system.service.LocationTrackingService
+import com.womensafety.system.manager.SafetyMonitoringManager
+import com.womensafety.system.manager.TravelModeManager
+import com.womensafety.system.manager.JourneyState
 
 @Composable
 fun UserHomeScreen(
     viewModel: UserHomeViewModel,
     onNavigateToLocationSettings: () -> Unit = {},
     onNavigateToShakeSettings: () -> Unit = {},
-    onNavigateToSafety: () -> Unit = {}
+    onNavigateToSafety: () -> Unit = {},
+    onNavigateToTravelMode: () -> Unit = {}
 ) {
     val state by viewModel.homeState.collectAsState()
 
@@ -129,166 +138,144 @@ fun UserHomeScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Location Tracking Status Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientAmber.copy(alpha = 0.08f),
-                    GradientGold.copy(alpha = 0.04f)
+        // Safety Mode Selector
+        val activeSafetyModeStr = state.userProfile?.activeSafetyMode ?: "REGULAR"
+        val activeMode = SafetyMode.fromString(activeSafetyModeStr)
+        val modeSuggestion by SafetyMonitoringManager.modeSuggestion.collectAsState()
+
+        // Suggestion Card (if active and suggestions enabled)
+        if (modeSuggestion != null && state.userProfile?.autoModeSuggestionsEnabled == true) {
+            val suggestion = modeSuggestion!!
+            GlassCard(
+                accentGradient = Brush.horizontalGradient(
+                    colors = listOf(
+                        GradientAmber.copy(alpha = 0.15f),
+                        GradientGold.copy(alpha = 0.05f)
+                    )
                 )
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(GradientAmber.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            tint = GradientAmber,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Location Tracking",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = OnSurfaceDark
-                        )
-                        Text(
-                            if (state.userProfile?.locationTrackingEnabled == true) "Active • Sharing coordinates"
-                            else "Inactive",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (state.userProfile?.locationTrackingEnabled == true) StatusApproved else OnSurfaceVariantDark
-                        )
-                    }
-                    TextButton(onClick = onNavigateToLocationSettings) {
-                        Text("Configure", color = GradientAmber, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Shake Detection Status Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientRose.copy(alpha = 0.08f),
-                    GradientMagenta.copy(alpha = 0.04f)
-                )
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(GradientRose.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Vibration,
-                            contentDescription = null,
-                            tint = GradientRose,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Shake Detection",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = OnSurfaceDark
-                        )
-                        Text(
-                            if (state.userProfile?.shakeDetectionEnabled == true) "Active • Sensitivity ${state.userProfile?.shakeSensitivity}"
-                            else "Inactive",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (state.userProfile?.shakeDetectionEnabled == true) StatusApproved else OnSurfaceVariantDark
-                        )
-                    }
-                    TextButton(onClick = onNavigateToShakeSettings) {
-                        Text("Configure", color = GradientRose, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Trusted Contacts — Gradient-accent card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientRose.copy(alpha = 0.1f),
-                    GradientMagenta.copy(alpha = 0.05f)
-                )
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(GradientRose.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Contacts,
-                            contentDescription = null,
-                            tint = GradientRose
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Trusted Contacts",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = OnSurfaceDark
-                        )
-                        if (state.trustedContactCount < Constants.MIN_TRUSTED_CONTACTS) {
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(GradientAmber.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = GradientAmber
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "Add at least ${Constants.MIN_TRUSTED_CONTACTS} contacts",
+                                "Safety Mode Suggestion",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = OnSurfaceDark
+                            )
+                            Text(
+                                "You appear to be ${if (suggestion == SafetyMode.TRAVELLING) "travelling" else "at your saved location"}. Switch to ${suggestion.displayName}?",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = StatusPending
+                                color = OnSurfaceVariantDark
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { SafetyMonitoringManager.dismissSuggestion() }) {
+                            Text("Dismiss", color = OnSurfaceVariantDark)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { viewModel.updateActiveSafetyMode(suggestion) },
+                            colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text("Switch", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Active Mode Selector Card
+        GlassCard(
+            accentGradient = Brush.horizontalGradient(
+                colors = listOf(
+                    GradientDeepPurple.copy(alpha = 0.1f),
+                    BackgroundDark.copy(alpha = 0.05f)
+                )
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "CURRENT OPERATING MODE",
+                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurfaceVariantDark
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${state.trustedContactCount}",
-                        style = MaterialTheme.typography.displaySmall,
+                        "${activeMode.iconEmoji} ${activeMode.displayName}",
+                        style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
-                        color = GradientRose
+                        color = GradientGold
                     )
                 }
-                if (state.pendingRequestCount > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Filled.Notifications,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = StatusPending
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "${state.pendingRequestCount} pending request(s)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusPending
-                        )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    activeMode.config.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceVariantDark
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Selector Buttons Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SafetyMode.values().forEach { modeOption ->
+                        val isSelected = activeMode == modeOption
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) GradientDeepPurple.copy(alpha = 0.4f)
+                                    else SurfaceVariantDark.copy(alpha = 0.2f)
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) GradientAmber else GlassBorder,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { viewModel.updateActiveSafetyMode(modeOption) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    modeOption.iconEmoji,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    modeOption.displayName.split("/")[0],
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) GradientGold else OnSurfaceVariantDark
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -296,96 +283,154 @@ fun UserHomeScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Current Safety UID — Gradient accent card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientAmber.copy(alpha = 0.1f),
-                    GradientGold.copy(alpha = 0.05f)
-                )
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "CURRENT SAFETY ID",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        letterSpacing = 3.sp
-                    ),
-                    color = OnSurfaceVariantDark
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    state.currentUid?.uid ?: "Generating…",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        letterSpacing = 4.sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = GradientGold,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Changes automatically every week",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark.copy(alpha = 0.6f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Safety Center Action Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(StatusDenied.copy(alpha = 0.15f), StatusDenied.copy(alpha = 0.04f))
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(StatusDenied.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Filled.Sos,
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = StatusDenied
+        when (activeMode) {
+            SafetyMode.REGULAR -> {
+                // Location Tracking Status Card
+                GlassCard(
+                    accentGradient = Brush.horizontalGradient(
+                        colors = listOf(GradientAmber.copy(alpha = 0.08f), GradientGold.copy(alpha = 0.04f))
                     )
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    "Safety Center & SOS",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = OnSurfaceDark
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Instant cellular SMS alerts, siren alarms, and GPS broadcasting",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Button(
-                    onClick = onNavigateToSafety,
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
-                    shape = MaterialTheme.shapes.medium
                 ) {
-                    Text("OPEN SAFETY CENTER", fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(GradientAmber.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.LocationOn,
+                                    contentDescription = null,
+                                    tint = GradientAmber,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Location Tracking",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = OnSurfaceDark
+                                )
+                                Text(
+                                    if (state.userProfile?.locationTrackingEnabled == true) "Active • Sharing coordinates"
+                                    else "Inactive",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (state.userProfile?.locationTrackingEnabled == true) StatusApproved else OnSurfaceVariantDark
+                                )
+                            }
+                            TextButton(onClick = onNavigateToLocationSettings) {
+                                Text("Configure", color = GradientAmber, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Shake Detection Status Card
+                GlassCard(
+                    accentGradient = Brush.horizontalGradient(
+                        colors = listOf(GradientRose.copy(alpha = 0.08f), GradientMagenta.copy(alpha = 0.04f))
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(GradientRose.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Vibration,
+                                    contentDescription = null,
+                                    tint = GradientRose,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Shake Detection",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = OnSurfaceDark
+                                )
+                                Text(
+                                    if (state.userProfile?.shakeDetectionEnabled == true) "Active • Sensitivity ${state.userProfile?.shakeSensitivity}"
+                                    else "Inactive",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (state.userProfile?.shakeDetectionEnabled == true) StatusApproved else OnSurfaceVariantDark
+                                )
+                            }
+                            TextButton(onClick = onNavigateToShakeSettings) {
+                                Text("Configure", color = GradientRose, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TrustedContactsCard(state)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SafetyUidCard(state)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SafetyCenterCard(onNavigateToSafety)
+            }
+            SafetyMode.TRAVELLING -> {
+                ProactiveSafeTripCard(onNavigateToTravelMode)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TrustedContactsCard(state)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SafetyUidCard(state)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SafetyCenterCard(onNavigateToSafety)
+            }
+            SafetyMode.WORKING -> {
+                WorkingModeView(
+                    userProfile = state.userProfile,
+                    viewModel = viewModel,
+                    onNavigateToSafety = onNavigateToSafety
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TrustedContactsCard(state)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SafetyCenterCard(onNavigateToSafety)
+            }
+            SafetyMode.SLEEPING -> {
+                SleepingModeView(
+                    userProfile = state.userProfile,
+                    viewModel = viewModel,
+                    onNavigateToSafety = onNavigateToSafety
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TrustedContactsCard(state)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SafetyCenterCard(onNavigateToSafety)
             }
         }
 
@@ -427,6 +472,245 @@ fun GlassCard(
                 )
         ) {
             content()
+        }
+    }
+}
+
+@Composable
+fun ProactiveSafeTripCard(onNavigateToTravelMode: () -> Unit) {
+    val riskScore by SafetyMonitoringManager.riskScore.collectAsState()
+    val journeyState by TravelModeManager.journeyState.collectAsState()
+
+    GlassCard(
+        accentGradient = Brush.horizontalGradient(
+            colors = listOf(
+                GradientAmber.copy(alpha = 0.1f),
+                GradientGold.copy(alpha = 0.05f)
+            )
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(GradientAmber.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Navigation,
+                        contentDescription = null,
+                        tint = GradientAmber,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Proactive Travel Mode",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = OnSurfaceDark
+                    )
+                    Text(
+                        if (journeyState != JourneyState.NOT_STARTED) "Trip State: $journeyState • Risk: $riskScore"
+                        else "Plan and monitor your route dynamically",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (journeyState != JourneyState.NOT_STARTED) GradientAmber else OnSurfaceVariantDark
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Button(
+                onClick = onNavigateToTravelMode,
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text(
+                    if (journeyState != JourneyState.NOT_STARTED) "OPEN ACTIVE JOURNEY MAP"
+                    else "ENTER TRAVEL MODE",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+private fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6371000.0 // Earth's radius in meters
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return r * c
+}
+
+@Composable
+private fun TrustedContactsCard(state: UserHomeViewModel.HomeState) {
+    GlassCard(
+        accentGradient = Brush.horizontalGradient(
+            colors = listOf(
+                GradientRose.copy(alpha = 0.1f),
+                GradientMagenta.copy(alpha = 0.05f)
+            )
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(GradientRose.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Contacts,
+                        contentDescription = null,
+                        tint = GradientRose
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Trusted Contacts",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = OnSurfaceDark
+                    )
+                    if (state.trustedContactCount < Constants.MIN_TRUSTED_CONTACTS) {
+                        Text(
+                            "Add at least ${Constants.MIN_TRUSTED_CONTACTS} contacts",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusPending
+                        )
+                    }
+                }
+                Text(
+                    "${state.trustedContactCount}",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = GradientRose
+                )
+            }
+            if (state.pendingRequestCount > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Notifications,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = StatusPending
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "${state.pendingRequestCount} pending request(s)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusPending
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SafetyUidCard(state: UserHomeViewModel.HomeState) {
+    GlassCard(
+        accentGradient = Brush.horizontalGradient(
+            colors = listOf(
+                GradientAmber.copy(alpha = 0.1f),
+                GradientGold.copy(alpha = 0.05f)
+            )
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "CURRENT SAFETY ID",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    letterSpacing = 3.sp
+                ),
+                color = OnSurfaceVariantDark
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                state.currentUid?.uid ?: "Generating…",
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    letterSpacing = 4.sp
+                ),
+                fontWeight = FontWeight.Bold,
+                color = GradientGold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Changes automatically every week",
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceVariantDark.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SafetyCenterCard(onNavigateToSafety: () -> Unit) {
+    GlassCard(
+        accentGradient = Brush.horizontalGradient(
+            colors = listOf(StatusDenied.copy(alpha = 0.15f), StatusDenied.copy(alpha = 0.04f))
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(20.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(StatusDenied.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Sos,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = StatusDenied
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                "Safety Center & SOS",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = OnSurfaceDark
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "Instant cellular SMS alerts, siren alarms, and GPS broadcasting",
+                style = MaterialTheme.typography.bodySmall,
+                color = OnSurfaceVariantDark,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Button(
+                onClick = onNavigateToSafety,
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("OPEN SAFETY CENTER", fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

@@ -90,12 +90,14 @@ object SOSManager {
 
         // 5. Send Emergency SMS to configured emergency contacts
         val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
-        val smsCount = sendEmergencySMS(context, userName, emergencyContacts, lat, lng)
+        val escalationContacts = emergencyContacts.filter { it.enableEscalation }
+        val smsCount = sendEmergencySMS(context, userName, escalationContacts, lat, lng)
 
-        // 6. Initiate Auto-Call to First Contact (if enabled)
+        // 6. Initiate Auto-Call to Primary Contact (if enabled)
         var callMade = false
         if (userProfile?.sosAutoCall == true && emergencyContacts.isNotEmpty()) {
-            callMade = initiateEmergencyCall(context, emergencyContacts.first().phone)
+            val primaryContact = emergencyContacts.find { it.isPrimary } ?: emergencyContacts.first()
+            callMade = initiateEmergencyCall(context, primaryContact.phone)
         }
 
         // 7. Update Firestore SOSEvent with delivery stats
@@ -133,48 +135,17 @@ object SOSManager {
         if (currentUserId != null) {
             val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
             val userName = userProfile?.name?.ifBlank { "User" } ?: "User"
-            val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
+            val allContacts = userProfile?.emergencyContacts ?: emptyList()
+            val escalationContacts = allContacts.filter { it.enableEscalation }
 
-            sendResolutionSMS(context, userName, emergencyContacts, status)
+            sendResolutionSMS(context, userName, escalationContacts, status)
         }
 
         _activeEvent.value = null
     }
 
-    @SuppressLint("MissingPermission")
     private suspend fun getImmediateLocationFix(context: Context, userId: String): UserLocation? {
-        val hasFineLocation = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasFineLocation) {
-            Log.w(TAG, "No FINE_LOCATION permission. Falling back to repository latest.")
-            return locationRepository.getLatestLocation(userId).getOrNull()
-        }
-
-        return try {
-            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
-            val freshLocation = withTimeoutOrNull(GPS_TIMEOUT_MS) {
-                fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
-            }
-
-            if (freshLocation != null) {
-                UserLocation(
-                    userId = userId,
-                    latitude = freshLocation.latitude,
-                    longitude = freshLocation.longitude,
-                    accuracy = freshLocation.accuracy,
-                    timestamp = System.currentTimeMillis(),
-                    isSOSLocation = true
-                )
-            } else {
-                locationRepository.getLatestLocation(userId).getOrNull()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error acquiring immediate GPS fix", e)
-            locationRepository.getLatestLocation(userId).getOrNull()
-        }
+        return TrinetraLocationManager.getImmediateLocationFix(context, userId)
     }
 
     private fun sendEmergencySMS(
@@ -207,7 +178,7 @@ object SOSManager {
                 "$userName triggered SOS and needs urgent help!\n\n" +
                 "Location: $locationLink\n" +
                 "Time: $timeString\n\n" +
-                "Sent automatically from Women Safety System."
+                "Sent automatically from Trinetra."
 
         var sentCount = 0
         try {

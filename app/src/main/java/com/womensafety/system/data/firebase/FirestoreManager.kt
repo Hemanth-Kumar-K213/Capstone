@@ -14,6 +14,8 @@ import com.womensafety.system.data.model.TrustedContactProfile
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.model.UserProfile
 import com.womensafety.system.data.model.WeeklyUid
+import com.womensafety.system.data.model.RiskEvent
+import com.womensafety.system.data.model.JourneyRecord
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -44,6 +46,8 @@ class FirestoreManager {
         const val USER_LOCATIONS_COLLECTION = "userLocations"
         const val LOCATIONS_SUBCOLLECTION = "locations"
         const val SOS_EVENTS_COLLECTION = "sosEvents"
+        const val RISK_EVENTS_COLLECTION = "riskEvents"
+        const val JOURNEYS_COLLECTION = "journeys"
 
         private const val UID_VALIDITY_DAYS = 7
 
@@ -140,7 +144,9 @@ class FirestoreManager {
     suspend fun addEmergencyContactToUser(userId: String, contact: EmergencyContact): Result<Unit> {
         return try {
             val currentContacts = getEmergencyContactsForUser(userId).getOrNull() ?: emptyList()
-            val updatedContacts = currentContacts + contact
+            val updatedContacts = currentContacts.map {
+                if (contact.isPrimary) it.copy(isPrimary = false) else it
+            }.toMutableList().apply { add(contact) }
             db.collection(USERS_COLLECTION)
                 .document(userId)
                 .update("emergencyContacts", updatedContacts.map { it.toMap() })
@@ -158,13 +164,25 @@ class FirestoreManager {
     ): Result<Unit> {
         return try {
             val currentContacts = getEmergencyContactsForUser(userId).getOrNull() ?: emptyList()
+            val willBePrimary = updates["isPrimary"] as? Boolean ?: false
             val updatedContacts = currentContacts.map { contact ->
                 if (contact.id == contactId) {
                     val newName = updates["name"] as? String ?: contact.name
                     val newPhone = updates["phone"] as? String ?: contact.phone
-                    contact.copy(name = newName, phone = newPhone)
+                    val newIsPrimary = updates["isPrimary"] as? Boolean ?: contact.isPrimary
+                    val newEnableEscalation = updates["enableEscalation"] as? Boolean ?: contact.enableEscalation
+                    contact.copy(
+                        name = newName,
+                        phone = newPhone,
+                        isPrimary = newIsPrimary,
+                        enableEscalation = newEnableEscalation
+                    )
                 } else {
-                    contact
+                    if (willBePrimary) {
+                        contact.copy(isPrimary = false)
+                    } else {
+                        contact
+                    }
                 }
             }
             db.collection(USERS_COLLECTION)
@@ -957,6 +975,68 @@ class FirestoreManager {
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirestoreManager", "saveFCMToken failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createRiskEvent(event: RiskEvent): Result<Unit> {
+        return try {
+            db.collection(RISK_EVENTS_COLLECTION)
+                .document(event.id)
+                .set(event.toMap())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "createRiskEvent failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateRiskEventStatus(
+        eventId: String,
+        status: String
+    ): Result<Unit> {
+        return try {
+            val updates = mapOf(
+                "status" to status
+            )
+            db.collection(RISK_EVENTS_COLLECTION)
+                .document(eventId)
+                .update(updates)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "updateRiskEventStatus failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createJourneyRecord(record: JourneyRecord): Result<Unit> {
+        return try {
+            db.collection(JOURNEYS_COLLECTION)
+                .document(record.id)
+                .set(record.toMap())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "createJourneyRecord failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getUserJourneys(userId: String): Result<List<JourneyRecord>> {
+        return try {
+            val snapshot = db.collection(JOURNEYS_COLLECTION)
+                .whereEqualTo("userId", userId)
+                .orderBy("startTime", Query.Direction.DESCENDING)
+                .get()
+                .await()
+            val journeys = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { JourneyRecord.fromMap(doc.id, it) }
+            }
+            Result.success(journeys)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getUserJourneys failed", e)
             Result.failure(e)
         }
     }

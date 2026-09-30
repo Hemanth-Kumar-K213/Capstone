@@ -253,7 +253,10 @@ fun UserProfileScreen(
                                 locationTrackingEnabled = isChecked,
                                 shakeDetectionEnabled = profile?.shakeDetectionEnabled ?: false,
                                 shakeSensitivity = profile?.shakeSensitivity ?: "MEDIUM",
-                                sosAutoCall = profile?.sosAutoCall ?: false
+                                sosAutoCall = profile?.sosAutoCall ?: false,
+                                proactiveMonitoringEnabled = profile?.proactiveMonitoringEnabled ?: false,
+                                safetyMode = profile?.safetyMode ?: "NORMAL",
+                                routeDeviationToleranceMeters = profile?.routeDeviationToleranceMeters ?: 300
                             )
                         },
                         colors = SwitchDefaults.colors(
@@ -290,7 +293,10 @@ fun UserProfileScreen(
                                 locationTrackingEnabled = profile?.locationTrackingEnabled ?: false,
                                 shakeDetectionEnabled = isChecked,
                                 shakeSensitivity = profile?.shakeSensitivity ?: "MEDIUM",
-                                sosAutoCall = profile?.sosAutoCall ?: false
+                                sosAutoCall = profile?.sosAutoCall ?: false,
+                                proactiveMonitoringEnabled = profile?.proactiveMonitoringEnabled ?: false,
+                                safetyMode = profile?.safetyMode ?: "NORMAL",
+                                routeDeviationToleranceMeters = profile?.routeDeviationToleranceMeters ?: 300
                             )
                         },
                         colors = SwitchDefaults.colors(
@@ -335,7 +341,10 @@ fun UserProfileScreen(
                                             locationTrackingEnabled = profile.locationTrackingEnabled,
                                             shakeDetectionEnabled = profile.shakeDetectionEnabled,
                                             shakeSensitivity = option,
-                                            sosAutoCall = profile.sosAutoCall
+                                            sosAutoCall = profile.sosAutoCall,
+                                            proactiveMonitoringEnabled = profile.proactiveMonitoringEnabled,
+                                            safetyMode = profile.safetyMode,
+                                            routeDeviationToleranceMeters = profile.routeDeviationToleranceMeters
                                         )
                                         sensitivityDropdownExpanded = false
                                     }
@@ -372,7 +381,10 @@ fun UserProfileScreen(
                                 locationTrackingEnabled = profile?.locationTrackingEnabled ?: false,
                                 shakeDetectionEnabled = profile?.shakeDetectionEnabled ?: false,
                                 shakeSensitivity = profile?.shakeSensitivity ?: "MEDIUM",
-                                sosAutoCall = isChecked
+                                sosAutoCall = isChecked,
+                                proactiveMonitoringEnabled = profile?.proactiveMonitoringEnabled ?: false,
+                                safetyMode = profile?.safetyMode ?: "NORMAL",
+                                routeDeviationToleranceMeters = profile?.routeDeviationToleranceMeters ?: 300
                             )
                         },
                         colors = SwitchDefaults.colors(
@@ -380,6 +392,401 @@ fun UserProfileScreen(
                             checkedTrackColor = GradientAmber
                         )
                     )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
+
+                // Proactive Safety Monitoring Switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Proactive Monitoring",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            "Auto-detect deviation & inactivity on trips",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariantDark
+                        )
+                    }
+                    Switch(
+                        checked = profile?.proactiveMonitoringEnabled ?: false,
+                        onCheckedChange = { isChecked ->
+                            viewModel.updateSafetyPreferences(
+                                locationTrackingEnabled = profile?.locationTrackingEnabled ?: false,
+                                shakeDetectionEnabled = profile?.shakeDetectionEnabled ?: false,
+                                shakeSensitivity = profile?.shakeSensitivity ?: "MEDIUM",
+                                sosAutoCall = profile?.sosAutoCall ?: false,
+                                proactiveMonitoringEnabled = isChecked,
+                                safetyMode = profile?.safetyMode ?: "NORMAL",
+                                routeDeviationToleranceMeters = profile?.routeDeviationToleranceMeters ?: 300
+                            )
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = GradientAmber
+                        )
+                    )
+                }
+
+                if (profile?.proactiveMonitoringEnabled == true) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    var modeDropdownExpanded by remember { mutableStateOf(false) }
+                    val modeOptions = listOf("NORMAL", "CAUTIOUS", "HIGH_RISK")
+
+                    ExposedDropdownMenuBox(
+                        expanded = modeDropdownExpanded,
+                        onExpandedChange = { modeDropdownExpanded = !modeDropdownExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = profile.safetyMode,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Safety Mode / Threshold Multiplier") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeDropdownExpanded) },
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                .fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GradientAmber,
+                                unfocusedBorderColor = OutlineDark
+                            )
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = modeDropdownExpanded,
+                            onDismissRequest = { modeDropdownExpanded = false }
+                        ) {
+                            modeOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option) },
+                                    onClick = {
+                                        viewModel.updateSafetyPreferences(
+                                            locationTrackingEnabled = profile.locationTrackingEnabled,
+                                            shakeDetectionEnabled = profile.shakeDetectionEnabled,
+                                            shakeSensitivity = profile.shakeSensitivity,
+                                            sosAutoCall = profile.sosAutoCall,
+                                            proactiveMonitoringEnabled = profile.proactiveMonitoringEnabled,
+                                            safetyMode = option,
+                                            routeDeviationToleranceMeters = profile.routeDeviationToleranceMeters
+                                        )
+                                        modeDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    var toleranceDropdownExpanded by remember { mutableStateOf(false) }
+                    val toleranceOptions = listOf(100, 200, 300, 500)
+
+                    ExposedDropdownMenuBox(
+                        expanded = toleranceDropdownExpanded,
+                        onExpandedChange = { toleranceDropdownExpanded = !toleranceDropdownExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = "${profile.routeDeviationToleranceMeters} meters",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Route Deviation Tolerance") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = toleranceDropdownExpanded) },
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                .fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GradientAmber,
+                                unfocusedBorderColor = OutlineDark
+                            )
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = toleranceDropdownExpanded,
+                            onDismissRequest = { toleranceDropdownExpanded = false }
+                        ) {
+                            toleranceOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text("$option meters") },
+                                    onClick = {
+                                        viewModel.updateSafetyPreferences(
+                                            locationTrackingEnabled = profile.locationTrackingEnabled,
+                                            shakeDetectionEnabled = profile.shakeDetectionEnabled,
+                                            shakeSensitivity = profile.shakeSensitivity,
+                                            sosAutoCall = profile.sosAutoCall,
+                                            proactiveMonitoringEnabled = profile.proactiveMonitoringEnabled,
+                                            safetyMode = profile.safetyMode,
+                                            routeDeviationToleranceMeters = option
+                                        )
+                                        toleranceDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Safety Modes Configuration
+        var defaultModeDropdownExpanded by remember { mutableStateOf(false) }
+        val defaultModeOptions = listOf("REGULAR", "TRAVELLING", "WORKING", "SLEEPING")
+
+        // Coordinates & Address state
+        var workplaceLatText by remember(profile?.savedWorkplaceLatitude) {
+            mutableStateOf(profile?.savedWorkplaceLatitude?.toString() ?: "")
+        }
+        var workplaceLngText by remember(profile?.savedWorkplaceLongitude) {
+            mutableStateOf(profile?.savedWorkplaceLongitude?.toString() ?: "")
+        }
+        var workplaceAddrText by remember(profile?.savedWorkplaceAddress) {
+            mutableStateOf(profile?.savedWorkplaceAddress ?: "")
+        }
+
+        var homeLatText by remember(profile?.savedHomeLatitude) {
+            mutableStateOf(profile?.savedHomeLatitude?.toString() ?: "")
+        }
+        var homeLngText by remember(profile?.savedHomeLongitude) {
+            mutableStateOf(profile?.savedHomeLongitude?.toString() ?: "")
+        }
+        var homeAddrText by remember(profile?.savedHomeAddress) {
+            mutableStateOf(profile?.savedHomeAddress ?: "")
+        }
+
+        GlassCard(
+            accentGradient = Brush.horizontalGradient(
+                colors = listOf(
+                    GradientDeepPurple.copy(alpha = 0.08f),
+                    BackgroundDark.copy(alpha = 0.04f)
+                )
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GradientDeepPurple.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = null,
+                            tint = GradientGold,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        "Safety Modes Configurations",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = OnSurfaceDark
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Default Mode Selector
+                ExposedDropdownMenuBox(
+                    expanded = defaultModeDropdownExpanded,
+                    onExpandedChange = { defaultModeDropdownExpanded = !defaultModeDropdownExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = profile?.defaultSafetyMode ?: "REGULAR",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Default Safety Mode") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = defaultModeDropdownExpanded) },
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                            .fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GradientAmber,
+                            unfocusedBorderColor = OutlineDark
+                        )
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = defaultModeDropdownExpanded,
+                        onDismissRequest = { defaultModeDropdownExpanded = false }
+                    ) {
+                        defaultModeOptions.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    viewModel.updateSafetyPreferences(
+                                        defaultSafetyMode = option
+                                    )
+                                    defaultModeDropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = GlassBorder)
+
+                // Suggestions toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Automatic Mode Suggestions",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = OnSurfaceDark
+                        )
+                        Text(
+                            "Prompt to change modes based on movement & locations",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariantDark
+                        )
+                    }
+                    Switch(
+                        checked = profile?.autoModeSuggestionsEnabled ?: true,
+                        onCheckedChange = { isChecked ->
+                            viewModel.updateSafetyPreferences(
+                                autoModeSuggestionsEnabled = isChecked
+                            )
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = GradientAmber
+                        )
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = GlassBorder)
+
+                // Workplace/College configurations
+                Text(
+                    "💼 Saved Workplace/College",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurfaceDark
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = workplaceAddrText,
+                    onValueChange = { workplaceAddrText = it },
+                    label = { Text("Name / Address (e.g. Workplace, University)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = GradientAmber,
+                        unfocusedBorderColor = OutlineDark
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = workplaceLatText,
+                        onValueChange = { workplaceLatText = it },
+                        label = { Text("Latitude") },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GradientAmber,
+                            unfocusedBorderColor = OutlineDark
+                        )
+                    )
+                    OutlinedTextField(
+                        value = workplaceLngText,
+                        onValueChange = { workplaceLngText = it },
+                        label = { Text("Longitude") },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GradientAmber,
+                            unfocusedBorderColor = OutlineDark
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Home coordinates
+                Text(
+                    "🏠 Saved Home / Sleep Location",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurfaceDark
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = homeAddrText,
+                    onValueChange = { homeAddrText = it },
+                    label = { Text("Name / Address (e.g. Home, Dorm)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = GradientAmber,
+                        unfocusedBorderColor = OutlineDark
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = homeLatText,
+                        onValueChange = { homeLatText = it },
+                        label = { Text("Latitude") },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GradientAmber,
+                            unfocusedBorderColor = OutlineDark
+                        )
+                    )
+                    OutlinedTextField(
+                        value = homeLngText,
+                        onValueChange = { homeLngText = it },
+                        label = { Text("Longitude") },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GradientAmber,
+                            unfocusedBorderColor = OutlineDark
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Save button for coordinates
+                Button(
+                    onClick = {
+                        val wLat = workplaceLatText.toDoubleOrNull()
+                        val wLng = workplaceLngText.toDoubleOrNull()
+                        val hLat = homeLatText.toDoubleOrNull()
+                        val hLng = homeLngText.toDoubleOrNull()
+
+                        viewModel.updateSafetyPreferences(
+                            savedWorkplaceLatitude = wLat,
+                            savedWorkplaceLongitude = wLng,
+                            savedWorkplaceAddress = workplaceAddrText.takeIf { it.isNotBlank() },
+                            savedHomeLatitude = hLat,
+                            savedHomeLongitude = hLng,
+                            savedHomeAddress = homeAddrText.takeIf { it.isNotBlank() }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("SAVE LOCATIONS", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -610,7 +1017,7 @@ fun UserProfileScreen(
         Button(
             onClick = {
                 val uid = state.currentUid?.uid ?: return@Button
-                val shareText = "My current Women Safety UID is: $uid"
+                val shareText = "My current Trinetra UID is: $uid"
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, shareText)
