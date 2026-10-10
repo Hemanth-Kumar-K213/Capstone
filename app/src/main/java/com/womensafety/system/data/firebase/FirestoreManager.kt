@@ -929,6 +929,24 @@ class FirestoreManager {
     }
 
     /**
+     * Retrieves a single SOS event by its ID.
+     */
+    suspend fun getSOSEventById(eventId: String): Result<SOSEvent?> {
+        return try {
+            val doc = db.collection(SOS_EVENTS_COLLECTION).document(eventId).get().await()
+            val event = if (doc.exists() && doc.data != null) {
+                SOSEvent.fromMap(doc.id, doc.data!!)
+            } else {
+                null
+            }
+            Result.success(event)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getSOSEventById failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Real-time listener for active SOS events of a user.
      */
     fun listenToUserSOSEvents(userId: String): Flow<SOSEvent?> = callbackFlow {
@@ -970,11 +988,12 @@ class FirestoreManager {
 
             db.collection(collection)
                 .document(userId)
-                .update("fcmToken", token)
+                .set(mapOf("fcmToken" to token), SetOptions.merge())
                 .await()
+            Log.d("FirestoreManager", "Saved FCM token for $accountType ($userId)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("FirestoreManager", "saveFCMToken failed", e)
+            Log.e("FirestoreManager", "saveFCMToken failed for $accountType ($userId)", e)
             Result.failure(e)
         }
     }

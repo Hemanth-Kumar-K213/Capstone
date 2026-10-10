@@ -1,6 +1,6 @@
 package com.womensafety.system.ui.travel
 
-import android.app.Activity
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -21,24 +20,35 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
-import com.womensafety.system.ui.home.GlassCard
-import com.womensafety.system.ui.theme.*
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
-import androidx.compose.ui.text.style.TextAlign
+import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.MapEventsOverlay
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 import com.womensafety.system.service.LocationTrackingService
+import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.TravelViewModel
 import java.util.Locale
 
+/**
+ * Trip planning screen for Proactive Safe Travel Mode powered by OpenStreetMap (OSMDroid).
+ * Provides interactive map pin selection, address geocoding search, and preview route generation.
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun TravelModeScreen(
-    viewModel: TravelViewModel,
+    viewModel: TravelViewModel = viewModel(),
     onNavigateToActiveJourney: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onBack: () -> Unit
@@ -98,6 +108,13 @@ fun TravelModeScreen(
     val context = LocalContext.current
     val curLoc by LocationTrackingService.currentLocation.collectAsState()
 
+    DisposableEffect(Unit) {
+        val config = Configuration.getInstance()
+        config.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+        config.userAgentValue = context.packageName
+        onDispose { }
+    }
+
     val sourceLatLng by viewModel.sourceLatLng.collectAsState()
     val sourceAddressName by viewModel.sourceAddressName.collectAsState()
 
@@ -111,28 +128,26 @@ fun TravelModeScreen(
     var destinationSearchQuery by remember { mutableStateOf("") }
 
     val activeSourceLatLng = remember(sourceLatLng, curLoc) {
-        sourceLatLng ?: curLoc?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(12.9716, 77.5946)
+        sourceLatLng ?: curLoc?.let { GeoPoint(it.latitude, it.longitude) } ?: GeoPoint(12.9716, 77.5946)
     }
 
     val activeDestinationLatLng = remember(destinationLatLng) {
-        destinationLatLng ?: LatLng(12.9816, 77.6046)
+        destinationLatLng ?: GeoPoint(12.9816, 77.6046)
     }
 
-    // Determine map tap modes
     var isSelectingSourceOnMap by remember { mutableStateOf(false) }
     var isSelectingDestOnMap by remember { mutableStateOf(false) }
 
     // Preview expected route polyline
     val routePoints = remember(activeSourceLatLng, destinationLatLng) {
-        val points = mutableListOf<LatLng>()
+        val points = mutableListOf<GeoPoint>()
         points.add(activeSourceLatLng)
         if (destinationLatLng != null) {
             val dest = destinationLatLng!!
             val latDiff = dest.latitude - activeSourceLatLng.latitude
             val lngDiff = dest.longitude - activeSourceLatLng.longitude
-            // Generate grid path for mock preview before API loads
-            points.add(LatLng(activeSourceLatLng.latitude + latDiff * 0.4, activeSourceLatLng.longitude + lngDiff * 0.1))
-            points.add(LatLng(activeSourceLatLng.latitude + latDiff * 0.7, activeSourceLatLng.longitude + lngDiff * 0.8))
+            points.add(GeoPoint(activeSourceLatLng.latitude + latDiff * 0.4, activeSourceLatLng.longitude + lngDiff * 0.1))
+            points.add(GeoPoint(activeSourceLatLng.latitude + latDiff * 0.7, activeSourceLatLng.longitude + lngDiff * 0.8))
             points.add(dest)
         } else {
             points.add(activeDestinationLatLng)
@@ -140,14 +155,62 @@ fun TravelModeScreen(
         points
     }
 
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(activeSourceLatLng, 13f)
-    }
+    var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
 
-    // Auto-center camera on current location initially
-    LaunchedEffect(curLoc) {
-        if (curLoc != null && sourceLatLng == null) {
-            cameraPositionState.position = CameraPosition.fromLatLngZoom(LatLng(curLoc!!.latitude, curLoc!!.longitude), 13f)
+    // Update overlays when coordinates change
+    LaunchedEffect(activeSourceLatLng, destinationLatLng, routePoints, isSelectingSourceOnMap, isSelectingDestOnMap, mapViewInstance) {
+        mapViewInstance?.let { map ->
+            map.overlays.clear()
+
+            // Map click listener overlay
+            val clickReceiver = object : MapEventsReceiver {
+                override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
+                    p?.let { tapPoint ->
+                        if (isSelectingSourceOnMap) {
+                            viewModel.updateSourceLatLng(tapPoint, "Map Point (${String.format(Locale.US, "%.4f", tapPoint.latitude)}, ${String.format(Locale.US, "%.4f", tapPoint.longitude)})")
+                            isSelectingSourceOnMap = false
+                            Toast.makeText(context, "Start location set!", Toast.LENGTH_SHORT).show()
+                        } else if (isSelectingDestOnMap) {
+                            viewModel.updateDestinationLatLng(tapPoint, "Map Point (${String.format(Locale.US, "%.4f", tapPoint.latitude)}, ${String.format(Locale.US, "%.4f", tapPoint.longitude)})")
+                            isSelectingDestOnMap = false
+                            Toast.makeText(context, "Destination set!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    return true
+                }
+                override fun longPressHelper(p: GeoPoint?): Boolean = false
+            }
+            map.overlays.add(MapEventsOverlay(clickReceiver))
+
+            // Start marker
+            val startMarker = Marker(map).apply {
+                position = activeSourceLatLng
+                title = "Start: ${sourceAddressName.ifBlank { "Current Location" }}"
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            }
+            map.overlays.add(startMarker)
+
+            // Destination marker
+            destinationLatLng?.let { dest ->
+                val destMarker = Marker(map).apply {
+                    position = dest
+                    title = "Destination: ${destinationAddressName.ifBlank { "Selected Place" }}"
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                }
+                map.overlays.add(destMarker)
+            }
+
+            // Route Polyline
+            if (destinationLatLng != null && routePoints.isNotEmpty()) {
+                val polyline = Polyline(map).apply {
+                    setPoints(routePoints)
+                    outlinePaint.color = android.graphics.Color.parseColor("#FFA726")
+                    outlinePaint.strokeWidth = 8f
+                }
+                map.overlays.add(polyline)
+            }
+
+            map.invalidate()
         }
     }
 
@@ -200,75 +263,19 @@ fun TravelModeScreen(
                     .fillMaxWidth()
                     .weight(0.9f)
             ) {
-                val isMapAvailable = remember {
-                    com.womensafety.system.manager.TrinetraLocationManager.isPlayServicesAvailable(context) &&
-                            com.womensafety.system.manager.TrinetraLocationManager.isMapsApiKeyConfigured(context)
-                }
-
-                if (isMapAvailable) {
-                    GoogleMap(
-                        modifier = Modifier.fillMaxSize(),
-                        cameraPositionState = cameraPositionState,
-                        uiSettings = MapUiSettings(zoomControlsEnabled = false),
-                        onMapClick = { tapLatLng ->
-                            if (isSelectingSourceOnMap) {
-                                viewModel.updateSourceLatLng(tapLatLng, "Map Tap Point (${String.format(Locale.US, "%.4f", tapLatLng.latitude)}, ${String.format(Locale.US, "%.4f", tapLatLng.longitude)})")
-                                isSelectingSourceOnMap = false
-                                Toast.makeText(context, "Source set!", Toast.LENGTH_SHORT).show()
-                            } else if (isSelectingDestOnMap) {
-                                viewModel.updateDestinationLatLng(tapLatLng, "Map Tap Point (${String.format(Locale.US, "%.4f", tapLatLng.latitude)}, ${String.format(Locale.US, "%.4f", tapLatLng.longitude)})")
-                                isSelectingDestOnMap = false
-                                Toast.makeText(context, "Destination set!", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    ) {
-                        Marker(
-                            state = MarkerState(position = activeSourceLatLng),
-                            title = "Source: ${sourceAddressName.ifBlank { "Your Location" }}",
-                            snippet = "Trip Start Coordinate"
-                        )
-                        destinationLatLng?.let { dest ->
-                            Marker(
-                                state = MarkerState(position = dest),
-                                title = "Destination: ${destinationAddressName.ifBlank { "Selected Place" }}",
-                                snippet = "Trip End Coordinate"
-                            )
-                        }
-                        if (destinationLatLng != null && routePoints.isNotEmpty()) {
-                            Polyline(
-                                points = routePoints,
-                                color = GradientAmber,
-                                width = 8f
-                            )
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        MapView(ctx).apply {
+                            setTileSource(TileSourceFactory.MAPNIK)
+                            setMultiTouchControls(true)
+                            zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
+                            controller.setZoom(14.0)
+                            controller.setCenter(activeSourceLatLng)
+                            mapViewInstance = this
                         }
                     }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(BackgroundDark),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Map,
-                                contentDescription = null,
-                                tint = StatusDenied,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Map service is unavailable. Please check Google Maps configuration.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = OnSurfaceDark,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
+                )
 
                 // Map Selection Guide Banner
                 if (isSelectingSourceOnMap || isSelectingDestOnMap) {
@@ -281,7 +288,7 @@ fun TravelModeScreen(
                             .align(Alignment.TopCenter)
                     ) {
                         Text(
-                            text = if (isSelectingSourceOnMap) "👉 TAP ON THE MAP TO SET SOURCE LOCATION" else "👉 TAP ON THE MAP TO SET DESTINATION LOCATION",
+                            text = if (isSelectingSourceOnMap) "👉 TAP ON MAP TO SET START LOCATION" else "👉 TAP ON MAP TO SET DESTINATION",
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(8.dp),
@@ -314,13 +321,11 @@ fun TravelModeScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Loader Indicator
                         if (isGeocoding) {
                             LinearProgressIndicator(color = GradientAmber, modifier = Modifier.fillMaxWidth())
                             Spacer(modifier = Modifier.height(8.dp))
                         }
 
-                        // Geocoding error
                         if (geocodeError != null) {
                             Text(geocodeError!!, color = StatusDenied, style = MaterialTheme.typography.bodySmall)
                             Spacer(modifier = Modifier.height(8.dp))
@@ -363,7 +368,7 @@ fun TravelModeScreen(
                             Button(
                                 onClick = {
                                     curLoc?.let {
-                                        viewModel.updateSourceLatLng(LatLng(it.latitude, it.longitude), it.address ?: "Current Location")
+                                        viewModel.updateSourceLatLng(GeoPoint(it.latitude, it.longitude), it.address ?: "Current Location")
                                         sourceSearchQuery = it.address ?: ""
                                         Toast.makeText(context, "Using current location!", Toast.LENGTH_SHORT).show()
                                     }

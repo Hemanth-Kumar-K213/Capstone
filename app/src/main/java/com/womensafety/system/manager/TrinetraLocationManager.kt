@@ -10,11 +10,9 @@ import android.location.LocationManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.google.android.gms.common.ConnectionResult
-import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import com.google.android.gms.maps.model.LatLng
+import org.osmdroid.util.GeoPoint
 import com.womensafety.system.data.model.LocationServiceState
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.repository.LocationRepository
@@ -25,7 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
 /**
- * Reusable coordinator for Location, Permissions, GPS availability, and Play Services.
+ * Reusable coordinator for Location, Permissions, GPS availability, and OpenStreetMap utilities.
  * Centralizes duplicate location checking code, security exceptions, and geocoding operations.
  */
 object TrinetraLocationManager {
@@ -90,7 +88,14 @@ object TrinetraLocationManager {
     }
 
     /**
-     * Checks if the Google Maps API key is present in the AndroidManifest.xml metadata and is valid.
+     * OpenStreetMap (OSMDroid) is 100% free and open-source, requiring zero API keys or billing.
+     */
+    fun isOsmAvailable(context: Context): Boolean {
+        return true
+    }
+
+    /**
+     * Compatibility helper preserved for existing callers.
      */
     fun isMapsApiKeyConfigured(context: Context): Boolean {
         return true
@@ -117,19 +122,19 @@ object TrinetraLocationManager {
     }
 
     /**
-     * Resolves an address string to a LatLng location.
+     * Resolves an address string to an OSMDroid GeoPoint location.
      */
-    suspend fun getLocationFromAddress(context: Context, addressStr: String): LatLng? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun getLocationFromAddress(context: Context, addressStr: String): GeoPoint? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         if (addressStr.isBlank()) return@withContext null
         return@withContext try {
             val geocoder = Geocoder(context, Locale.getDefault())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val completableDeferred = kotlinx.coroutines.CompletableDeferred<LatLng?>()
+                val completableDeferred = kotlinx.coroutines.CompletableDeferred<GeoPoint?>()
                 geocoder.getFromLocationName(addressStr, 1, object : Geocoder.GeocodeListener {
                     override fun onGeocode(addresses: List<Address>) {
                         val addr = addresses.firstOrNull()
                         if (addr != null) {
-                            completableDeferred.complete(LatLng(addr.latitude, addr.longitude))
+                            completableDeferred.complete(GeoPoint(addr.latitude, addr.longitude))
                         } else {
                             completableDeferred.complete(null)
                         }
@@ -143,7 +148,7 @@ object TrinetraLocationManager {
                 @Suppress("DEPRECATION")
                 val addresses = geocoder.getFromLocationName(addressStr, 1)
                 val addr = addresses?.firstOrNull()
-                if (addr != null) LatLng(addr.latitude, addr.longitude) else null
+                if (addr != null) GeoPoint(addr.latitude, addr.longitude) else null
             }
         } catch (e: Exception) {
             Log.e(TAG, "Geocoding failed for address: $addressStr", e)
@@ -159,11 +164,6 @@ object TrinetraLocationManager {
     suspend fun getImmediateLocationFix(context: Context, userId: String): UserLocation? {
         if (!isLocationPermissionGranted(context)) {
             Log.w(TAG, "getImmediateLocationFix: Permission missing. Using last known from DB.")
-            return locationRepository.getLatestLocation(userId).getOrNull()
-        }
-
-        if (!isPlayServicesAvailable(context)) {
-            Log.w(TAG, "getImmediateLocationFix: Google Play Services unavailable. Using last known from DB.")
             return locationRepository.getLatestLocation(userId).getOrNull()
         }
 

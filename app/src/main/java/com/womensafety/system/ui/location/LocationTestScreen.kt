@@ -3,7 +3,7 @@ package com.womensafety.system.ui.location
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -23,10 +22,15 @@ import androidx.compose.ui.unit.sp
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.manager.TrinetraLocationManager
 import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import kotlinx.coroutines.launch
 
+/**
+ * Diagnostic and verification screen for GPS hardware, permissions, and OpenStreetMap (OSMDroid) readiness.
+ * Demonstrates 100% free, zero-billing map operations.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationTestScreen(
@@ -44,7 +48,7 @@ fun LocationTestScreen(
     val isPermissionGranted = TrinetraLocationManager.isLocationPermissionGranted(context)
     val isGpsEnabled = TrinetraLocationManager.isGpsEnabled(context)
     val isPlayServicesAvailable = TrinetraLocationManager.isPlayServicesAvailable(context)
-    val isMapsConfigured = TrinetraLocationManager.isMapsApiKeyConfigured(context)
+    val isOsmAvailable = TrinetraLocationManager.isOsmAvailable(context)
 
     fun performRefresh() {
         if (isRefreshing) return
@@ -74,7 +78,6 @@ fun LocationTestScreen(
         }
     }
 
-    // Auto-fetch on screen open
     LaunchedEffect(Unit) {
         performRefresh()
     }
@@ -82,20 +85,10 @@ fun LocationTestScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Location Diagnostics",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Location & OSM Diagnostics", color = OnSurfaceDark, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = OnSurfaceDark
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = OnSurfaceDark)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
@@ -107,53 +100,24 @@ fun LocationTestScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
-                    )
-                )
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
-            Text(
-                text = "CORE LOCATION SERVICE DIAGNOSTICS",
-                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                color = GradientGold,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = "Use this screen to test hardware GPS, runtime permissions, Google Play Services, and API key integrity independently.",
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceVariantDark
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Hardware & OS Status Card
-            GlassCard(
-                accentGradient = Brush.horizontalGradient(
-                    colors = listOf(
-                        GradientAmber.copy(alpha = 0.08f),
-                        GradientGold.copy(alpha = 0.04f)
-                    )
-                )
-            ) {
+            // Diagnostics Summary
+            GlassCard {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
-                        "System & Hardware Status",
-                        style = MaterialTheme.typography.titleMedium,
+                        "SYSTEM & MAP DIAGNOSTICS",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
                         fontWeight = FontWeight.Bold,
-                        color = OnSurfaceDark
+                        color = GradientAmber
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     StatusItem(
-                        label = "Location Permission",
-                        status = if (isPermissionGranted) "Granted" else "Denied",
+                        label = "Location Permissions",
+                        status = if (isPermissionGranted) "Granted" else "Missing",
                         isGood = isPermissionGranted
                     )
 
@@ -168,7 +132,7 @@ fun LocationTestScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     StatusItem(
-                        label = "Google Play Services",
+                        label = "GPS Provider (Play Services)",
                         status = if (isPlayServicesAvailable) "Available" else "Unavailable",
                         isGood = isPlayServicesAvailable
                     )
@@ -176,9 +140,17 @@ fun LocationTestScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     StatusItem(
-                        label = "Google Maps API Key",
-                        status = if (isMapsConfigured) "Configured & Active" else "Missing / Placeholder",
-                        isGood = isMapsConfigured
+                        label = "Map Engine (OSMDroid)",
+                        status = if (isOsmAvailable) "Active & Open Source" else "Disabled",
+                        isGood = isOsmAvailable
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    StatusItem(
+                        label = "Map API Key & Billing",
+                        status = "100% Free (No Key Needed)",
+                        isGood = true
                     )
                 }
             }
@@ -241,6 +213,24 @@ fun LocationTestScreen(
                             CoordinateItem(label = "Speed", value = loc.speed?.let { "${(it * 3.6f).toInt()} km/h" } ?: "Not moving")
                             CoordinateItem(label = "Timestamp", value = DateUtils.formatDateTime(loc.timestamp))
                             CoordinateItem(label = "Resolved Address", value = loc.address ?: "Reverse geocoding returned null")
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Compact OpenStreetMap preview for active location fix
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        ) {
+                            SafetyMapTracker(
+                                userLatitude = loc.latitude,
+                                userLongitude = loc.longitude,
+                                zoomLevel = 16.0,
+                                enableZoomControls = false,
+                                markerTitle = "Current Location Fix"
+                            )
                         }
                     } else {
                         Text(

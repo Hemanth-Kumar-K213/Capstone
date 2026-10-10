@@ -10,6 +10,9 @@ local.properties
 *.iml
 .kotlin/
 .DS_Store
+.vscode/
+*.docx
+*.pdf
 
 # Logs
 logs

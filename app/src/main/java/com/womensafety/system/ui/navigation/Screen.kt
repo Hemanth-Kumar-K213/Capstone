@@ -58,6 +58,7 @@ import kotlinx.serialization.Serializable
 @Serializable object SOSHistoryScreen
 @Serializable data class SOSHistoryDetailScreen(val eventId: String)
 @Serializable data class SOSReceivedScreen(val eventId: String, val userId: String)
+@Serializable data class SOSEventMapScreen(val eventId: String)
 @Serializable object ProactivePromptScreen
 @Serializable object TravelMode
 @Serializable object ActiveJourney

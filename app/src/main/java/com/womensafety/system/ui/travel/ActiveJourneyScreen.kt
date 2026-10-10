@@ -1,40 +1,45 @@
 package com.womensafety.system.ui.travel
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.viewmodel.compose.viewModel
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 import com.womensafety.system.data.model.UserLocation
+import com.womensafety.system.manager.JourneyState
+import com.womensafety.system.manager.TravelModeManager
 import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.theme.*
-import androidx.compose.foundation.BorderStroke
-import com.womensafety.system.manager.TravelModeManager
 import com.womensafety.system.viewmodel.TravelViewModel
-import com.womensafety.system.manager.JourneyState
 
+/**
+ * Active Safe Journey navigation HUD screen powered by OpenStreetMap (OSMDroid).
+ * Renders real-time route polylines, current location tracking, speedometer,
+ * deviation detection, and emergency escalation.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveJourneyScreen(
-    viewModel: TravelViewModel,
+    viewModel: TravelViewModel = viewModel(),
     onNavigateToHome: () -> Unit
 ) {
     val context = LocalContext.current
@@ -50,6 +55,14 @@ fun ActiveJourneyScreen(
     val isPromptActive by viewModel.isDeviationPromptActive.collectAsState()
     val countdown by viewModel.deviationCountdownSeconds.collectAsState()
 
+    // Initialize OSMDroid config
+    DisposableEffect(Unit) {
+        val config = Configuration.getInstance()
+        config.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+        config.userAgentValue = context.packageName
+        onDispose { }
+    }
+
     // Prevent backing out of active journey without ending it
     BackHandler {
         // Must tap End Journey
@@ -62,19 +75,56 @@ fun ActiveJourneyScreen(
         }
     }
 
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(currentLocation ?: LatLng(12.9716, 77.5946), 16f)
-    }
+    val isDeviated = deviationDistance > 300.0 // 300 meters
 
-    // Auto-pan camera to current location
-    LaunchedEffect(currentLocation) {
-        currentLocation?.let {
-            cameraPositionState.position = CameraPosition.fromLatLngZoom(it, 16f)
+    var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
+    var currentMarker by remember { mutableStateOf<Marker?>(null) }
+    var destMarker by remember { mutableStateOf<Marker?>(null) }
+    var routePolyline by remember { mutableStateOf<Polyline?>(null) }
+
+    // Re-draw map overlays whenever location, route, or deviation status changes
+    LaunchedEffect(currentLocation, destinationLocation, routePoints, isDeviated, mapViewInstance) {
+        mapViewInstance?.let { map ->
+            map.overlays.clear()
+
+            // Draw route polyline
+            if (routePoints.isNotEmpty()) {
+                val polyline = Polyline(map).apply {
+                    setPoints(routePoints)
+                    outlinePaint.color = if (isDeviated) android.graphics.Color.RED else android.graphics.Color.parseColor("#FFA726")
+                    outlinePaint.strokeWidth = 10f
+                }
+                map.overlays.add(polyline)
+                routePolyline = polyline
+            }
+
+            // Draw destination marker
+            destinationLocation?.let { dest ->
+                val marker = Marker(map).apply {
+                    position = dest
+                    title = "Destination"
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                }
+                map.overlays.add(marker)
+                destMarker = marker
+            }
+
+            // Draw current location marker
+            currentLocation?.let { current ->
+                val marker = Marker(map).apply {
+                    position = current
+                    title = "Your Location (${speedKmh.toInt()} km/h)"
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                }
+                map.overlays.add(marker)
+                currentMarker = marker
+
+                map.controller.animateTo(current)
+            }
+
+            map.invalidate()
         }
     }
-
-    // Perpendicular deviation status text
-    val isDeviated = deviationDistance > 300.0 // 300 meters
 
     Scaffold(
         topBar = {
@@ -96,68 +146,22 @@ fun ActiveJourneyScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            val isMapAvailable = remember {
-                com.womensafety.system.manager.TrinetraLocationManager.isPlayServicesAvailable(context) &&
-                        com.womensafety.system.manager.TrinetraLocationManager.isMapsApiKeyConfigured(context)
-            }
-
-            if (isMapAvailable) {
-                // Google Map
-                GoogleMap(
-                    modifier = Modifier.fillMaxSize(),
-                    cameraPositionState = cameraPositionState,
-                    uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false)
-                ) {
-                    currentLocation?.let {
-                        Marker(
-                            state = MarkerState(position = it),
-                            title = "Your Location",
-                            snippet = "Speed: ${speedKmh.toInt()} km/h"
-                        )
-                    }
-
-                    destinationLocation?.let {
-                        Marker(
-                            state = MarkerState(position = it),
-                            title = "Destination"
-                        )
-                    }
-
-                    if (routePoints.isNotEmpty()) {
-                        Polyline(
-                            points = routePoints,
-                            color = if (isDeviated) StatusDenied else GradientAmber,
-                            width = 8f
-                        )
+            // OpenStreetMap MapView wrapper
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    MapView(ctx).apply {
+                        setTileSource(TileSourceFactory.MAPNIK)
+                        setMultiTouchControls(true)
+                        zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
+                        controller.setZoom(16.5)
+                        currentLocation?.let {
+                            controller.setCenter(it)
+                        } ?: controller.setCenter(GeoPoint(12.9716, 77.5946))
+                        mapViewInstance = this
                     }
                 }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(BackgroundDark),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Map,
-                            contentDescription = null,
-                            tint = StatusDenied,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Map service is unavailable. Please check Google Maps configuration.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = OnSurfaceDark,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
+            )
 
             // Stats Overlay (Top Center)
             Card(
@@ -165,7 +169,7 @@ fun ActiveJourneyScreen(
                     .align(Alignment.TopCenter)
                     .padding(16.dp)
                     .fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = BackgroundDark.copy(alpha = 0.85f)),
+                colors = CardDefaults.cardColors(containerColor = BackgroundDark.copy(alpha = 0.9f)),
                 border = BorderStroke(1.dp, GlassBorder)
             ) {
                 Row(
@@ -256,7 +260,7 @@ fun ActiveJourneyScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Simulation helper buttons for Travel Route Deviation
+                        // Simulation helper buttons for Travel Route Deviation testing
                         Text(
                             "SIMULATION PRESETS",
                             style = MaterialTheme.typography.bodySmall,
@@ -270,7 +274,6 @@ fun ActiveJourneyScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    // Trigger normal location update on path
                                     val loc = UserLocation(
                                         latitude = 12.9736,
                                         longitude = 77.5966,
@@ -286,7 +289,6 @@ fun ActiveJourneyScreen(
                             }
                             Button(
                                 onClick = {
-                                    // Trigger deviated coordinate
                                     val loc = UserLocation(
                                         latitude = 12.9856,
                                         longitude = 77.5800,
@@ -348,7 +350,7 @@ fun ActiveJourneyScreen(
                             Text("I NEED HELP", color = StatusDenied, fontWeight = FontWeight.Bold)
                         }
                     },
-                    containerColor = Color(0xFF291414), // Warn layout color
+                    containerColor = Color(0xFF291414),
                     textContentColor = OnSurfaceDark
                 )
             }

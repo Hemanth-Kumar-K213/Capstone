@@ -505,6 +505,16 @@ fun AppNavGraph(
                 )
             }
 
+            composable<SOSEventMapScreen> { backStackEntry ->
+                val route = backStackEntry.toRoute<SOSEventMapScreen>()
+                val sosViewModel: SOSViewModel = viewModel()
+                com.womensafety.system.ui.sos.SOSEventMapScreen(
+                    eventId = route.eventId,
+                    viewModel = sosViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             composable<ProactivePromptScreen> {
                 val safetyViewModel: com.womensafety.system.viewmodel.SafetyMonitoringViewModel = viewModel()
                 com.womensafety.system.ui.safety.AreYouSafeScreen(

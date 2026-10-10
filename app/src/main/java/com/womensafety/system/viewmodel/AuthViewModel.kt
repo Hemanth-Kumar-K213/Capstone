@@ -107,6 +107,7 @@ class AuthViewModel(
                 if (accountType == "USER" && uid != null) {
                     val profile = userRepository.getUserProfile(uid).getOrNull()
                     setupDone = profile?.setupCompleted ?: false
+                    authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.USER)
                 }
                 _sessionState.value = SessionState(
                     isLoggedIn = true,
@@ -424,6 +425,9 @@ class AuthViewModel(
                     accountType = "USER",
                     isChecking = false
                 )
+
+                // Sync FCM Token
+                authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.USER)
             } else {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
@@ -475,6 +479,9 @@ class AuthViewModel(
                     setupCompleted = setupDone,
                     isChecking = false
                 )
+
+                // Sync FCM Token
+                authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.USER)
             } else {
                 _loginState.value = _loginState.value.copy(
                     isLoading = false,

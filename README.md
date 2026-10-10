@@ -1,6 +1,6 @@
 # Women Safety System (Android App) — Trinetra
 
-A modern, native Android application built with Kotlin, Jetpack Compose, Google Maps, and Firebase that provides an intelligent, proactive safety network for women and their trusted contacts.
+A modern, native Android application built with Kotlin, Jetpack Compose, OpenStreetMap (OSMDroid), and Firebase that provides an intelligent, proactive safety network for women and their trusted contacts — 100% Free & Open-Source with zero billing or API keys required.
 
 ---
 
@@ -84,8 +84,8 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
 - **Dual Update Intervals**: 30 seconds for normal tracking, automatically boosted to 5 seconds during active SOS alerts.
 - **Firestore Streaming**: Streams GPS coordinates, accuracy, speed, and addresses to `userLocations/{userId}/locations/{locationId}`.
 - **LocationSettingsScreen**: Update interval customization (5s-60s) and tracking toggles.
-- **LocationHistoryScreen**: Historical timeline of past location updates with SOS filtering.
-- **LiveLocationMapScreen**: Google Maps Compose interface for Trusted Contacts to view real-time location markers, accuracy rings, reverse geocoded addresses, and external navigation intents.
+- **LocationHistoryScreen**: Historical timeline of past location updates with compact OpenStreetMap interactive previews and SOS filtering.
+- **LiveLocationMapScreen**: OpenStreetMap (OSMDroid) interface for Trusted Contacts to view real-time location markers, accuracy rings, reverse geocoded addresses, and external navigation intents. Powered by `SafetyMapTracker` with zero API key or billing required.
 
 ### 7. Phase 3: Shake Detection Service & Sensor Management
 - **ShakeDetector**: High-precision accelerometer sensor listener with gravity subtraction and debounce filtering.
@@ -98,29 +98,30 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
   1. Requests immediate high-accuracy GPS fix with fallback to last known location.
   2. Creates `SOSEvent` in Firestore `sosEvents/{eventId}`.
   3. Activates loud siren audio on `STREAM_ALARM` (bypassing silent mode) and urgent vibration patterns.
-  4. Cellular SMS fallback with Google Maps link dispatched to emergency contacts.
+  4. Cellular SMS fallback with OpenStreetMap coordinates link dispatched to emergency contacts.
   5. Auto-places phone call to primary contact if enabled.
   6. Sends Firebase Cloud Messaging (FCM) high-priority push notifications to approved Trusted Contacts.
 - **SOSAlertScreen**: Full-screen emergency UI with pulsing red glow, cancel timer, countdown, siren toggle, flashlight toggle, and manual cancellation PIN.
-- **SOSReceivedScreen**: Receiver UI for Trusted Contacts displaying user location, trigger method, and direct calling.
+- **SOSReceivedScreen**: Receiver UI for Trusted Contacts displaying user location via OpenStreetMap `SafetyMapTracker`, trigger method, and direct calling.
+- **SOSEventMapScreen**: Dedicated incident visualization screen showing exact alert GPS coordinates on OpenStreetMap with FCM, SMS, and call delivery logs.
 - **SOSHistoryScreen & SOSHistoryDetailScreen**: Review past SOS events and audit logs.
 
 ---
 
-## 🚀 Recent Updates & Enhancements (Collaborator Updates)
+## 🚀 Recent Updates & Enhancements (Collaborator Updates & OSM Migration)
 
 ### 9. Proactive Safe Travel Mode (Phase 5)
-- **DirectionsApiHelper**: Google Directions API integration with polyline decoding for dynamic route plotting.
+- **DirectionsApiHelper**: OpenStreetMap / OSRM (Open Source Routing Machine) road routing with GeoJSON waypoint decoding. Fully free and open-source, with automatic realistic road curve fallback when offline.
 - **TravelModeManager**: Autonomous journey state machine (`NOT_STARTED`, `ACTIVE`, `DEVIATION_DETECTED`, `USER_CONFIRMED`, `NO_RESPONSE`, `ESCALATED`, `COMPLETED`).
 - **Route Deviation & Anomaly Detection**:
-  - Real-time cross-track distance calculations against polyline waypoints (orthodromic math).
+  - Real-time cross-track distance calculations against polyline waypoints (orthodromic math using `GeoPoint`).
   - Configurable deviation tolerance (100m, 200m, 300m, 500m, 1000m).
   - Prolonged stop and inactivity detection during active travel.
   - Automatic 30-second "Are You Safe?" countdown prompt upon detected deviation.
   - Escalation to emergency alert and notification if prompt is unanswered.
 - **Travel Screens**:
-  - `TravelModeScreen`: Journey setup with address search, geocoding, and map pin picker for source and destination.
-  - `ActiveJourneyScreen`: Real-time map navigation showing expected route, live speedometer, deviation metrics, stop counters, and emergency quick-access.
+  - `TravelModeScreen`: Journey setup with address search, geocoding, and OpenStreetMap pin picker for source and destination.
+  - `ActiveJourneyScreen`: Real-time OpenStreetMap navigation showing expected route polyline, live speedometer, deviation metrics, stop counters, and emergency quick-access.
   - `TravelHistoryScreen`: Trip logs and journey archives.
 - **Persistence**: Firestore collection `/journeys/{journeyId}` with `JourneyRecord` data model and `JourneyRepository`.
 
@@ -142,8 +143,8 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
 - **Persistence**: Firestore collection `/riskEvents/{eventId}` with `RiskEvent` data model and `RiskRepository`.
 
 ### 11. Diagnostic & Testing Tools
-- **LocationTestScreen**: Real-time GPS diagnostics showing latitude, longitude, altitude, accuracy, speed, bearing, provider status, and coordinate logs.
-- **MapTestScreen**: Google Maps rendering validation for custom markers, polyline drawing, and camera controls.
+- **LocationTestScreen**: Real-time GPS diagnostics showing latitude, longitude, altitude, accuracy, speed, bearing, provider status, OpenStreetMap readiness, and live map preview fix.
+- **MapTestScreen**: OpenStreetMap (OSMDroid) rendering validation for markers, camera controls, and zoom levels.
 
 ### 12. User Profile & Home UI Enhancements
 - **UserHomeScreen**: Integrated Safety Mode quick-selector card, active journey banner, quick-action tiles (Safe Travel, Shake Settings, Contacts, SOS History), live status indicators, risk score pill.
@@ -154,6 +155,17 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
   - Safety mode threshold multiplier dropdown (`NORMAL`, `CAUTIOUS`, `HIGH_RISK`).
   - Route deviation tolerance selector.
   - Password reset and phone change flows.
+
+---
+
+## 🗺️ 100% Free Open-Source Mapping (OSMDroid & OSRM)
+
+All mapping and navigation capabilities use **OpenStreetMap (OSMDroid)** and **OSRM Routing Engine**:
+- **Zero API Key Requirement**: No Google Cloud Console billing setup or credit card required.
+- **Components**:
+  - `SafetyMapTracker.kt`: Jetpack Compose `AndroidView` wrapper over OSMDroid `MapView` with animated markers and auto-camera panning.
+  - `MapUtils.kt`: Haversine distance, GeoPoint conversions, and generic external navigation intents.
+  - Full removal of `play-services-maps` and `maps-compose`.
 
 ---
 
@@ -178,11 +190,20 @@ service cloud.firestore {
 
 ## 🛠 Tech Stack & Dependencies
 
-- **Language**: Kotlin 2.1.20
+- **Language**: Kotlin 2.1.20 (JDK 21)
 - **UI Framework**: Jetpack Compose with Material 3 Dark Theme
 - **Architecture**: Clean Architecture (UI $\rightarrow$ ViewModel $\rightarrow$ Repository $\rightarrow$ Firebase Managers)
 - **Async & State**: Kotlin Coroutines, StateFlow, Flow
 - **Navigation**: Jetpack Navigation Compose (Type-Safe Routes)
 - **Backend & Database**: Firebase Auth (Email/Password + Phone OTP), Cloud Firestore, Firebase Cloud Messaging, Cloud Functions (TypeScript)
-- **Mapping & Location**: Google Play Services Location (FusedLocationProviderClient), Google Maps Compose, Google Directions API
+- **Mapping & Routing**: OpenStreetMap (`org.osmdroid:osmdroid-android:6.1.18`), OSRM Driving Engine, Google Play Services Location (`play-services-location` for device GPS fix)
 - **Permissions**: Accompanist Permissions
+
+---
+
+## ⚙️ Development & IDE Setup Note
+
+> **JDK Requirement:** Ensure your Gradle JDK in Android Studio is set to **Java 21**:
+> - Open **Settings** (`Ctrl + Alt + S`) $\rightarrow$ **Build, Execution, Deployment** $\rightarrow$ **Build Tools** $\rightarrow$ **Gradle**.
+> - Set **Gradle JDK** to **Java 21** (`jbr-21` located at `C:\Users\Amogh\.jdks\jbr-21.0.11`).
+> - *(Avoid using Android Studio's bundled JDK 25 with Gradle 8.9 to prevent `Unsupported class file major version 69`).*

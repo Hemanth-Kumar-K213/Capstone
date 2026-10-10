@@ -2,7 +2,7 @@ package com.womensafety.system.manager
 
 import android.content.Context
 import android.util.Log
-import com.google.android.gms.maps.model.LatLng
+import org.osmdroid.util.GeoPoint
 import com.womensafety.system.data.firebase.FirebaseAuthManager
 import com.womensafety.system.data.model.JourneyRecord
 import com.womensafety.system.data.model.SOSTriggerMethod
@@ -28,7 +28,7 @@ enum class JourneyState {
 
 /**
  * Main coordinator for Travel Mode & route-deviation monitoring.
- * Tracks the journey state machine, deviation math, and escalation logic.
+ * Tracks the journey state machine, deviation math, and escalation logic using OpenStreetMap GeoPoints.
  */
 object TravelModeManager {
 
@@ -45,14 +45,14 @@ object TravelModeManager {
     private val _journeyState = MutableStateFlow(JourneyState.NOT_STARTED)
     val journeyState: StateFlow<JourneyState> = _journeyState.asStateFlow()
 
-    private val _expectedRoute = MutableStateFlow<List<LatLng>>(emptyList())
-    val expectedRoute: StateFlow<List<LatLng>> = _expectedRoute.asStateFlow()
+    private val _expectedRoute = MutableStateFlow<List<GeoPoint>>(emptyList())
+    val expectedRoute: StateFlow<List<GeoPoint>> = _expectedRoute.asStateFlow()
 
-    private val _currentLocation = MutableStateFlow<LatLng?>(null)
-    val currentLocation: StateFlow<LatLng?> = _currentLocation.asStateFlow()
+    private val _currentLocation = MutableStateFlow<GeoPoint?>(null)
+    val currentLocation: StateFlow<GeoPoint?> = _currentLocation.asStateFlow()
 
-    private val _destinationLocation = MutableStateFlow<LatLng?>(null)
-    val destinationLocation: StateFlow<LatLng?> = _destinationLocation.asStateFlow()
+    private val _destinationLocation = MutableStateFlow<GeoPoint?>(null)
+    val destinationLocation: StateFlow<GeoPoint?> = _destinationLocation.asStateFlow()
 
     private val _currentDeviationDistance = MutableStateFlow(0.0)
     val currentDeviationDistance: StateFlow<Double> = _currentDeviationDistance.asStateFlow()
@@ -74,7 +74,7 @@ object TravelModeManager {
 
     // Configurable thresholds
     var routeDeviationToleranceMeters = 300
-    private var startLocation: LatLng? = null
+    private var startLocation: GeoPoint? = null
     private val traveledLocations = mutableListOf<UserLocation>()
 
     // Persistence monitoring
@@ -88,10 +88,10 @@ object TravelModeManager {
 
     fun initialize(context: Context) {
         this.appContext = context.applicationContext
-        Log.i(TAG, "TravelModeManager initialized")
+        Log.i(TAG, "TravelModeManager initialized with OSMDroid support")
     }
 
-    fun startJourney(start: LatLng, dest: LatLng) {
+    fun startJourney(start: GeoPoint, dest: GeoPoint) {
         Log.i(TAG, "Starting journey from $start to $dest")
         this.startLocation = start
         _currentLocation.value = start
@@ -224,8 +224,8 @@ object TravelModeManager {
     fun onLocationUpdated(location: UserLocation) {
         if (_journeyState.value == JourneyState.NOT_STARTED || _journeyState.value == JourneyState.COMPLETED) return
 
-        val latLng = LatLng(location.latitude, location.longitude)
-        _currentLocation.value = latLng
+        val geoPoint = GeoPoint(location.latitude, location.longitude)
+        _currentLocation.value = geoPoint
         traveledLocations.add(location)
 
         // Track speed and stops
@@ -237,7 +237,6 @@ object TravelModeManager {
                 isStopActive = true
                 stopStartTime = System.currentTimeMillis()
             } else {
-                // If stopped for more than 1 minute, increment stop counter (for indicators)
                 val stopDuration = System.currentTimeMillis() - stopStartTime
                 if (stopDuration > 60_000 && stopDuration < 62_000) {
                     _stopCount.value += 1
@@ -248,7 +247,7 @@ object TravelModeManager {
             lastMovementTime = System.currentTimeMillis()
         }
 
-        // Check if user has reached destination (proximity check: e.g. 50 meters)
+        // Check if user has reached destination
         val dest = _destinationLocation.value
         if (dest != null) {
             val distanceToDest = haversineDistance(location.latitude, location.longitude, dest.latitude, dest.longitude)
@@ -265,15 +264,13 @@ object TravelModeManager {
         // Calculate perpendicular deviation to expected route
         val route = _expectedRoute.value
         if (route.size >= 2) {
-            val deviation = distanceToRoute(latLng, route)
+            val deviation = distanceToRoute(geoPoint, route)
             _currentDeviationDistance.value = deviation
             Log.d(TAG, "Distance to route: $deviation meters")
 
-            // Check if deviation exceeds tolerance
             if (deviation > routeDeviationToleranceMeters) {
                 handleDeviationDetected(location)
             } else {
-                // Reset deviation count if user returns to route
                 deviatedUpdatesCount = 0
                 if (_journeyState.value == JourneyState.DEVIATION_DETECTED) {
                     Log.i(TAG, "User returned to route. Clearing warning.")
@@ -290,12 +287,10 @@ object TravelModeManager {
             deviatedUpdatesCount++
             Log.w(TAG, "Deviation detected! Sequence count: $deviatedUpdatesCount / 3")
             if (deviatedUpdatesCount >= 3) {
-                // Persistent deviation confirmed (3 updates)
                 _journeyState.value = JourneyState.DEVIATION_DETECTED
                 _isDeviationPromptActive.value = true
                 _deviationCountdownSeconds.value = 30
                 startCountdown()
-                // Trigger safety check in SafetyMonitoringManager (AreYouSafeScreen)
                 SafetyMonitoringManager.reportDeviationAnomaly(location)
             }
         }
@@ -328,7 +323,6 @@ object TravelModeManager {
     }
 
     fun ignoreDeviationPrompt() {
-        // Same as timeout
         countdownJob?.cancel()
         handleNoResponse()
     }
@@ -362,7 +356,6 @@ object TravelModeManager {
             }
         }
 
-        // Log escalated journey to database
         val userId = authManager.currentUserId ?: ""
         val startLoc = startLocation
         val destLoc = _destinationLocation.value
@@ -414,32 +407,24 @@ object TravelModeManager {
         continuedDeviationsCount = 0
     }
 
-    /**
-     * Generates a multi-segment route polyline with intermediate turns.
-     */
-    private fun generateMockRoute(start: LatLng, dest: LatLng): List<LatLng> {
-        val points = mutableListOf<LatLng>()
+    private fun generateMockRoute(start: GeoPoint, dest: GeoPoint): List<GeoPoint> {
+        val points = mutableListOf<GeoPoint>()
         points.add(start)
 
         val latDiff = dest.latitude - start.latitude
         val lngDiff = dest.longitude - start.longitude
 
-        // Turn 1 (40% along lat, 10% along lng)
-        val turn1 = LatLng(start.latitude + latDiff * 0.4, start.longitude + lngDiff * 0.1)
+        val turn1 = GeoPoint(start.latitude + latDiff * 0.4, start.longitude + lngDiff * 0.1)
         points.add(turn1)
 
-        // Turn 2 (70% along lat, 80% along lng)
-        val turn2 = LatLng(start.latitude + latDiff * 0.7, start.longitude + lngDiff * 0.8)
+        val turn2 = GeoPoint(start.latitude + latDiff * 0.7, start.longitude + lngDiff * 0.8)
         points.add(turn2)
 
         points.add(dest)
         return points
     }
 
-    /**
-     * Calculates the minimum perpendicular distance from point P to the route segments.
-     */
-    private fun distanceToRoute(p: LatLng, route: List<LatLng>): Double {
+    private fun distanceToRoute(p: GeoPoint, route: List<GeoPoint>): Double {
         if (route.size < 2) return 0.0
         var minDistance = Double.MAX_VALUE
         for (i in 0 until route.size - 1) {
@@ -451,7 +436,7 @@ object TravelModeManager {
         return minDistance
     }
 
-    private fun distanceToSegment(p: LatLng, a: LatLng, b: LatLng): Double {
+    private fun distanceToSegment(p: GeoPoint, a: GeoPoint, b: GeoPoint): Double {
         val xA = a.longitude
         val yA = a.latitude
         val xB = b.longitude

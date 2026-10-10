@@ -2,7 +2,7 @@ package com.womensafety.system.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.android.gms.maps.model.LatLng
+import org.osmdroid.util.GeoPoint
 import com.womensafety.system.data.firebase.FirebaseAuthManager
 import com.womensafety.system.data.model.JourneyRecord
 import com.womensafety.system.data.repository.JourneyRepository
@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel governing Travel Mode journeys and history list.
+ * ViewModel governing Travel Mode journeys and history list using OpenStreetMap GeoPoints.
  */
 class TravelViewModel(
     private val journeyRepository: JourneyRepository = JourneyRepository()
@@ -23,9 +23,9 @@ class TravelViewModel(
     private val authManager = FirebaseAuthManager()
 
     val journeyState: StateFlow<JourneyState> = TravelModeManager.journeyState
-    val expectedRoute: StateFlow<List<LatLng>> = TravelModeManager.expectedRoute
-    val currentLocation: StateFlow<LatLng?> = TravelModeManager.currentLocation
-    val destinationLocation: StateFlow<LatLng?> = TravelModeManager.destinationLocation
+    val expectedRoute: StateFlow<List<GeoPoint>> = TravelModeManager.expectedRoute
+    val currentLocation: StateFlow<GeoPoint?> = TravelModeManager.currentLocation
+    val destinationLocation: StateFlow<GeoPoint?> = TravelModeManager.destinationLocation
     val currentDeviationDistance: StateFlow<Double> = TravelModeManager.currentDeviationDistance
     val speedKmh: StateFlow<Float> = TravelModeManager.speedKmh
     val stopCount: StateFlow<Int> = TravelModeManager.stopCount
@@ -40,15 +40,15 @@ class TravelViewModel(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     // Source location details
-    private val _sourceLatLng = MutableStateFlow<LatLng?>(null)
-    val sourceLatLng: StateFlow<LatLng?> = _sourceLatLng.asStateFlow()
+    private val _sourceLatLng = MutableStateFlow<GeoPoint?>(null)
+    val sourceLatLng: StateFlow<GeoPoint?> = _sourceLatLng.asStateFlow()
 
     private val _sourceAddressName = MutableStateFlow("")
     val sourceAddressName: StateFlow<String> = _sourceAddressName.asStateFlow()
 
     // Destination location details
-    private val _destinationLatLng = MutableStateFlow<LatLng?>(null)
-    val destinationLatLng: StateFlow<LatLng?> = _destinationLatLng.asStateFlow()
+    private val _destinationLatLng = MutableStateFlow<GeoPoint?>(null)
+    val destinationLatLng: StateFlow<GeoPoint?> = _destinationLatLng.asStateFlow()
 
     private val _destinationAddressName = MutableStateFlow("")
     val destinationAddressName: StateFlow<String> = _destinationAddressName.asStateFlow()
@@ -59,12 +59,12 @@ class TravelViewModel(
     private val _isGeocoding = MutableStateFlow(false)
     val isGeocoding: StateFlow<Boolean> = _isGeocoding.asStateFlow()
 
-    fun updateSourceLatLng(latLng: LatLng, address: String) {
+    fun updateSourceLatLng(latLng: GeoPoint, address: String) {
         _sourceLatLng.value = latLng
         _sourceAddressName.value = address
     }
 
-    fun updateDestinationLatLng(latLng: LatLng, address: String) {
+    fun updateDestinationLatLng(latLng: GeoPoint, address: String) {
         _destinationLatLng.value = latLng
         _destinationAddressName.value = address
     }
@@ -99,7 +99,7 @@ class TravelViewModel(
         loadHistory()
     }
 
-    fun startJourney(start: LatLng, dest: LatLng) {
+    fun startJourney(start: GeoPoint, dest: GeoPoint) {
         TravelModeManager.startJourney(start, dest)
     }
 
