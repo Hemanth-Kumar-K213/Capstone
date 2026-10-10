@@ -1,6 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { sendSOSAlert } from "./twilioHelper";
+import { sendSOSAlert as send2FactorSOS } from "./twoFactorHelper";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -10,7 +10,7 @@ const db = admin.firestore();
 
 /**
  * Firestore Trigger: Dispatched automatically when an emergency SOS event document is created.
- * Sends immediate Twilio SMS alerts to all designated emergency contacts with GPS location coordinates.
+ * Sends immediate 2Factor SMS alerts to all designated emergency contacts with GPS location coordinates.
  */
 export const onSOSEventCreated = functions.firestore
   .document("sosEvents/{eventId}")
@@ -33,7 +33,7 @@ export const onSOSEventCreated = functions.firestore
         console.error(`[onSOSEventCreated] User profile not found for user ID ${sosEvent.userId}`);
         await snap.ref.update({
           smsSent: 0,
-          smsDeliveryStatus: "USER_NOT_FOUND",
+          smsStatus: "USER_NOT_FOUND",
         });
         return;
       }
@@ -45,7 +45,7 @@ export const onSOSEventCreated = functions.firestore
         console.warn(`[onSOSEventCreated] No emergency contacts configured for user ${sosEvent.userId}`);
         await snap.ref.update({
           smsSent: 0,
-          smsDeliveryStatus: "NO_CONTACTS",
+          smsStatus: "NO_CONTACTS",
           smsDeliveredAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         return;
@@ -56,54 +56,55 @@ export const onSOSEventCreated = functions.firestore
       const longitude = sosEvent.longitude ?? sosEvent.location?.longitude ?? 0;
       const address = sosEvent.address || "";
 
-      // 2. Dispatch Twilio SMS alerts in parallel
-      const smsPromises = emergencyContacts.map(async (contact: { name?: string; phone: string }) => {
-        if (!contact.phone) {
+      // 2. Dispatch 2Factor SMS alerts in parallel
+      const smsPromises = emergencyContacts.map(
+        async (contact: { name?: string; phone: string }) => {
+          if (!contact.phone) {
+            return {
+              contact: contact.name || "Unknown",
+              phone: "",
+              success: false,
+              error: "Empty phone number",
+            };
+          }
+
+          const result = await send2FactorSOS(
+            contact.phone,
+            userName,
+            latitude,
+            longitude,
+            address
+          );
+
           return {
-            contact: contact.name || "Unknown",
-            phone: "",
-            success: false,
-            error: "Empty phone number",
+            contact: contact.name || "Emergency Contact",
+            phone: contact.phone,
+            success: result.success,
+            messageId: result.messageId,
+            error: result.error,
           };
         }
-
-        const result = await sendSOSAlert(
-          contact.phone,
-          userName,
-          latitude,
-          longitude,
-          address
-        );
-
-        return {
-          contact: contact.name || "Emergency Contact",
-          phone: contact.phone,
-          success: result.success,
-          sid: result.sid,
-          error: result.error,
-        };
-      });
+      );
 
       const smsResults = await Promise.all(smsPromises);
       const successCount = smsResults.filter((r) => r.success).length;
-      const failureCount = smsResults.length - successCount;
 
       // 3. Update the SOS Event document with delivery verification
       await snap.ref.update({
         smsSent: successCount,
-        smsDeliveryStatus: successCount > 0 ? "COMPLETED" : "FAILED",
+        smsStatus: successCount > 0 ? "SENT" : "FAILED",
         smsDeliveryDetails: smsResults,
         smsDeliveredAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       console.log(
-        `[onSOSEventCreated] SOS Event ${eventId} dispatch summary: ${successCount} SMS succeeded, ${failureCount} failed.`
+        `[onSOSEventCreated] SOS Event ${eventId}: ${successCount}/${smsResults.length} SMS successfully sent via 2Factor.`
       );
     } catch (error: any) {
-      console.error(`[onSOSEventCreated] Unexpected error processing SOS alert for ${eventId}:`, error);
+      console.error(`[onSOSEventCreated] Error sending SOS alerts for ${eventId}:`, error);
       await snap.ref.update({
-        smsDeliveryStatus: "ERROR",
-        smsError: error instanceof Error ? error.message : "Unknown Twilio SMS error",
+        smsStatus: "FAILED",
+        smsError: error instanceof Error ? error.message : "Unknown 2Factor SMS error",
       });
     }
   });

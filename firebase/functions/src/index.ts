@@ -4,9 +4,9 @@
  * Exports:
  * - onUserCreated: Generates first weekly UID when a User account is created
  * - rotateWeeklyUids: Weekly scheduled rotation of UIDs for all users
- * - sendOTPFunction: Generates and dispatches 6-digit verification code via Twilio SMS
+ * - sendOTPFunction: Generates and dispatches 6-digit verification code via 2Factor API
  * - verifyOTPFunction: Validates 6-digit OTP code submitted from mobile app
- * - onSOSEventCreated: Sends emergency SOS alert via Twilio SMS to emergency contacts with GPS link
+ * - onSOSEventCreated: Sends emergency SOS alert via 2Factor SMS to emergency contacts with GPS link
  */
 
 import * as admin from "firebase-admin";
@@ -20,6 +20,6 @@ if (!admin.apps.length) {
 export { onUserCreated } from "./generateUid";
 export { rotateWeeklyUids } from "./rotateUids";
 
-// Twilio SMS Functions
+// 2Factor SMS Functions
 export { sendOTPFunction, verifyOTPFunction } from "./sendOTP";
 export { onSOSEventCreated } from "./sendSOSAlert";

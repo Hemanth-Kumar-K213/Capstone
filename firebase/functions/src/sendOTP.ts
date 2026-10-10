@@ -1,6 +1,9 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { sendOTP, formatToE164 } from "./twilioHelper";
+import {
+  sendOTP as send2FactorOTP,
+  validatePhoneNumber,
+} from "./twoFactorHelper";
 
 // Ensure Firebase Admin is initialized
 if (!admin.apps.length) {
@@ -10,7 +13,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 /**
- * HTTPS Callable Function: Generates and dispatches a 6-digit OTP via Twilio SMS.
+ * HTTPS Callable Function: Generates and dispatches a 6-digit OTP via 2Factor API.
  * Called from mobile application during User / Trusted Contact signup or 2FA login.
  */
 export const sendOTPFunction = functions.https.onCall(
@@ -26,7 +29,15 @@ export const sendOTPFunction = functions.https.onCall(
       );
     }
 
-    const formattedPhone = formatToE164(phoneNumber);
+    const validation = validatePhoneNumber(phoneNumber);
+    if (!validation.valid || !validation.normalized) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        validation.error || "Invalid phone number format."
+      );
+    }
+
+    const normalizedPhone = validation.normalized;
 
     try {
       // 2. Generate secure 6-digit numeric OTP
@@ -36,7 +47,7 @@ export const sendOTPFunction = functions.https.onCall(
       const expiryTime = Date.now() + 10 * 60 * 1000; // 10 minutes in milliseconds
 
       // 4. Check existing OTP document for rate limiting / lockout
-      const otpDocRef = db.collection("otps").doc(formattedPhone);
+      const otpDocRef = db.collection("otps").doc(normalizedPhone);
       const existingDoc = await otpDocRef.get();
 
       if (existingDoc.exists) {
@@ -50,39 +61,42 @@ export const sendOTPFunction = functions.https.onCall(
         }
       }
 
-      // 5. Store OTP record in Firestore
+      // 5. Send OTP via 2Factor API
+      const result = await send2FactorOTP(normalizedPhone, otp, userName);
+
+      if (!result.success) {
+        console.error(`[sendOTPFunction] 2Factor dispatch failure for ${normalizedPhone}:`, result.error);
+        throw new functions.https.HttpsError(
+          "internal",
+          `2Factor SMS dispatch failed: ${result.error}`
+        );
+      }
+
+      // 6. Store OTP record in Firestore
       await otpDocRef.set(
         {
           otp: otp,
-          phoneNumber: formattedPhone,
+          phoneNumber: normalizedPhone,
           userName: userName,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           expiresAt: expiryTime,
           verified: false,
           attempts: 0,
           locked: false,
+          messageId: result.messageId || null,
         },
         { merge: true }
       );
 
-      // 6. Send OTP via Twilio SMS
-      const smsResult = await sendOTP(formattedPhone, otp, userName);
-
-      if (!smsResult.success) {
-        console.error(`[sendOTPFunction] Twilio dispatch failure for ${formattedPhone}:`, smsResult.error);
-        throw new functions.https.HttpsError(
-          "internal",
-          `Twilio SMS dispatch failed: ${smsResult.error}`
-        );
-      }
-
-      console.log(`[sendOTPFunction] Successfully dispatched OTP to ${formattedPhone}. SID: ${smsResult.sid}`);
+      console.log(
+        `[sendOTPFunction] Successfully dispatched OTP to ${normalizedPhone}. MessageId: ${result.messageId}`
+      );
 
       return {
         success: true,
-        message: `OTP successfully dispatched to ${formattedPhone}`,
+        message: `OTP sent to ${normalizedPhone}`,
         expiresIn: 600, // 10 minutes in seconds
-        sid: smsResult.sid,
+        messageId: result.messageId,
       };
     } catch (error: any) {
       if (error instanceof functions.https.HttpsError) {
@@ -112,11 +126,19 @@ export const verifyOTPFunction = functions.https.onCall(
       );
     }
 
-    const formattedPhone = formatToE164(phoneNumber);
+    const validation = validatePhoneNumber(phoneNumber);
+    if (!validation.valid || !validation.normalized) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        validation.error || "Invalid phone number format."
+      );
+    }
+
+    const normalizedPhone = validation.normalized;
     const submittedOtp = otp.toString().trim();
 
     try {
-      const otpDocRef = db.collection("otps").doc(formattedPhone);
+      const otpDocRef = db.collection("otps").doc(normalizedPhone);
       const otpDoc = await otpDocRef.get();
 
       if (!otpDoc.exists) {
@@ -179,12 +201,12 @@ export const verifyOTPFunction = functions.https.onCall(
         verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`[verifyOTPFunction] Phone number verified successfully: ${formattedPhone}`);
+      console.log(`[verifyOTPFunction] Phone number verified successfully: ${normalizedPhone}`);
 
       return {
         success: true,
-        message: "Phone number verified successfully.",
-        phoneNumber: formattedPhone,
+        message: "OTP verified successfully.",
+        phoneNumber: normalizedPhone,
       };
     } catch (error: any) {
       if (error instanceof functions.https.HttpsError) {

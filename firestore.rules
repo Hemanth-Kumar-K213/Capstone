@@ -293,7 +293,7 @@ service cloud.firestore {
 
 
     // ============================================================
-    // OTPS (TWILIO SMS VERIFICATION)
+    // OTPS (2FACTOR SMS VERIFICATION)
     // otps/{phoneNumber}
     // ============================================================
 
