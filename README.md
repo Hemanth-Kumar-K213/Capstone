@@ -391,6 +391,45 @@ firebase deploy --only functions
 
 ---
 
+## 📂 Project Structure
+
+```
+Capstone/
+├── app/
+│   └── src/main/java/com/womensafety/system/
+│       ├── data/
+│       │   ├── firebase/ (FirebaseAuthManager, FirestoreManager)
+│       │   ├── model/ (User, TrustedContact, SOSEvent, JourneyRecord, etc.)
+│       │   └── repository/ (AuthRepository, LocationRepository, etc.)
+│       ├── service/ (LocationTrackingService, ShakeDetectionService)
+│       ├── ui/
+│       │   ├── auth/ (UserSignupStep*, TCAuthScreen, OTPVerificationScreen)
+│       │   ├── home/ (UserHomeScreen, TCHomeScreen)
+│       │   ├── map/ (SafetyMapTracker OSM wrapper, LiveLocationMapScreen)
+│       │   ├── navigation/ (NavGraph, Screen destinations)
+│       │   ├── setup/ (5-step Setup Wizard)
+│       │   ├── sos/ (SOSAlertScreen, SOSReceivedScreen, SOSEventMapScreen)
+│       │   └── travel/ (TravelModeScreen, ActiveJourneyScreen)
+│       ├── utils/ (MapUtils, DirectionsApiHelper, RiskAssessmentEngine, Validators)
+│       └── viewmodel/ (AuthViewModel, OTPViewModel, LocationViewModel, SOSViewModel)
+├── firebase/
+│   └── functions/
+│       ├── src/
+│       │   ├── index.ts (Cloud Functions entry point)
+│       │   ├── sendOTP.ts (sendOTPFunction, verifyOTPFunction)
+│       │   ├── sendSOSAlert.ts (onSOSEventCreated background trigger)
+│       │   └── twoFactorHelper.ts (2Factor SMS REST API wrapper)
+│       ├── package.json
+│       ├── tsconfig.json
+│       └── README-2Factor.md
+├── apk/
+│   └── WomenSafety-debug.apk (pre-built testing APK)
+├── firestore.rules (security rules)
+└── README.md
+```
+
+---
+
 ## 📂 Git Branch Reference
 
 - **`otp-update`** *(Current Active Branch)*:
@@ -403,3 +442,14 @@ firebase deploy --only functions
   - OpenStreetMap (OSMDroid) migration baseline without Google Maps billing.
 - **`main`**:
   - Baseline project branch.
+
+---
+
+## 👥 Team
+
+- **Amogh** - Lead Developer
+- **Hemanth Kumar K** - Contributor
+
+## 📄 License
+
+MIT License — see LICENSE for details.
