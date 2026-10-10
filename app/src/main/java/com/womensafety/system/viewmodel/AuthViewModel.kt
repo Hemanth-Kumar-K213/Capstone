@@ -179,13 +179,19 @@ class AuthViewModel(
 
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    verificationId = "TWILIO_OTP",
+                    verificationId = "2FACTOR_OTP",
                     resendCooldown = 60
                 )
             } catch (e: Exception) {
+                val errorMsg = if (e is com.google.firebase.functions.FirebaseFunctionsException &&
+                    e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
+                    "Cloud Function 'sendOTPFunction' not found. Please deploy Cloud Functions to Firebase project 'women-safety-system-65893' via 'firebase deploy --only functions'."
+                } else {
+                    e.message ?: "Failed to dispatch verification OTP via 2Factor SMS."
+                }
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Failed to dispatch verification OTP via Twilio SMS."
+                    error = errorMsg
                 )
             }
         }
@@ -245,9 +251,15 @@ class AuthViewModel(
                     )
                 }
             } catch (e: Exception) {
+                val errorMsg = if (e is com.google.firebase.functions.FirebaseFunctionsException &&
+                    e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
+                    "Cloud Function 'verifyOTPFunction' not found. Please deploy Cloud Functions to Firebase project 'women-safety-system-65893'."
+                } else {
+                    e.message ?: "OTP verification failed. Please try again."
+                }
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "OTP verification failed. Please try again."
+                    error = errorMsg
                 )
             }
         }

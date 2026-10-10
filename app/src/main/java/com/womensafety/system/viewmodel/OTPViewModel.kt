@@ -21,7 +21,7 @@ data class OTPState(
 )
 
 /**
- * ViewModel managing phone number verification using Twilio SMS Cloud Functions.
+ * ViewModel managing phone number verification using 2Factor SMS Cloud Functions.
  * Handles dispatching 6-digit OTP codes, verifying responses, tracking attempts, and countdowns.
  */
 class OTPViewModel(
@@ -32,7 +32,7 @@ class OTPViewModel(
     val state: StateFlow<OTPState> = _state.asStateFlow()
 
     /**
-     * Dispatches a 6-digit verification code via Twilio SMS by calling 'sendOTPFunction'
+     * Dispatches a 6-digit verification code via 2Factor SMS by calling 'sendOTPFunction'
      */
     fun sendOTP(phoneNumber: String, userName: String) {
         val normalizedPhone = Validators.normalizePhone(phoneNumber)
@@ -61,9 +61,15 @@ class OTPViewModel(
                     attempts = 0
                 )
             } catch (e: Exception) {
+                val errorMsg = if (e is com.google.firebase.functions.FirebaseFunctionsException &&
+                    e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
+                    "Cloud Function 'sendOTPFunction' not found. Please deploy Cloud Functions to Firebase project 'women-safety-system-65893' via 'firebase deploy --only functions'."
+                } else {
+                    e.message ?: "Failed to send verification OTP via 2Factor SMS."
+                }
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Failed to send verification OTP via Twilio."
+                    error = errorMsg
                 )
             }
         }
@@ -106,11 +112,17 @@ class OTPViewModel(
                     )
                 }
             } catch (e: Exception) {
+                val errorMsg = if (e is com.google.firebase.functions.FirebaseFunctionsException &&
+                    e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
+                    "Cloud Function 'verifyOTPFunction' not found. Please deploy Cloud Functions to Firebase project 'women-safety-system-65893'."
+                } else {
+                    e.message ?: "Invalid OTP verification code."
+                }
                 val newAttempts = _state.value.attempts + 1
                 _state.value = _state.value.copy(
                     isLoading = false,
                     attempts = newAttempts,
-                    error = e.message ?: "Invalid OTP verification code."
+                    error = errorMsg
                 )
             }
         }

@@ -8,15 +8,16 @@ A modern, native Android application built with Kotlin, Jetpack Compose, OpenStr
 
 A pre-built, ready-to-test debug APK is committed directly in this repository:
 
-- **File Path**: [`apk/WomenSafety-debug.apk`](file:///c:/Users/Amogh/Desktop/Capstone/apk/WomenSafety-debug.apk)
+- **File Path**: `apk/WomenSafety-debug.apk`
 - **File Size**: ~28.14 MB
 - **Package Name**: `com.womensafety.system`
 - **Target SDK**: Android 14 (API 34) | **Min SDK**: Android 8.0 (API 26)
+- **App Version**: `v1.0.1` (versionCode `2`)
 
 ### How to Install the APK
 
 #### Option 1: Direct Transfer to Phone (Sideloading)
-1. Download or copy `apk/WomenSafety-debug.apk` to your Android device via USB, Google Drive, or WhatsApp.
+1. Download or copy `apk/WomenSafety-debug.apk` from this repository to your Android device via USB, Google Drive, or WhatsApp.
 2. On your phone, tap the `.apk` file to install.
 3. If prompted, enable **"Install unknown apps"** in your device settings.
 
@@ -28,9 +29,13 @@ adb install -r apk/WomenSafety-debug.apk
 
 #### Option 3: Build from Source
 Ensure your environment is using **Java 21** (`jbr-21`):
-```powershell
-$env:JAVA_HOME = "C:\Users\Amogh\.jdks\jbr-21.0.11"
-.\gradlew assembleDebug
+```bash
+# Set Java 21 environment
+export JAVA_HOME=/path/to/jdk21    # Linux / macOS
+# Or on Windows PowerShell:
+# $env:JAVA_HOME = "C:\Users\<user>\.jdks\jbr-21.0.11"
+
+./gradlew assembleDebug
 ```
 The output APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -198,11 +203,11 @@ To ensure 100% reliable SMS delivery on Indian mobile networks (+91), the projec
 ### Backend Cloud Functions Architecture
 
 ```
-Mobile App (OTPVerificationScreen)
+Mobile App (OTPVerificationScreen / AuthViewModel)
        │
        ├── HTTPS Callable (functions.onCall)
        ▼
-sendOTPFunction (Cloud Function)
+sendOTPFunction (Cloud Function in firebase/functions/src/sendOTP.ts)
        │
        ├── 1. Validates & normalizes phone (+91 / 10-digit -> 91XXXXXXXXXX)
        ├── 2. Generates secure 6-digit numeric OTP
@@ -241,7 +246,7 @@ User Mobile Phone (Receives SMS: "Women Safety OTP: 123456. Valid for 10 minutes
 
 ### Mobile App Integration
 - **`OTPVerificationScreen.kt`**: Material 3 dark-themed UI featuring 6 single-digit auto-advancing text fields, 60-second resend countdown timer, loading spinner, and error alert dialogs.
-- **`OTPViewModel.kt`**: StateFlow-driven architecture calling Cloud Functions via `Firebase.functions.getHttpsCallable(...)`.
+- **`OTPViewModel.kt`**: StateFlow-driven architecture calling Cloud Functions via `Firebase.functions.getHttpsCallable(...)` with helpful error diagnostics.
 - **Navigation**: Registered route `OTP_VERIFICATION/{phoneNumber}/{userName}` in `NavGraph.kt`.
 
 ### 2Factor Configuration & DLT Setup
@@ -309,18 +314,69 @@ service cloud.firestore {
 
 ---
 
+## 🐛 Troubleshooting Guide
+
+### 1. "NOT_FOUND" Error on Mobile When Sending OTP
+**Root Cause**: The mobile app calls `sendOTPFunction` via `functions.getHttpsCallable("sendOTPFunction")`. If Cloud Functions have **not been deployed** to your Firebase project (`women-safety-system-65893`), Google Cloud returns an HTTP 404, which the Firebase Android SDK surfaces as `NOT_FOUND`.
+
+**Step-by-Step Fix**:
+```bash
+# 1. Switch to functions directory
+cd firebase/functions
+
+# 2. Install dependencies
+npm install
+
+# 3. Configure 2Factor credentials
+firebase functions:config:set \
+  twofactor.api_key="YOUR_2FACTOR_API_KEY" \
+  twofactor.sender_id="WSAFETY"
+
+# 4. Deploy functions to Firebase
+firebase deploy --only functions:sendOTPFunction,verifyOTPFunction,onSOSEventCreated
+
+# 5. Verify deployment
+firebase functions:list
+```
+
+### 2. Testing 2Factor API Directly via cURL
+To verify your API key and sender ID independently of Firebase:
+```bash
+curl -X POST "https://2factor.in/API/R1/" \
+  -d "module=OTP" \
+  -d "apikey=YOUR_2FACTOR_API_KEY" \
+  -d "to=919876543210" \
+  -d "from=WSAFETY" \
+  -d "msg=Women Safety OTP: 123456. Valid for 10 minutes."
+```
+**Expected Response**:
+```json
+{
+  "Status": "Success",
+  "Details": "09cfe5b29d000018a3acb36000000001"
+}
+```
+
+### 3. Monitoring Function Logs
+Check real-time execution logs when clicking "Send OTP" on your mobile device:
+```bash
+firebase functions:log
+```
+
+---
+
 ## ⚙️ Development, Build & Deployment Guide
 
 ### 1. JDK Requirement (Android Studio)
 > **IMPORTANT:** Ensure your Gradle JDK in Android Studio is set to **Java 21**:
 > - Open **Settings** (`Ctrl + Alt + S`) $\rightarrow$ **Build, Execution, Deployment** $\rightarrow$ **Build Tools** $\rightarrow$ **Gradle**.
-> - Set **Gradle JDK** to **Java 21** (`jbr-21` located at `C:\Users\Amogh\.jdks\jbr-21.0.11`).
+> - Set **Gradle JDK** to **Java 21** (`jbr-21`).
 > - *(Avoid using Android Studio's bundled JDK 25 with Gradle 8.9 to prevent `Unsupported class file major version 69`).*
 
 ### 2. Building the APK
 ```powershell
 # Set JAVA_HOME and compile debug APK
-$env:JAVA_HOME = "C:\Users\Amogh\.jdks\jbr-21.0.11"
+$env:JAVA_HOME = "C:\Users\<username>\.jdks\jbr-21.0.11"
 .\gradlew assembleDebug --no-daemon
 ```
 The compiled APK will be at:
@@ -332,10 +388,6 @@ cd firebase/functions
 npm install
 firebase deploy --only functions
 ```
-Or deploy specific functions:
-```bash
-firebase deploy --only functions:sendOTPFunction,functions:verifyOTPFunction,functions:onSOSEventCreated
-```
 
 ---
 
@@ -346,7 +398,7 @@ firebase deploy --only functions:sendOTPFunction,functions:verifyOTPFunction,fun
   - Phone OTP verification screen & ViewModel (`OTPVerificationScreen`, `OTPViewModel`).
   - Cloud Functions: `sendOTPFunction`, `verifyOTPFunction`, `onSOSEventCreated`.
   - OpenStreetMap (OSMDroid) migration.
-  - Pre-built debug APK included at [`apk/WomenSafety-debug.apk`](file:///c:/Users/Amogh/Desktop/Capstone/apk/WomenSafety-debug.apk).
+  - Pre-built debug APK included at `apk/WomenSafety-debug.apk`.
 - **`map-update`**:
   - OpenStreetMap (OSMDroid) migration baseline without Google Maps billing.
 - **`main`**:
