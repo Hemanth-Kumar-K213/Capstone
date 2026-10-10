@@ -1,12 +1,44 @@
 # Women Safety System (Android App) — Trinetra
 
-A modern, native Android application built with Kotlin, Jetpack Compose, OpenStreetMap (OSMDroid), and Firebase that provides an intelligent, proactive safety network for women and their trusted contacts — 100% Free & Open-Source with zero billing or API keys required.
+A modern, native Android application built with Kotlin, Jetpack Compose, OpenStreetMap (OSMDroid), Firebase, and the **2Factor SMS API** that provides an intelligent, proactive safety network for women and their trusted contacts — 100% Free & Open-Source with zero Google Maps billing or international gateway fees.
+
+---
+
+## 📱 Pre-Built APK & Quick Installation
+
+A pre-built, ready-to-test debug APK is committed directly in this repository:
+
+- **File Path**: [`apk/WomenSafety-debug.apk`](file:///c:/Users/Amogh/Desktop/Capstone/apk/WomenSafety-debug.apk)
+- **File Size**: ~28.14 MB
+- **Package Name**: `com.womensafety.system`
+- **Target SDK**: Android 14 (API 34) | **Min SDK**: Android 8.0 (API 26)
+
+### How to Install the APK
+
+#### Option 1: Direct Transfer to Phone (Sideloading)
+1. Download or copy `apk/WomenSafety-debug.apk` to your Android device via USB, Google Drive, or WhatsApp.
+2. On your phone, tap the `.apk` file to install.
+3. If prompted, enable **"Install unknown apps"** in your device settings.
+
+#### Option 2: Install via ADB (Android Debug Bridge)
+Connect your Android phone via USB with USB Debugging enabled, then run:
+```bash
+adb install -r apk/WomenSafety-debug.apk
+```
+
+#### Option 3: Build from Source
+Ensure your environment is using **Java 21** (`jbr-21`):
+```powershell
+$env:JAVA_HOME = "C:\Users\Amogh\.jdks\jbr-21.0.11"
+.\gradlew assembleDebug
+```
+The output APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
 ## 🏗 Architecture & Design Principles
 
-The application strictly follows Clean Architecture and the Separation of Concerns principle:
+The application strictly adheres to Clean Architecture and the Separation of Concerns principle:
 
 ```
 UI Layer (Jetpack Compose Screens & ViewModels)
@@ -21,14 +53,14 @@ Repository Layer (Business Logic & Data Access)
 Firebase Managers (FirebaseAuthManager, FirestoreManager)
        │
        ▼
-Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
+Backend & Cloud Functions (Firebase Auth, Cloud Firestore, 2Factor SMS REST API)
 ```
 
 ### Architectural Constraints
 - **Screens** never touch Firebase directly; they only interact with **ViewModels**.
 - **ViewModels** never touch Firebase directly; they only interact with **Repositories**.
 - **Repositories** never touch Firebase SDKs directly; they interact only with **FirebaseAuthManager** and **FirestoreManager**.
-- **FirebaseAuthManager** and **FirestoreManager** are the **ONLY** classes that import Firebase SDKs.
+- **FirebaseAuthManager** and **FirestoreManager** are the **ONLY** mobile classes that import Firebase SDKs.
 - Background operations, location tracking, and sensors are coordinated via dedicated Managers and Foreground Services (`SafetyMonitoringManager`, `TravelModeManager`, `SOSManager`, `LocationTrackingService`, `ShakeDetectionService`).
 
 ---
@@ -41,7 +73,7 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
     - Step 1: Full Name & Primary Email
     - Step 2: Password creation & confirmation (with strength checks)
     - Step 3: Phone Number input
-    - Step 4: Phone OTP verification via Firebase Phone Auth
+    - Step 4: Phone OTP verification via 2Factor SMS API (`OTPVerificationScreen`)
     - Step 5: Email verification check
     - Step 6: Confirmation & completion
   - Email + Password login with error handling and password reset support
@@ -98,17 +130,12 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
   1. Requests immediate high-accuracy GPS fix with fallback to last known location.
   2. Creates `SOSEvent` in Firestore `sosEvents/{eventId}`.
   3. Activates loud siren audio on `STREAM_ALARM` (bypassing silent mode) and urgent vibration patterns.
-  4. Cellular SMS fallback with OpenStreetMap coordinates link dispatched to emergency contacts.
+  4. Triggers background Cloud Function `onSOSEventCreated` which dispatches high-priority SMS alerts via the **2Factor SMS API** to all registered emergency contacts with live GPS coordinates and Google Maps link.
   5. Auto-places phone call to primary contact if enabled.
-  6. Sends Firebase Cloud Messaging (FCM) high-priority push notifications to approved Trusted Contacts.
 - **SOSAlertScreen**: Full-screen emergency UI with pulsing red glow, cancel timer, countdown, siren toggle, flashlight toggle, and manual cancellation PIN.
 - **SOSReceivedScreen**: Receiver UI for Trusted Contacts displaying user location via OpenStreetMap `SafetyMapTracker`, trigger method, and direct calling.
-- **SOSEventMapScreen**: Dedicated incident visualization screen showing exact alert GPS coordinates on OpenStreetMap with FCM, SMS, and call delivery logs.
+- **SOSEventMapScreen**: Dedicated incident visualization screen showing exact alert GPS coordinates on OpenStreetMap with SMS delivery audit logs.
 - **SOSHistoryScreen & SOSHistoryDetailScreen**: Review past SOS events and audit logs.
-
----
-
-## 🚀 Recent Updates & Enhancements (Collaborator Updates & OSM Migration)
 
 ### 9. Proactive Safe Travel Mode (Phase 5)
 - **DirectionsApiHelper**: OpenStreetMap / OSRM (Open Source Routing Machine) road routing with GeoJSON waypoint decoding. Fully free and open-source, with automatic realistic road curve fallback when offline.
@@ -158,12 +185,91 @@ Firebase SDKs (Auth, Firestore, Cloud Functions, Messaging)
 
 ---
 
+## 🔐 Phone OTP Verification & 2Factor SMS Gateway
+
+To ensure 100% reliable SMS delivery on Indian mobile networks (+91), the project uses the **2Factor SMS API** (`https://2factor.in/API/R1/`), replacing Twilio and unreliable FCM messaging.
+
+### Why 2Factor?
+- **Designed for India (+91)**: Instant delivery across Indian telecom operators without international carrier blocks or DND drops.
+- **Free Trial**: Includes 250 free SMS credits out-of-the-box.
+- **Zero Mobile SDK Bloat**: Uses simple HTTPS REST endpoints with `axios` on Cloud Functions; no heavy native SMS SDKs required in the Android app.
+- **Robust Verification**: Server-side OTP generation and Firestore-backed lockout protection.
+
+### Backend Cloud Functions Architecture
+
+```
+Mobile App (OTPVerificationScreen)
+       │
+       ├── HTTPS Callable (functions.onCall)
+       ▼
+sendOTPFunction (Cloud Function)
+       │
+       ├── 1. Validates & normalizes phone (+91 / 10-digit -> 91XXXXXXXXXX)
+       ├── 2. Generates secure 6-digit numeric OTP
+       ├── 3. Stores OTP in Firestore `/otps/{phoneNumber}` (10-min expiry)
+       └── 4. Calls 2Factor API (module: 'OTP') via Axios
+       │
+       ▼
+2Factor SMS Gateway (https://2factor.in/API/R1/)
+       │
+       ▼
+User Mobile Phone (Receives SMS: "Women Safety OTP: 123456. Valid for 10 minutes.")
+```
+
+#### Functions Implemented:
+
+1. **`sendOTPFunction`** (`firebase/functions/src/sendOTP.ts`):
+   - **Input**: `{ phoneNumber: string, userName?: string }`
+   - **Output**: `{ success: true, message: string, expiresIn: 600, messageId: string }`
+   - Generates 6-digit OTP, checks lockout status, dispatches SMS via 2Factor, and records metadata in Firestore `/otps/{phoneNumber}`.
+
+2. **`verifyOTPFunction`** (`firebase/functions/src/sendOTP.ts`):
+   - **Input**: `{ phoneNumber: string, otp: string }`
+   - **Output**: `{ success: true, message: string, phoneNumber: string }`
+   - Validates OTP against Firestore document.
+   - Enforces rate limiting: Locks phone for 15 minutes after 5 consecutive failed attempts.
+
+3. **`onSOSEventCreated`** (`firebase/functions/src/sendSOSAlert.ts`):
+   - Background Firestore trigger on `sosEvents/{eventId}` creation.
+   - Automatically queries user's emergency contacts from `users/{userId}`.
+   - Dispatches emergency SOS SMS alerts with live GPS coordinates and Google Maps link via 2Factor (`module: 'TRANSACTIONAL_SMS'`).
+   - Updates `sosEvents/{eventId}` with delivery results and timestamps.
+
+4. **`twoFactorHelper.ts`** (`firebase/functions/src/twoFactorHelper.ts`):
+   - Phone number normalizer (converts `+919876543210` or `9876543210` to `919876543210`).
+   - Generic HTTP wrapper for `OTP` and `TRANSACTIONAL_SMS` modules with timeout and error handling.
+
+### Mobile App Integration
+- **`OTPVerificationScreen.kt`**: Material 3 dark-themed UI featuring 6 single-digit auto-advancing text fields, 60-second resend countdown timer, loading spinner, and error alert dialogs.
+- **`OTPViewModel.kt`**: StateFlow-driven architecture calling Cloud Functions via `Firebase.functions.getHttpsCallable(...)`.
+- **Navigation**: Registered route `OTP_VERIFICATION/{phoneNumber}/{userName}` in `NavGraph.kt`.
+
+### 2Factor Configuration & DLT Setup
+1. Sign up at [https://www.2factor.in/](https://www.2factor.in/) and obtain your API Key from the dashboard.
+2. In the 2Factor dashboard, request Sender ID **`WSAFETY`** with template:
+   `Women Safety OTP: {#var#}. Valid for 10 minutes.`
+3. Set your credentials in Firebase Functions:
+   ```bash
+   firebase functions:config:set \
+     twofactor.api_key="YOUR_2FACTOR_API_KEY" \
+     twofactor.sender_id="WSAFETY"
+   ```
+4. Local testing: Add keys to `firebase/functions/.env`:
+   ```ini
+   TWOFACTOR_API_KEY=your_key_here
+   TWOFACTOR_SENDER_ID=WSAFETY
+   TWOFACTOR_API_URL=https://2factor.in/API/R1/
+   ```
+
+---
+
 ## 🗺️ 100% Free Open-Source Mapping (OSMDroid & OSRM)
 
 All mapping and navigation capabilities use **OpenStreetMap (OSMDroid)** and **OSRM Routing Engine**:
-- **Zero API Key Requirement**: No Google Cloud Console billing setup or credit card required.
+- **Zero API Key Requirement**: No Google Cloud Console billing setup, credit card, or proprietary Maps SDKs.
 - **Components**:
-  - `SafetyMapTracker.kt`: Jetpack Compose `AndroidView` wrapper over OSMDroid `MapView` with animated markers and auto-camera panning.
+  - `SafetyMapTracker.kt`: Jetpack Compose `AndroidView` wrapper over OSMDroid `MapView` with custom user markers, accuracy radius circles, and auto-camera panning.
+  - `DirectionsApiHelper.kt`: OSRM routing engine with GeoJSON polyline decoding and offline curved bezier calculation fallback.
   - `MapUtils.kt`: Haversine distance, GeoPoint conversions, and generic external navigation intents.
   - Full removal of `play-services-maps` and `maps-compose`.
 
@@ -182,6 +288,7 @@ service cloud.firestore {
     // SOS Events: sosEvents/{eventId}
     // Risk Events: riskEvents/{eventId}
     // Journeys: journeys/{journeyId}
+    // OTPs: otps/{phoneNumber} (Write locked to Admin SDK / Cloud Functions only)
   }
 }
 ```
@@ -195,15 +302,52 @@ service cloud.firestore {
 - **Architecture**: Clean Architecture (UI $\rightarrow$ ViewModel $\rightarrow$ Repository $\rightarrow$ Firebase Managers)
 - **Async & State**: Kotlin Coroutines, StateFlow, Flow
 - **Navigation**: Jetpack Navigation Compose (Type-Safe Routes)
-- **Backend & Database**: Firebase Auth (Email/Password + Phone OTP), Cloud Firestore, Firebase Cloud Messaging, Cloud Functions (TypeScript)
+- **Backend & Database**: Firebase Auth, Cloud Firestore, Cloud Functions (Node.js 18 TypeScript with `axios`)
+- **SMS Gateway**: 2Factor SMS REST API (Indian Telecom Gateway)
 - **Mapping & Routing**: OpenStreetMap (`org.osmdroid:osmdroid-android:6.1.18`), OSRM Driving Engine, Google Play Services Location (`play-services-location` for device GPS fix)
 - **Permissions**: Accompanist Permissions
 
 ---
 
-## ⚙️ Development & IDE Setup Note
+## ⚙️ Development, Build & Deployment Guide
 
-> **JDK Requirement:** Ensure your Gradle JDK in Android Studio is set to **Java 21**:
+### 1. JDK Requirement (Android Studio)
+> **IMPORTANT:** Ensure your Gradle JDK in Android Studio is set to **Java 21**:
 > - Open **Settings** (`Ctrl + Alt + S`) $\rightarrow$ **Build, Execution, Deployment** $\rightarrow$ **Build Tools** $\rightarrow$ **Gradle**.
 > - Set **Gradle JDK** to **Java 21** (`jbr-21` located at `C:\Users\Amogh\.jdks\jbr-21.0.11`).
 > - *(Avoid using Android Studio's bundled JDK 25 with Gradle 8.9 to prevent `Unsupported class file major version 69`).*
+
+### 2. Building the APK
+```powershell
+# Set JAVA_HOME and compile debug APK
+$env:JAVA_HOME = "C:\Users\Amogh\.jdks\jbr-21.0.11"
+.\gradlew assembleDebug --no-daemon
+```
+The compiled APK will be at:
+`app/build/outputs/apk/debug/app-debug.apk` and copied to `apk/WomenSafety-debug.apk`.
+
+### 3. Deploying Cloud Functions
+```bash
+cd firebase/functions
+npm install
+firebase deploy --only functions
+```
+Or deploy specific functions:
+```bash
+firebase deploy --only functions:sendOTPFunction,functions:verifyOTPFunction,functions:onSOSEventCreated
+```
+
+---
+
+## 📂 Git Branch Reference
+
+- **`otp-update`** *(Current Active Branch)*:
+  - Full 2Factor SMS API integration (replacing Twilio & FCM).
+  - Phone OTP verification screen & ViewModel (`OTPVerificationScreen`, `OTPViewModel`).
+  - Cloud Functions: `sendOTPFunction`, `verifyOTPFunction`, `onSOSEventCreated`.
+  - OpenStreetMap (OSMDroid) migration.
+  - Pre-built debug APK included at [`apk/WomenSafety-debug.apk`](file:///c:/Users/Amogh/Desktop/Capstone/apk/WomenSafety-debug.apk).
+- **`map-update`**:
+  - OpenStreetMap (OSMDroid) migration baseline without Google Maps billing.
+- **`main`**:
+  - Baseline project branch.
