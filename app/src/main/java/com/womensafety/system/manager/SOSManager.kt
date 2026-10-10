@@ -22,11 +22,15 @@ import com.womensafety.system.data.repository.UserRepository
 import com.womensafety.system.service.LocationTrackingService
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.utils.SoundManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
+import com.womensafety.system.data.sms.TwoFactorClient
 import java.util.UUID
 
 /**
@@ -88,8 +92,24 @@ object SOSManager {
         sosRepository.createSOSEvent(sosEvent)
         _activeEvent.value = sosEvent
 
-        // 5. Initiate Auto-Call to Primary Contact (if enabled)
         val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
+
+        // 5. Dispatch Direct 2Factor Emergency SMS to contacts (guaranteed delivery fallback)
+        emergencyContacts.forEach { contact ->
+            if (contact.phone.isNotBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    TwoFactorClient.sendSOSAlert(
+                        phoneNumber = contact.phone,
+                        userName = userProfile?.name ?: "User",
+                        latitude = lat ?: 0.0,
+                        longitude = lng ?: 0.0,
+                        address = address
+                    )
+                }
+            }
+        }
+
+        // 6. Initiate Auto-Call to Primary Contact (if enabled)
         var callMade = false
         if (userProfile?.sosAutoCall == true && emergencyContacts.isNotEmpty()) {
             val primaryContact = emergencyContacts.find { it.isPrimary } ?: emergencyContacts.first()

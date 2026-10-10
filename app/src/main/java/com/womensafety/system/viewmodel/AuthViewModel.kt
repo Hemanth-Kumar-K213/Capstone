@@ -161,6 +161,10 @@ class AuthViewModel(
         requestPhoneOTP(state.phone, state.name)
     }
 
+    private var lastDirectSignupOtp: String? = null
+    private var directSignupPhone: String? = null
+    private var directSignupExpiry: Long = 0L
+
     fun requestPhoneOTP(phoneNumber: String, userName: String) {
         val normalizedPhone = Validators.normalizePhone(phoneNumber)
         _signupState.value = _signupState.value.copy(isLoading = true, error = null)
@@ -172,10 +176,35 @@ class AuthViewModel(
                     "userName" to userName.ifBlank { "User" }
                 )
 
-                FirebaseFunctions.getInstance()
-                    .getHttpsCallable("sendOTPFunction")
-                    .call(payload)
-                    .await()
+                try {
+                    FirebaseFunctions.getInstance()
+                        .getHttpsCallable("sendOTPFunction")
+                        .call(payload)
+                        .await()
+                } catch (e: Exception) {
+                    if (e is com.google.firebase.functions.FirebaseFunctionsException &&
+                        e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
+                        try {
+                            FirebaseFunctions.getInstance("asia-south1")
+                                .getHttpsCallable("sendOTPFunction")
+                                .call(payload)
+                                .await()
+                        } catch (asiaEx: Exception) {
+                            // Direct Fallback to 2Factor Gateway
+                            val generatedOtp = (100000..999999).random().toString()
+                            val directResult = com.womensafety.system.data.sms.TwoFactorClient.sendOTP(normalizedPhone, generatedOtp, userName)
+                            if (directResult.isSuccess) {
+                                lastDirectSignupOtp = generatedOtp
+                                directSignupPhone = normalizedPhone
+                                directSignupExpiry = System.currentTimeMillis() + 10 * 60 * 1000
+                            } else {
+                                throw directResult.exceptionOrNull() ?: Exception("Direct 2Factor SMS failed")
+                            }
+                        }
+                    } else {
+                        throw e
+                    }
+                }
 
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
@@ -183,15 +212,9 @@ class AuthViewModel(
                     resendCooldown = 60
                 )
             } catch (e: Exception) {
-                val errorMsg = if (e is com.google.firebase.functions.FirebaseFunctionsException &&
-                    e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
-                    "Cloud Function 'sendOTPFunction' not found. Please deploy Cloud Functions to Firebase project 'women-safety-system-65893' via 'firebase deploy --only functions'."
-                } else {
-                    e.message ?: "Failed to dispatch verification OTP via 2Factor SMS."
-                }
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = errorMsg
+                    error = e.message ?: "Failed to dispatch verification OTP via 2Factor SMS."
                 )
             }
         }
@@ -221,6 +244,29 @@ class AuthViewModel(
 
         val normalizedPhone = Validators.normalizePhone(state.phone)
         _signupState.value = state.copy(isLoading = true, error = null)
+
+        // Check direct fallback session first
+        if (directSignupPhone == normalizedPhone && lastDirectSignupOtp != null) {
+            if (System.currentTimeMillis() > directSignupExpiry) {
+                _signupState.value = state.copy(isLoading = false, error = "OTP expired. Please request a new code.")
+                return
+            }
+            if (lastDirectSignupOtp == state.otpCode.trim()) {
+                _signupState.value = _signupState.value.copy(
+                    isLoading = false,
+                    phoneVerified = true,
+                    currentStep = 3,
+                    error = null
+                )
+                return
+            } else {
+                _signupState.value = _signupState.value.copy(
+                    isLoading = false,
+                    error = "Invalid OTP code. Please check and try again."
+                )
+                return
+            }
+        }
 
         viewModelScope.launch {
             try {
