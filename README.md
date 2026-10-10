@@ -445,10 +445,13 @@ Capstone/
 
 ---
 
-## 👥 Team
+## 🤝 Contributing
 
-- **Amogh** - Lead Developer
-- **Hemanth Kumar K** - Contributor
+Contributions are welcome! Please follow these steps:
+1. Fork the repository and create a feature branch.
+2. Commit your changes with clear, descriptive commit messages.
+3. Test all mobile flows and Cloud Functions locally.
+4. Open a pull request against the `main` branch.
 
 ## 📄 License
 
