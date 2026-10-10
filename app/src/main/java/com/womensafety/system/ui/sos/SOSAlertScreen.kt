@@ -155,7 +155,7 @@ fun SOSAlertScreen(
                     Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = StatusApproved, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        "Notifying Approved Trusted Contacts via FCM Push",
+                        "Notifying Emergency Contacts via Twilio SMS Alert",
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceDark
                     )
