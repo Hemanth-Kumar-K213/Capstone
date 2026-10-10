@@ -293,6 +293,21 @@ service cloud.firestore {
 
 
     // ============================================================
+    // OTPS (TWILIO SMS VERIFICATION)
+    // otps/{phoneNumber}
+    // ============================================================
+
+    match /otps/{phoneNumber} {
+      // Only Cloud Functions via Firebase Admin SDK can create/update OTP records
+      // Client writes denied to prevent spoofing or unauthorized verification
+      allow write: if false;
+
+      // Users can check verification status
+      allow read: if true;
+    }
+
+
+    // ============================================================
     // HELPER FUNCTIONS
     // ============================================================
 

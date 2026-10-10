@@ -60,9 +60,6 @@ fun PermissionsSetupScreen(
             add(Manifest.permission.ACCESS_COARSE_LOCATION)
             add(Manifest.permission.SEND_SMS)
             add(Manifest.permission.CALL_PHONE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.POST_NOTIFICATIONS)
-            }
         }
     }
 
@@ -98,14 +95,6 @@ fun PermissionsSetupScreen(
                 title = "Phone Calling",
                 description = "Allows the system to automatically place an emergency phone call to your primary emergency contact.",
                 icon = Icons.Filled.Phone
-            ),
-            PermissionItemInfo(
-                id = "notifications",
-                permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.POST_NOTIFICATIONS else "",
-                title = "Notifications",
-                description = "Displays critical safety service status, active SOS state, and weekly UID rotation updates.",
-                icon = Icons.Filled.Notifications,
-                isRequiredForDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
             )
         )
     }

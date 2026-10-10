@@ -14,6 +14,7 @@ import kotlinx.serialization.Serializable
 @Serializable object UserLogin
 @Serializable object UserSignupStep1
 @Serializable object UserSignupStep2
+@Serializable data class OTPVerification(val phoneNumber: String, val userName: String)
 @Serializable object UserSignupStep3
 @Serializable object UserSignupStep4
 @Serializable object UserSignupStep5

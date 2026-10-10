@@ -205,8 +205,7 @@ fun SOSEventMapScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            StatBadge(label = "FCM Push", count = event.notificationsSent)
-                                            StatBadge(label = "SMS Sent", count = event.smsSent)
+                                            StatBadge(label = "Twilio SMS", count = event.smsSent)
                                             StatBadge(label = "Auto Call", count = if (event.callMade) 1 else 0)
                                         }
 

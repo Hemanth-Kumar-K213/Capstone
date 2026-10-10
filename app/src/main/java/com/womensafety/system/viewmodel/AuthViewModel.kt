@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthProvider
+import com.google.firebase.functions.FirebaseFunctions
 import com.womensafety.system.data.repository.AuthRepository
 import com.womensafety.system.data.repository.DuplicateCheckResult
 import com.womensafety.system.data.repository.UidRepository
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /**
  * Manages the User signup flow (6 steps) and login.
@@ -107,7 +109,6 @@ class AuthViewModel(
                 if (accountType == "USER" && uid != null) {
                     val profile = userRepository.getUserProfile(uid).getOrNull()
                     setupDone = profile?.setupCompleted ?: false
-                    authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.USER)
                 }
                 _sessionState.value = SessionState(
                     isLoggedIn = true,
@@ -153,55 +154,55 @@ class AuthViewModel(
         return true
     }
 
-    // ─── Step 2: Phone OTP ───────────────────────────────────────
+    // ─── Step 2: Phone OTP (Twilio SMS Integration) ──────────────
 
-    fun sendPhoneOtp(activity: Activity) {
+    fun sendPhoneOtp(activity: Activity? = null) {
         val state = _signupState.value
-        val normalizedPhone = Validators.normalizePhone(state.phone)
-        _signupState.value = state.copy(isLoading = true, error = null)
+        requestPhoneOTP(state.phone, state.name)
+    }
 
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                // Auto-verification (e.g., on some devices)
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    phoneVerified = true,
-                    autoVerified = true,
-                    currentStep = 3
+    fun requestPhoneOTP(phoneNumber: String, userName: String) {
+        val normalizedPhone = Validators.normalizePhone(phoneNumber)
+        _signupState.value = _signupState.value.copy(isLoading = true, error = null)
+
+        viewModelScope.launch {
+            try {
+                val payload = hashMapOf(
+                    "phoneNumber" to normalizedPhone,
+                    "userName" to userName.ifBlank { "User" }
                 )
-            }
 
-            override fun onVerificationFailed(e: FirebaseException) {
+                FirebaseFunctions.getInstance()
+                    .getHttpsCallable("sendOTPFunction")
+                    .call(payload)
+                    .await()
+
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Phone verification failed."
-                )
-            }
-
-            override fun onCodeSent(
-                verificationId: String,
-                token: PhoneAuthProvider.ForceResendingToken
-            ) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    verificationId = verificationId,
-                    resendToken = token,
+                    verificationId = "TWILIO_OTP",
                     resendCooldown = 60
+                )
+            } catch (e: Exception) {
+                _signupState.value = _signupState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to dispatch verification OTP via Twilio SMS."
                 )
             }
         }
+    }
 
-        authRepository.sendPhoneOtp(
-            normalizedPhone,
-            activity,
-            callbacks,
-            state.resendToken
+    fun onPhoneOTPVerified() {
+        _signupState.value = _signupState.value.copy(
+            phoneVerified = true,
+            currentStep = 3,
+            error = null
         )
     }
 
     fun updateOtpCode(code: String) {
-        if (code.length <= 6) {
-            _signupState.value = _signupState.value.copy(otpCode = code, error = null)
+        val digitsOnly = code.filter { it.isDigit() }
+        if (digitsOnly.length <= 6) {
+            _signupState.value = _signupState.value.copy(otpCode = digitsOnly, error = null)
         }
     }
 
@@ -211,36 +212,42 @@ class AuthViewModel(
             _signupState.value = state.copy(error = "Please enter a valid 6-digit OTP.")
             return
         }
-        val verificationId = state.verificationId
-        if (verificationId == null) {
-            _signupState.value = state.copy(error = "Verification ID missing. Please resend OTP.")
-            return
-        }
 
+        val normalizedPhone = Validators.normalizePhone(state.phone)
         _signupState.value = state.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
             try {
-                val credential = authRepository.getPhoneCredential(verificationId, state.otpCode)
-                val result = authRepository.signInWithPhoneCredential(credential)
-                if (result.isSuccess) {
-                    // Sign out from phone auth — we'll create email/password auth in Step 5
-                    authRepository.signOut()
+                val payload = hashMapOf(
+                    "phoneNumber" to normalizedPhone,
+                    "otp" to state.otpCode.trim()
+                )
+
+                val result = FirebaseFunctions.getInstance()
+                    .getHttpsCallable("verifyOTPFunction")
+                    .call(payload)
+                    .await()
+
+                val data = result.getData() as? Map<*, *>
+                val isSuccess = (data?.get("success") as? Boolean) == true
+
+                if (isSuccess) {
                     _signupState.value = _signupState.value.copy(
                         isLoading = false,
                         phoneVerified = true,
-                        currentStep = 3
+                        currentStep = 3,
+                        error = null
                     )
                 } else {
                     _signupState.value = _signupState.value.copy(
                         isLoading = false,
-                        error = result.exceptionOrNull()?.message ?: "OTP verification failed."
+                        error = "Invalid OTP code. Please check and try again."
                     )
                 }
             } catch (e: Exception) {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "OTP verification failed."
+                    error = e.message ?: "OTP verification failed. Please try again."
                 )
             }
         }
@@ -425,9 +432,6 @@ class AuthViewModel(
                     accountType = "USER",
                     isChecking = false
                 )
-
-                // Sync FCM Token
-                authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.USER)
             } else {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
@@ -479,9 +483,6 @@ class AuthViewModel(
                     setupCompleted = setupDone,
                     isChecking = false
                 )
-
-                // Sync FCM Token
-                authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.USER)
             } else {
                 _loginState.value = _loginState.value.copy(
                     isLoading = false,

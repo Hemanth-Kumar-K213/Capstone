@@ -167,6 +167,21 @@ fun AppNavGraph(
                 )
             }
 
+            composable<OTPVerification> { backStackEntry ->
+                val args = backStackEntry.toRoute<OTPVerification>()
+                OTPVerificationScreen(
+                    phoneNumber = args.phoneNumber,
+                    userName = args.userName,
+                    onOTPVerified = {
+                        authViewModel.onPhoneOTPVerified()
+                        navController.navigate(UserSignupStep3) {
+                            popUpTo(UserSignupStep2) { inclusive = true }
+                        }
+                    },
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+
             composable<UserSignupStep3> {
                 UserSignupStep3Screen(
                     viewModel = authViewModel,
