@@ -29,6 +29,8 @@ import com.womensafety.system.viewmodel.LocationViewModel
 fun LocationSettingsScreen(
     viewModel: LocationViewModel,
     onNavigateToHistory: () -> Unit,
+    onNavigateToDiagnostics: () -> Unit,
+    onNavigateToMapTest: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -317,6 +319,40 @@ fun LocationSettingsScreen(
                 Icon(Icons.Filled.History, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("VIEW LOCATION HISTORY", fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Diagnostics Button
+            OutlinedButton(
+                onClick = onNavigateToDiagnostics,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = GradientAmber),
+                border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber)
+            ) {
+                Icon(Icons.Filled.GpsFixed, contentDescription = null, modifier = Modifier.size(20.dp), tint = GradientAmber)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("RUN GPS DIAGNOSTICS", fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Map Test Button
+            OutlinedButton(
+                onClick = onNavigateToMapTest,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = GradientAmber),
+                border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber)
+            ) {
+                Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(20.dp), tint = GradientAmber)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("RUN MAP TEST", fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(24.dp))

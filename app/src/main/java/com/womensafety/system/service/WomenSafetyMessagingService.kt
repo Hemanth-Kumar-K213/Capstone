@@ -65,7 +65,9 @@ class WomenSafetyMessagingService : FirebaseMessagingService() {
         val currentUserId = authManager.currentUserId ?: return
         serviceScope.launch {
             try {
+                // Save token to both user and TC collections to ensure delivery regardless of role
                 firestoreManager.saveFCMToken(currentUserId, token, "USER")
+                firestoreManager.saveFCMToken(currentUserId, token, "TRUSTED_CONTACT")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving new FCM token", e)
             }

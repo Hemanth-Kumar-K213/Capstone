@@ -50,7 +50,13 @@ class EmergencyContactViewModel(
         }
     }
 
-    fun addContact(name: String, phone: String, onSuccess: () -> Unit) {
+    fun addContact(
+        name: String,
+        phone: String,
+        isPrimary: Boolean,
+        enableEscalation: Boolean,
+        onSuccess: () -> Unit
+    ) {
         val trimmedName = name.trim()
         val normalizedPhone = Validators.normalizePhone(phone.trim())
 
@@ -66,7 +72,9 @@ class EmergencyContactViewModel(
 
         val contact = EmergencyContact(
             name = trimmedName,
-            phone = normalizedPhone
+            phone = normalizedPhone,
+            isPrimary = isPrimary,
+            enableEscalation = enableEscalation
         )
 
         viewModelScope.launch {
@@ -92,6 +100,8 @@ class EmergencyContactViewModel(
         contactId: String,
         name: String,
         phone: String,
+        isPrimary: Boolean,
+        enableEscalation: Boolean,
         onSuccess: () -> Unit
     ) {
         val trimmedName = name.trim()
@@ -109,7 +119,13 @@ class EmergencyContactViewModel(
 
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null, actionSuccess = null)
-            val result = userRepository.updateEmergencyContact(contactId, trimmedName, normalizedPhone)
+            val result = userRepository.updateEmergencyContact(
+                contactId,
+                trimmedName,
+                normalizedPhone,
+                isPrimary,
+                enableEscalation
+            )
             if (result.isSuccess) {
                 _state.value = _state.value.copy(
                     isLoading = false,

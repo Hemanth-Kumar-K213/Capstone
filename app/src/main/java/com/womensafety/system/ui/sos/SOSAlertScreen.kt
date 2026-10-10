@@ -132,13 +132,20 @@ fun SOSAlertScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                val smsCount = activeEvent?.smsSent ?: 0
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = StatusApproved, modifier = Modifier.size(18.dp))
+                    Icon(
+                        if (smsCount > 0) Icons.Filled.CheckCircle else Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = if (smsCount > 0) StatusApproved else GradientAmber,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        "Sent SMS to ${activeEvent?.smsSent ?: 0} Emergency Contacts",
+                        if (smsCount > 0) "Sent SMS to $smsCount Emergency Contact(s)"
+                        else "Cellular SMS: No emergency contacts added or SMS permission pending",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceDark
+                        color = if (smsCount > 0) OnSurfaceDark else OnSurfaceVariantDark
                     )
                 }
 
@@ -148,7 +155,7 @@ fun SOSAlertScreen(
                     Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = StatusApproved, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        "Notifying Approved Trusted Contacts via FCM",
+                        "Notifying Approved Trusted Contacts via FCM Push",
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceDark
                     )

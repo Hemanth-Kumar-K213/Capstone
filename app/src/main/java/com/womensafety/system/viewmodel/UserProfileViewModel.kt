@@ -82,6 +82,12 @@ class UserProfileViewModel(
                 it.permissionState == PermissionState.PENDING
             }
             val profile = profileResult.getOrNull()
+            if (profile != null) {
+                com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(profile)
+                com.womensafety.system.manager.SafetyMonitoringManager.setProactiveEnabled(profile.proactiveMonitoringEnabled)
+                com.womensafety.system.manager.SafetyMonitoringManager.setSafetyMode(profile.safetyMode)
+                com.womensafety.system.manager.TravelModeManager.routeDeviationToleranceMeters = profile.routeDeviationToleranceMeters
+            }
 
             _profileState.value = ProfileState(
                 userProfile = profile,
@@ -97,26 +103,67 @@ class UserProfileViewModel(
     }
 
     fun updateSafetyPreferences(
-        locationTrackingEnabled: Boolean,
-        shakeDetectionEnabled: Boolean,
-        shakeSensitivity: String,
-        sosAutoCall: Boolean = false
+        locationTrackingEnabled: Boolean = _profileState.value.userProfile?.locationTrackingEnabled ?: false,
+        shakeDetectionEnabled: Boolean = _profileState.value.userProfile?.shakeDetectionEnabled ?: false,
+        shakeSensitivity: String = _profileState.value.userProfile?.shakeSensitivity ?: "MEDIUM",
+        sosAutoCall: Boolean = _profileState.value.userProfile?.sosAutoCall ?: false,
+        proactiveMonitoringEnabled: Boolean = _profileState.value.userProfile?.proactiveMonitoringEnabled ?: false,
+        safetyMode: String = _profileState.value.userProfile?.safetyMode ?: "NORMAL",
+        routeDeviationToleranceMeters: Int = _profileState.value.userProfile?.routeDeviationToleranceMeters ?: 300,
+        activeSafetyMode: String = _profileState.value.userProfile?.activeSafetyMode ?: "REGULAR",
+        defaultSafetyMode: String = _profileState.value.userProfile?.defaultSafetyMode ?: "REGULAR",
+        autoModeSuggestionsEnabled: Boolean = _profileState.value.userProfile?.autoModeSuggestionsEnabled ?: true,
+        savedWorkplaceLatitude: Double? = _profileState.value.userProfile?.savedWorkplaceLatitude,
+        savedWorkplaceLongitude: Double? = _profileState.value.userProfile?.savedWorkplaceLongitude,
+        savedWorkplaceAddress: String? = _profileState.value.userProfile?.savedWorkplaceAddress,
+        savedHomeLatitude: Double? = _profileState.value.userProfile?.savedHomeLatitude,
+        savedHomeLongitude: Double? = _profileState.value.userProfile?.savedHomeLongitude,
+        savedHomeAddress: String? = _profileState.value.userProfile?.savedHomeAddress
     ) {
         val currentProfile = _profileState.value.userProfile ?: return
         val updatedProfile = currentProfile.copy(
             locationTrackingEnabled = locationTrackingEnabled,
             shakeDetectionEnabled = shakeDetectionEnabled,
             shakeSensitivity = shakeSensitivity,
-            sosAutoCall = sosAutoCall
+            sosAutoCall = sosAutoCall,
+            proactiveMonitoringEnabled = proactiveMonitoringEnabled,
+            safetyMode = safetyMode,
+            routeDeviationToleranceMeters = routeDeviationToleranceMeters,
+            activeSafetyMode = activeSafetyMode,
+            defaultSafetyMode = defaultSafetyMode,
+            autoModeSuggestionsEnabled = autoModeSuggestionsEnabled,
+            savedWorkplaceLatitude = savedWorkplaceLatitude,
+            savedWorkplaceLongitude = savedWorkplaceLongitude,
+            savedWorkplaceAddress = savedWorkplaceAddress,
+            savedHomeLatitude = savedHomeLatitude,
+            savedHomeLongitude = savedHomeLongitude,
+            savedHomeAddress = savedHomeAddress
         )
         _profileState.value = _profileState.value.copy(userProfile = updatedProfile)
+
+        com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(updatedProfile)
+        com.womensafety.system.manager.SafetyMonitoringManager.setProactiveEnabled(proactiveMonitoringEnabled)
+        com.womensafety.system.manager.SafetyMonitoringManager.setSafetyMode(safetyMode)
+        com.womensafety.system.manager.TravelModeManager.routeDeviationToleranceMeters = routeDeviationToleranceMeters
 
         viewModelScope.launch {
             val preferences = mapOf(
                 "locationTrackingEnabled" to locationTrackingEnabled,
                 "shakeDetectionEnabled" to shakeDetectionEnabled,
                 "shakeSensitivity" to shakeSensitivity,
-                "sosAutoCall" to sosAutoCall
+                "sosAutoCall" to sosAutoCall,
+                "proactiveMonitoringEnabled" to proactiveMonitoringEnabled,
+                "safetyMode" to safetyMode,
+                "routeDeviationToleranceMeters" to routeDeviationToleranceMeters,
+                "activeSafetyMode" to activeSafetyMode,
+                "defaultSafetyMode" to defaultSafetyMode,
+                "autoModeSuggestionsEnabled" to autoModeSuggestionsEnabled,
+                "savedWorkplaceLatitude" to savedWorkplaceLatitude,
+                "savedWorkplaceLongitude" to savedWorkplaceLongitude,
+                "savedWorkplaceAddress" to savedWorkplaceAddress,
+                "savedHomeLatitude" to savedHomeLatitude,
+                "savedHomeLongitude" to savedHomeLongitude,
+                "savedHomeAddress" to savedHomeAddress
             )
             val result = userRepository.updateSetupStatus(
                 setupCompleted = currentProfile.setupCompleted,

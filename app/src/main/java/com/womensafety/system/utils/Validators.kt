@@ -20,15 +20,20 @@ object Validators {
      */
     fun isValidPhone(phone: String): Boolean {
         if (phone.isBlank()) return false
-        val cleaned = phone.replace(" ", "").replace("-", "")
-        return cleaned.matches(Regex("^\\+[1-9]\\d{6,14}$"))
+        val cleaned = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        return cleaned.matches(Regex("^\\+[1-9]\\d{6,14}$")) || cleaned.matches(Regex("^\\d{10}$"))
     }
 
     /**
      * Normalizes a phone number to E.164 format.
      */
     fun normalizePhone(phone: String): String {
-        return phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        val cleaned = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        return if (!cleaned.startsWith("+") && cleaned.length == 10) {
+            "+91$cleaned"
+        } else {
+            cleaned
+        }
     }
 
     /**

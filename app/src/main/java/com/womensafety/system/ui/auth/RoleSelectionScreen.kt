@@ -63,7 +63,7 @@ fun RoleSelectionScreen(
             // Logo
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
-                contentDescription = "Women Safety System",
+                contentDescription = "Trinetra",
                 modifier = Modifier
                     .size(100.dp)
                     .alpha(logoAlpha.value)
@@ -72,7 +72,7 @@ fun RoleSelectionScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "WOMEN SAFETY SYSTEM",
+                text = "TRINETRA",
                 style = MaterialTheme.typography.titleLarge.copy(
                     letterSpacing = 3.sp
                 ),

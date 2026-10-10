@@ -3,6 +3,7 @@ package com.womensafety.system.ui.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -42,6 +43,37 @@ fun AppNavGraph(
     // Shared SetupWizardViewModel for all 5 setup steps
     val setupWizardViewModel: SetupWizardViewModel = viewModel()
     val emergencyContactViewModel: EmergencyContactViewModel = viewModel()
+
+    val isSafetyCheckActive by com.womensafety.system.manager.SafetyMonitoringManager.isSafetyCheckActive.collectAsState()
+    LaunchedEffect(isSafetyCheckActive) {
+        if (isSafetyCheckActive) {
+            navController.navigate(ProactivePromptScreen) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    val journeyState by com.womensafety.system.manager.TravelModeManager.journeyState.collectAsState()
+    LaunchedEffect(journeyState) {
+        if (journeyState == com.womensafety.system.manager.JourneyState.ACTIVE ||
+            journeyState == com.womensafety.system.manager.JourneyState.DEVIATION_DETECTED ||
+            journeyState == com.womensafety.system.manager.JourneyState.NO_RESPONSE
+        ) {
+            navController.navigate(ActiveJourney) {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    val activeEvent by com.womensafety.system.manager.SOSManager.activeEvent.collectAsState()
+    LaunchedEffect(activeEvent) {
+        activeEvent?.let { event ->
+            navController.navigate(SOSAlertScreen(eventId = event.id)) {
+                popUpTo(UserHome) { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
 
     // Determine if we should show bottom nav
     val userMainRoutes = listOf(
@@ -296,7 +328,8 @@ fun AppNavGraph(
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    onNavigateToTravelMode = { navController.navigate(com.womensafety.system.ui.navigation.TravelMode) }
                 )
             }
 
@@ -375,6 +408,23 @@ fun AppNavGraph(
                 com.womensafety.system.ui.location.LocationSettingsScreen(
                     viewModel = locationViewModel,
                     onNavigateToHistory = { navController.navigate(LocationHistoryScreen) },
+                    onNavigateToDiagnostics = { navController.navigate(LocationTestScreen) },
+                    onNavigateToMapTest = { navController.navigate(MapTestScreen) },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<LocationTestScreen> {
+                val locationViewModel: LocationViewModel = viewModel()
+                val currentUserId = locationViewModel.currentUserId ?: ""
+                com.womensafety.system.ui.location.LocationTestScreen(
+                    currentUserId = currentUserId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<MapTestScreen> {
+                com.womensafety.system.ui.location.MapTestScreen(
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -451,6 +501,69 @@ fun AppNavGraph(
                     userId = route.userId,
                     locationViewModel = locationViewModel,
                     sosViewModel = sosViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<SOSEventMapScreen> { backStackEntry ->
+                val route = backStackEntry.toRoute<SOSEventMapScreen>()
+                val sosViewModel: SOSViewModel = viewModel()
+                com.womensafety.system.ui.sos.SOSEventMapScreen(
+                    eventId = route.eventId,
+                    viewModel = sosViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<ProactivePromptScreen> {
+                val safetyViewModel: com.womensafety.system.viewmodel.SafetyMonitoringViewModel = viewModel()
+                com.womensafety.system.ui.safety.AreYouSafeScreen(
+                    viewModel = safetyViewModel,
+                    onNavigateToAlert = { eventId ->
+                        navController.navigate(com.womensafety.system.ui.navigation.SOSAlertScreen(eventId = eventId)) {
+                            popUpTo(com.womensafety.system.ui.navigation.UserHome) { inclusive = false }
+                        }
+                    },
+                    onNavigateToHome = {
+                        navController.navigate(com.womensafety.system.ui.navigation.UserHome) {
+                            popUpTo(com.womensafety.system.ui.navigation.UserHome) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable<TravelMode> {
+                val travelViewModel: com.womensafety.system.viewmodel.TravelViewModel = viewModel()
+                com.womensafety.system.ui.travel.TravelModeScreen(
+                    viewModel = travelViewModel,
+                    onNavigateToActiveJourney = {
+                        navController.navigate(com.womensafety.system.ui.navigation.ActiveJourney) {
+                            popUpTo(com.womensafety.system.ui.navigation.TravelMode) { inclusive = false }
+                        }
+                    },
+                    onNavigateToHistory = {
+                        navController.navigate(com.womensafety.system.ui.navigation.TravelHistory)
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<ActiveJourney> {
+                val travelViewModel: com.womensafety.system.viewmodel.TravelViewModel = viewModel()
+                com.womensafety.system.ui.travel.ActiveJourneyScreen(
+                    viewModel = travelViewModel,
+                    onNavigateToHome = {
+                        navController.navigate(com.womensafety.system.ui.navigation.UserHome) {
+                            popUpTo(com.womensafety.system.ui.navigation.UserHome) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable<TravelHistory> {
+                val travelViewModel: com.womensafety.system.viewmodel.TravelViewModel = viewModel()
+                com.womensafety.system.ui.travel.TravelHistoryScreen(
+                    viewModel = travelViewModel,
                     onBack = { navController.popBackStack() }
                 )
             }

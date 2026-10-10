@@ -161,7 +161,23 @@ class RelationshipRepository(
      * Reads from the user's trustedContactIds array, then fetches each doc.
      */
     suspend fun getRelationshipsForUser(userId: String): Result<List<Relationship>> {
-        return firestoreManager.getRelationshipsForUser(userId)
+        val rawResult = firestoreManager.getRelationshipsForUser(userId)
+        if (rawResult.isFailure) return rawResult
+
+        val list = rawResult.getOrNull() ?: emptyList()
+        val enriched = list.map { rel ->
+            val tcProfileResult = firestoreManager.getTrustedContactProfile(rel.trustedContactId)
+            val tcProfile = tcProfileResult.getOrNull()
+            if (tcProfile != null) {
+                rel.copy(
+                    trustedContactName = tcProfile.name,
+                    trustedContactPhone = tcProfile.phone
+                )
+            } else {
+                rel
+            }
+        }
+        return Result.success(enriched)
     }
 
     /**
@@ -169,7 +185,23 @@ class RelationshipRepository(
      * Reads from the TC's connectedUserIds array, then fetches each doc.
      */
     suspend fun getRelationshipsForTrustedContact(trustedContactId: String): Result<List<Relationship>> {
-        return firestoreManager.getRelationshipsForTrustedContact(trustedContactId)
+        val rawResult = firestoreManager.getRelationshipsForTrustedContact(trustedContactId)
+        if (rawResult.isFailure) return rawResult
+
+        val list = rawResult.getOrNull() ?: emptyList()
+        val enriched = list.map { rel ->
+            val userProfileResult = firestoreManager.getUserProfile(rel.userId)
+            val userProfile = userProfileResult.getOrNull()
+            if (userProfile != null) {
+                rel.copy(
+                    userName = userProfile.name,
+                    userPhone = userProfile.phone
+                )
+            } else {
+                rel
+            }
+        }
+        return Result.success(enriched)
     }
 
     /**

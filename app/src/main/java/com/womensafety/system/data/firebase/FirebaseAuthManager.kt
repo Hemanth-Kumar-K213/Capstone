@@ -239,4 +239,16 @@ class FirebaseAuthManager {
             Result.failure(e)
         }
     }
+
+    /**
+     * Fetches the current device's FCM push notification token.
+     */
+    suspend fun getFCMToken(): String? {
+        return try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+        } catch (e: Exception) {
+            android.util.Log.e("FirebaseAuthManager", "Failed to retrieve FCM token", e)
+            null
+        }
+    }
 }

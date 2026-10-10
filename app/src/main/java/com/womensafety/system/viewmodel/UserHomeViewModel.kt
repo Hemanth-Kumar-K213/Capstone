@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.womensafety.system.data.model.UserProfile
 import com.womensafety.system.data.model.WeeklyUid
+import com.womensafety.system.data.model.SafetyMode
 import com.womensafety.system.data.repository.AuthRepository
 import com.womensafety.system.data.repository.RelationshipRepository
 import com.womensafety.system.data.repository.UidRepository
@@ -45,6 +46,9 @@ class UserHomeViewModel(
             // Load user profile
             val profileResult = userRepository.getUserProfile(userId)
             val profile = profileResult.getOrNull()
+            if (profile != null) {
+                com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(profile)
+            }
 
             // Load current UID (read-only from backend, or dev fallback)
             var uidResult = uidRepository.getCurrentUid(userId)
@@ -75,6 +79,61 @@ class UserHomeViewModel(
                 isLoading = false,
                 error = if (profileResult.isFailure) profileResult.exceptionOrNull()?.message else null
             )
+        }
+    }
+
+    fun updateActiveSafetyMode(mode: SafetyMode) {
+        val userId = authRepository.currentUserId ?: return
+        viewModelScope.launch {
+            val currentProfile = _homeState.value.userProfile
+            if (currentProfile != null) {
+                val updated = currentProfile.copy(activeSafetyMode = mode.name)
+                _homeState.value = _homeState.value.copy(userProfile = updated)
+                com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(updated)
+            }
+            userRepository.updateUserProfile(userId, mapOf("activeSafetyMode" to mode.name))
+        }
+    }
+
+    fun saveWorkplaceLocation(latitude: Double, longitude: Double, address: String) {
+        val userId = authRepository.currentUserId ?: return
+        viewModelScope.launch {
+            val currentProfile = _homeState.value.userProfile
+            if (currentProfile != null) {
+                val updated = currentProfile.copy(
+                    savedWorkplaceLatitude = latitude,
+                    savedWorkplaceLongitude = longitude,
+                    savedWorkplaceAddress = address
+                )
+                _homeState.value = _homeState.value.copy(userProfile = updated)
+                com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(updated)
+            }
+            userRepository.updateUserProfile(userId, mapOf(
+                "savedWorkplaceLatitude" to latitude,
+                "savedWorkplaceLongitude" to longitude,
+                "savedWorkplaceAddress" to address
+            ))
+        }
+    }
+
+    fun saveHomeLocation(latitude: Double, longitude: Double, address: String) {
+        val userId = authRepository.currentUserId ?: return
+        viewModelScope.launch {
+            val currentProfile = _homeState.value.userProfile
+            if (currentProfile != null) {
+                val updated = currentProfile.copy(
+                    savedHomeLatitude = latitude,
+                    savedHomeLongitude = longitude,
+                    savedHomeAddress = address
+                )
+                _homeState.value = _homeState.value.copy(userProfile = updated)
+                com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(updated)
+            }
+            userRepository.updateUserProfile(userId, mapOf(
+                "savedHomeLatitude" to latitude,
+                "savedHomeLongitude" to longitude,
+                "savedHomeAddress" to address
+            ))
         }
     }
 }

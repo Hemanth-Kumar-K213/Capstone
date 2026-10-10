@@ -159,6 +159,7 @@ class TrustedContactAuthViewModel(
             )
 
             if (profileResult.isSuccess) {
+                authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.TRUSTED_CONTACT)
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
                     accountCreated = true
@@ -242,6 +243,7 @@ class TrustedContactAuthViewModel(
         viewModelScope.launch {
             val result = authRepository.signInWithPhoneCredential(credential)
             if (result.isSuccess) {
+                authRepository.syncFCMToken(com.womensafety.system.data.model.AccountType.TRUSTED_CONTACT)
                 _loginState.value = _loginState.value.copy(
                     isLoading = false,
                     isLoggedIn = true

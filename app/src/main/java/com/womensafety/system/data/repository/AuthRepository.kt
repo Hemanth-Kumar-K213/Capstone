@@ -227,6 +227,15 @@ class AuthRepository(
 
         return Result.success(null)
     }
+
+    /**
+     * Retrieves the device FCM push token and saves it to the user's Firestore profile.
+     */
+    suspend fun syncFCMToken(accountType: AccountType): Result<Unit> {
+        val uid = currentUserId ?: return Result.success(Unit)
+        val token = authManager.getFCMToken() ?: return Result.success(Unit)
+        return firestoreManager.saveFCMToken(uid, token, accountType.name)
+    }
 }
 
 enum class DuplicateCheckResult {

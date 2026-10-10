@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Women Safety System</string>
+    <string name="app_name">Trinetra</string>
 
     <!-- Role Selection -->
     <string name="role_selection_title">Who are you?</string>
@@ -62,7 +62,7 @@
     <string name="uid_status_expired">Expired</string>
     <string name="uid_changes_weekly">This UID changes automatically every week.</string>
     <string name="share_current_uid">Share Current UID</string>
-    <string name="uid_share_message">My current Women Safety UID is: %1$s</string>
+    <string name="uid_share_message">My current Trinetra UID is: %1$s</string>
     <string name="uid_share_warning">Your UID is used to connect Trusted Contacts to your account. Do not share it publicly.</string>
     <string name="uid_generating">Generating your Safety UID…</string>
 

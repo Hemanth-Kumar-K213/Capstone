@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -42,6 +44,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -73,10 +76,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
 
-    // Location & Maps
+    // Location & OpenStreetMap (OSMDroid - 100% Free & Open Source)
     implementation(libs.play.services.location)
-    implementation(libs.play.services.maps)
-    implementation(libs.maps.compose)
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
 
     // Firebase BOM
     implementation(platform(libs.firebase.bom))

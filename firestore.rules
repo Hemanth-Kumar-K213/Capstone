@@ -19,9 +19,12 @@ service cloud.firestore {
 
     match /users/{userId} {
 
-      // A user can read only their own profile.
+      // A user can read only their own profile, or a connected trusted contact can read if a relationship exists.
       allow read: if isSignedIn()
-                  && request.auth.uid == userId;
+                  && (
+                    request.auth.uid == userId
+                    || exists(/$(/databases/$(database)/documents/relationships/$(userId)_$(request.auth.uid)))
+                  );
 
       // User creates only their own USER profile.
       allow create: if isSignedIn()
@@ -48,9 +51,12 @@ service cloud.firestore {
 
     match /trustedContacts/{tcId} {
 
-      // Trusted contact can access only their own profile.
+      // Trusted contact can access only their own profile, or connected user can read if relationship exists.
       allow read: if isSignedIn()
-                  && request.auth.uid == tcId;
+                  && (
+                    request.auth.uid == tcId
+                    || exists(/$(/databases/$(database)/documents/relationships/$(request.auth.uid)_$(tcId)))
+                  );
 
       // Trusted contact creates only their own profile.
       allow create: if isSignedIn()
@@ -238,6 +244,48 @@ service cloud.firestore {
 
       // Authenticated users (User and approved Trusted Contacts) can read SOS events
       allow read: if isSignedIn();
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // RISK EVENTS
+    // riskEvents/{eventId}
+    // ============================================================
+
+    match /riskEvents/{eventId} {
+      // User can create their own Risk event
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User who created the Risk event can update it
+      allow update: if isSignedIn()
+                    && resource.data.userId == request.auth.uid;
+
+      // User can read their own Risk events
+      allow read: if isSignedIn()
+                  && resource.data.userId == request.auth.uid;
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // JOURNEYS
+    // journeys/{journeyId}
+    // ============================================================
+
+    match /journeys/{journeyId} {
+      // User can create their own journey log
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User can update/read their own journey log
+      allow update, read: if isSignedIn()
+                          && resource.data.userId == request.auth.uid;
 
       // No deletion
       allow delete: if false;

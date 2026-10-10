@@ -59,6 +59,7 @@
             </intent-filter>
         </service>
 
+        <!-- OpenStreetMap / OSMDroid requires no API key or meta-data configuration -->
     </application>
 
 </manifest>

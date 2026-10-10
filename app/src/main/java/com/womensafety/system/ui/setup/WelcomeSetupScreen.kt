@@ -53,7 +53,7 @@ fun WelcomeSetupScreen(
         // App Logo
         Image(
             painter = painterResource(id = R.drawable.app_logo),
-            contentDescription = "Women Safety System Logo",
+            contentDescription = "Trinetra Logo",
             modifier = Modifier
                 .size(110.dp)
         )
@@ -61,7 +61,7 @@ fun WelcomeSetupScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            text = "Let's Set Up Your Safety System",
+            text = "Let's Set Up Your Trinetra",
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontSize = 26.sp,
                 lineHeight = 32.sp
