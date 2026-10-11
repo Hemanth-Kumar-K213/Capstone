@@ -68,6 +68,21 @@ class LocationTrackingService : Service() {
         var isSosMode = false
             private set
 
+        var cachedWeeklyUid: String = ""
+            private set
+
+        var cachedUserName: String = "User"
+            private set
+
+        fun setTargetUid(uid: String, name: String = "") {
+            if (uid.isNotBlank()) {
+                cachedWeeklyUid = uid.trim()
+            }
+            if (name.isNotBlank()) {
+                cachedUserName = name.trim()
+            }
+        }
+
         fun startTracking(context: Context, intervalMs: Long = DEFAULT_NORMAL_INTERVAL_MS) {
             val intent = Intent(context, LocationTrackingService::class.java).apply {
                 action = ACTION_START_TRACKING
@@ -127,8 +142,6 @@ class LocationTrackingService : Service() {
     private val authManager = FirebaseAuthManager()
 
     private var currentIntervalMs = DEFAULT_NORMAL_INTERVAL_MS
-    private var cachedUserName: String = "User"
-    private var cachedWeeklyUid: String = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -147,21 +160,18 @@ class LocationTrackingService : Service() {
             val currentUserId = authManager.currentUserId ?: return@launch
             val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
             if (userProfile != null) {
-                cachedUserName = userProfile.name
-                if (userProfile.currentWeeklyUid.isNotBlank()) {
-                    cachedWeeklyUid = userProfile.currentWeeklyUid
-                }
+                setTargetUid(userProfile.currentWeeklyUid, userProfile.name)
             }
             if (cachedWeeklyUid.isBlank()) {
                 val activeUid = uidRepository.getCurrentUid(currentUserId).getOrNull()
                 if (activeUid != null && activeUid.uid.isNotBlank()) {
-                    cachedWeeklyUid = activeUid.uid
+                    setTargetUid(activeUid.uid, activeUid.userName)
                 }
             }
             if (cachedWeeklyUid.isBlank()) {
                 val devUid = uidRepository.generateDevUid(currentUserId, cachedUserName).getOrNull()
                 if (devUid != null && devUid.uid.isNotBlank()) {
-                    cachedWeeklyUid = devUid.uid
+                    setTargetUid(devUid.uid, devUid.userName)
                 }
             }
             Log.d(TAG, "Location tracking initialized for UID: $cachedWeeklyUid, User: $cachedUserName")
@@ -312,11 +322,16 @@ class LocationTrackingService : Service() {
             if (cachedWeeklyUid.isBlank()) {
                 val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
                 if (userProfile != null && userProfile.currentWeeklyUid.isNotBlank()) {
-                    cachedWeeklyUid = userProfile.currentWeeklyUid
+                    setTargetUid(userProfile.currentWeeklyUid, userProfile.name)
                 } else {
                     val activeUid = uidRepository.getCurrentUid(currentUserId).getOrNull()
                     if (activeUid != null && activeUid.uid.isNotBlank()) {
-                        cachedWeeklyUid = activeUid.uid
+                        setTargetUid(activeUid.uid, activeUid.userName)
+                    } else {
+                        val devUid = uidRepository.generateDevUid(currentUserId, cachedUserName).getOrNull()
+                        if (devUid != null && devUid.uid.isNotBlank()) {
+                            setTargetUid(devUid.uid, devUid.userName)
+                        }
                     }
                 }
             }

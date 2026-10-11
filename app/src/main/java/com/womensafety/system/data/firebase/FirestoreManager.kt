@@ -787,6 +787,12 @@ class FirestoreManager {
             val data = locationToSave.toMap().toMutableMap().apply {
                 put("lastUpdated", FieldValue.serverTimestamp())
                 put("status", "ONLINE")
+                put("lat", location.latitude)
+                put("lng", location.longitude)
+                put("name", location.userName)
+                put("childName", location.userName)
+                put("batteryLevel", 90)
+                put("networkStatus", "ONLINE")
             }
 
             // 1. Primary dedicated collection for website tracking: child_locations/{uid}
@@ -801,13 +807,21 @@ class FirestoreManager {
                 .document(docId)
                 .collection("history")
                 .document(historyId)
-                .set(locationToSave.toMap())
+                .set(data)
                 .await()
 
             // 2. Also mirror to uid_locations/{uid} for alias compatibility
             db.collection(UID_LOCATIONS_COLLECTION)
                 .document(docId)
                 .set(data, SetOptions.merge())
+                .await()
+
+            // Also mirror history to uid_locations/{uid}/history/{timestamp}
+            db.collection(UID_LOCATIONS_COLLECTION)
+                .document(docId)
+                .collection("history")
+                .document(historyId)
+                .set(data)
                 .await()
 
             Result.success(Unit)

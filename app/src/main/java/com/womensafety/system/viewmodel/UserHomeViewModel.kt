@@ -92,6 +92,11 @@ class UserHomeViewModel(
                 )
             }
 
+            // Keep LocationTrackingService synchronized with the exact active UID
+            if (uid != null) {
+                com.womensafety.system.service.LocationTrackingService.setTargetUid(uid.uid, uid.userName)
+            }
+
             // Load TC count
             val countResult = relationshipRepository.getApprovedContactCount(userId)
             val count = countResult.getOrNull() ?: 0

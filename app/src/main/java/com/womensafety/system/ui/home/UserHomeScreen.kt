@@ -45,8 +45,19 @@ fun UserHomeScreen(
     onNavigateToLiveMap: (String) -> Unit = {}
 ) {
     val state by viewModel.homeState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.loadHomeData() }
+
+    LaunchedEffect(state.userProfile?.locationTrackingEnabled, state.currentUid?.uid) {
+        val uid = state.currentUid?.uid
+        if (!uid.isNullOrBlank()) {
+            LocationTrackingService.setTargetUid(uid, state.currentUid?.userName ?: "")
+        }
+        if (state.userProfile != null && state.userProfile?.locationTrackingEnabled != false && !LocationTrackingService.isRunning) {
+            LocationTrackingService.startTracking(context)
+        }
+    }
 
     if (state.isLoading) {
         Box(

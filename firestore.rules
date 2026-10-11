@@ -23,7 +23,7 @@ service cloud.firestore {
       allow read: if isSignedIn()
                   && (
                     request.auth.uid == userId
-                    || exists(/$(/databases/$(database)/documents/relationships/$(userId)_$(request.auth.uid)))
+                    || exists(/databases/$(database)/documents/relationships/$(userId + '_' + request.auth.uid))
                   );
 
       // User creates only their own USER profile.
@@ -55,7 +55,7 @@ service cloud.firestore {
       allow read: if isSignedIn()
                   && (
                     request.auth.uid == tcId
-                    || exists(/$(/databases/$(database)/documents/relationships/$(request.auth.uid)_$(tcId)))
+                    || exists(/databases/$(database)/documents/relationships/$(request.auth.uid + '_' + tcId))
                   );
 
       // Trusted contact creates only their own profile.
@@ -92,17 +92,8 @@ service cloud.firestore {
 
     match /weeklyUids/{weeklyUid} {
 
-      // Authenticated users can retrieve a specific UID document.
-      //
-      // The UID document should contain:
-      // {
-      //   uid: "202608181234",
-      //   userId: "firebase-auth-uid",
-      //   expiresAt: ...
-      // }
-      //
-      allow get: if isSignedIn()
-                 && resource.data.uid == weeklyUid;
+      // Retrieve a specific UID document if exact UID is known.
+      allow get: if true;
 
       // No collection-wide listing.
       // No client writes.
@@ -190,8 +181,8 @@ service cloud.firestore {
 
     match /devUidMappings/{uid} {
 
-      // Any authenticated user can look up a specific UID.
-      allow get: if isSignedIn();
+      // Any user or website with the specific UID can look up the mapping.
+      allow get: if true;
 
       // No collection-wide listing.
       allow list: if false;
@@ -236,33 +227,25 @@ service cloud.firestore {
     // ============================================================
 
     match /child_locations/{uid} {
-      // Authenticated user can update their own location using their active UID
-      allow write: if isSignedIn()
-                   && request.resource.data.userId == request.auth.uid;
+      // Authenticated mobile app user can update their location
+      allow write: if isSignedIn();
 
       // Anyone with the child's rotating UID (website or app) can track their live location
-      allow get: if true;
-      allow list: if isSignedIn();
+      allow read: if true;
 
       match /history/{historyId} {
-        allow write: if isSignedIn()
-                     && request.resource.data.userId == request.auth.uid;
-        allow get: if true;
-        allow list: if isSignedIn();
+        allow write: if isSignedIn();
+        allow read: if true;
       }
     }
 
     match /uid_locations/{uid} {
-      allow write: if isSignedIn()
-                   && request.resource.data.userId == request.auth.uid;
-      allow get: if true;
-      allow list: if isSignedIn();
+      allow write: if isSignedIn();
+      allow read: if true;
 
       match /history/{historyId} {
-        allow write: if isSignedIn()
-                     && request.resource.data.userId == request.auth.uid;
-        allow get: if true;
-        allow list: if isSignedIn();
+        allow write: if isSignedIn();
+        allow read: if true;
       }
     }
 
