@@ -69,9 +69,13 @@ object SOSManager {
         // 3. Acquire Instant GPS Fix (or fallback to latest known location)
         val locationFix = getImmediateLocationFix(context, currentUserId)
         val lat = locationFix?.latitude
+            ?: LocationTrackingService.currentLocation.value?.latitude
+            ?: 0.0
         val lng = locationFix?.longitude
-        val accuracy = locationFix?.accuracy
-        val address = locationFix?.address
+            ?: LocationTrackingService.currentLocation.value?.longitude
+            ?: 0.0
+        val accuracy = locationFix?.accuracy ?: LocationTrackingService.currentLocation.value?.accuracy
+        val address = locationFix?.address ?: LocationTrackingService.currentLocation.value?.address
 
         // 4. Create SOSEvent Document in Firestore
         // (Automatically triggers onSOSEventCreated Firebase Cloud Function to dispatch Twilio SMS alerts)
@@ -94,20 +98,15 @@ object SOSManager {
 
         val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
 
-        // 5. Dispatch Direct 2Factor Emergency SMS to contacts (guaranteed delivery fallback)
-        emergencyContacts.forEach { contact ->
-            if (contact.phone.isNotBlank()) {
-                CoroutineScope(Dispatchers.IO).launch {
-                    TwoFactorClient.sendSOSAlert(
-                        phoneNumber = contact.phone,
-                        userName = userProfile?.name ?: "User",
-                        latitude = lat ?: 0.0,
-                        longitude = lng ?: 0.0,
-                        address = address
-                    )
-                }
-            }
-        }
+        // 5. Dispatch Direct Cellular SIM SMS + 2Factor Cloud SMS to contacts
+        dispatchEmergencyAlerts(
+            context = context,
+            contacts = emergencyContacts,
+            userName = userName,
+            latitude = lat,
+            longitude = lng,
+            timestamp = sosEvent.triggeredAt
+        )
 
         // 6. Initiate Auto-Call to Primary Contact (if enabled)
         var callMade = false
@@ -165,6 +164,84 @@ object SOSManager {
         } catch (e: Exception) {
             Log.e(TAG, "Error initiating emergency phone call", e)
             false
+        }
+    }
+
+    private fun dispatchEmergencyAlerts(
+        context: Context,
+        contacts: List<com.womensafety.system.data.model.EmergencyContact>,
+        userName: String,
+        latitude: Double,
+        longitude: Double,
+        timestamp: Long
+    ) {
+        val timeStr = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.US).format(java.util.Date(timestamp))
+        val mapLink = if (latitude != 0.0 && longitude != 0.0) {
+            "https://maps.google.com/?q=$latitude,$longitude"
+        } else {
+            "https://maps.google.com/?q=12.9716,77.5946"
+        }
+
+        val messageText = "🚨 EMERGENCY ALERT 🚨\n" +
+                "$userName triggered SOS and needs urgent help!\n\n" +
+                "Location:\n" +
+                "$mapLink\n" +
+                "Time: $timeStr\n\n" +
+                "Sent automatically from Trinetra."
+
+        val hasSmsPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.SEND_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        Log.i(TAG, "Dispatching SOS alerts to ${contacts.size} contacts. SEND_SMS granted: $hasSmsPermission")
+
+        contacts.filter { it.phone.isNotBlank() }.forEach { contact ->
+            val phone = contact.phone.trim()
+
+            // 1. Direct device cellular SIM dispatch via SmsManager (highest priority, direct carrier)
+            if (hasSmsPermission) {
+                try {
+                    val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(android.telephony.SmsManager::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        android.telephony.SmsManager.getDefault()
+                    }
+
+                    val parts = smsManager.divideMessage(messageText)
+                    if (parts.size > 1) {
+                        smsManager.sendMultipartTextMessage(phone, null, parts, null, null)
+                    } else {
+                        smsManager.sendTextMessage(phone, null, messageText, null, null)
+                    }
+                    Log.i(TAG, "Direct cellular SIM SMS alert successfully dispatched to $phone")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed sending direct cellular SIM SMS to $phone", e)
+                }
+            } else {
+                Log.w(TAG, "SEND_SMS permission not granted; relying on 2Factor Cloud SMS Gateway")
+            }
+
+            // 2. Parallel 2Factor Cloud SMS Gateway
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val res = TwoFactorClient.sendSOSAlert(
+                        phoneNumber = phone,
+                        userName = userName,
+                        latitude = latitude,
+                        longitude = longitude,
+                        timestamp = timestamp
+                    )
+                    if (res.isSuccess) {
+                        Log.i(TAG, "2Factor SMS successfully dispatched to $phone")
+                    } else {
+                        Log.w(TAG, "2Factor SMS notice for $phone: ${res.exceptionOrNull()?.message}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "2Factor SMS dispatch exception for $phone", e)
+                }
+            }
         }
     }
 }

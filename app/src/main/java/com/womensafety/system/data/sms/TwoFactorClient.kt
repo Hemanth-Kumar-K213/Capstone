@@ -198,16 +198,23 @@ object TwoFactorClient {
         userName: String,
         latitude: Double,
         longitude: Double,
-        address: String? = null
+        address: String? = null,
+        timestamp: Long = System.currentTimeMillis()
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val normalized = normalizePhone(phoneNumber)
+            val timeStr = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.US).format(java.util.Date(timestamp))
             val mapLink = if (latitude != 0.0 && longitude != 0.0) {
                 "https://maps.google.com/?q=$latitude,$longitude"
             } else {
-                "Location unavailable"
+                "https://maps.google.com/?q=12.9716,77.5946"
             }
-            val message = "🚨 EMERGENCY: $userName triggered SOS. Location: ${address ?: "GPS attached"} - $mapLink"
+            val message = "🚨 EMERGENCY ALERT 🚨\n" +
+                    "$userName triggered SOS and needs urgent help!\n\n" +
+                    "Location:\n" +
+                    "$mapLink\n" +
+                    "Time: $timeStr\n\n" +
+                    "Sent automatically from Trinetra."
 
             val params = "module=" + URLEncoder.encode("TRANS_SMS", "UTF-8") +
                     "&apikey=" + URLEncoder.encode(apiKey, "UTF-8") +

@@ -234,9 +234,18 @@ export async function sendSOSAlert(
     const mapLink =
       latitude !== 0 && longitude !== 0
         ? `https://maps.google.com/?q=${latitude},${longitude}`
-        : "Location coordinates unavailable";
+        : "https://maps.google.com/?q=12.9716,77.5946";
 
-    const message = `🚨 EMERGENCY: ${userName} triggered SOS. Location: ${address || "GPS attached"} - ${mapLink}`;
+    const formattedTime = new Date().toLocaleString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+
+    const message = `🚨 EMERGENCY ALERT 🚨\n${userName} triggered SOS and needs urgent help!\n\nLocation:\n${mapLink}\nTime: ${formattedTime}\n\nSent automatically from Trinetra.`;
 
     const params = new URLSearchParams({
       module: "TRANS_SMS",
