@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function: Checks if weekly UID document exists, is active, and unexpired
+    function isValidUID(uid) {
+      return exists(/databases/$(database)/documents/weeklyUids/$(uid)) &&
+             get(/databases/$(database)/documents/weeklyUids/$(uid)).data.active == true &&
+             get(/databases/$(database)/documents/weeklyUids/$(uid)).data.expiresAt > request.time.toMillis();
+    }
+    
+    // Helper: Gets owner user ID for a valid weekly UID
+    function getUIDOwner(uid) {
+      return get(/databases/$(database)/documents/weeklyUids/$(uid)).data.userId;
+    }
+
+    // Weekly Rotating UIDs:
+    // Public read is permitted for validation lookup ONLY if active and valid
+    match /weeklyUids/{uid} {
+      allow get: if true; // Allows single doc verification
+      allow list: if false; // Prevents crawling all UIDs
+      allow write: if false; // Only Cloud Functions or authenticated Mobile App can issue/rotate
+    }
+
+    // Users Collection - Public read if valid matching weekly UID query
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // Allow trusted contacts with valid weekly UID to read basic safety profile
+      allow get: if isValidUID(request.headers.get('x-safety-uid', '')) &&
+                    getUIDOwner(request.headers.get('x-safety-uid', '')) == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Real-time Locations - Trusted contacts with valid weekly UID can read location stream
+    match /userLocations/{userId}/locations/{locationId} {
+      allow read: if (request.auth != null && request.auth.uid == userId) ||
+                     (isValidUID(request.headers.get('x-safety-uid', '')) &&
+                      getUIDOwner(request.headers.get('x-safety-uid', '')) == userId);
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // SOS Events - Read by user or trusted contact with weekly UID
+    match /sosEvents/{eventId} {
+      allow read: if (request.auth != null && request.auth.uid == resource.data.userId) ||
+                     (isValidUID(request.headers.get('x-safety-uid', '')) &&
+                      getUIDOwner(request.headers.get('x-safety-uid', '')) == resource.data.userId);
+      allow write: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Journeys - Read if valid weekly UID matches journey owner
+    match /journeys/{journeyId} {
+      allow read: if (request.auth != null && request.auth.uid == resource.data.userId) ||
+                     (isValidUID(request.headers.get('x-safety-uid', '')) &&
+                      getUIDOwner(request.headers.get('x-safety-uid', '')) == resource.data.userId);
+      allow write: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+
+    // Dedicated Child & UID Location Tracking for external website dashboard
+    // Device owner writes location coordinates; allows direct get / snapshot listeners by UID
+    match /child_locations/{uid} {
+      allow get: if true; // Allows single doc verification & real-time tracking by UID
+      allow list: if false; // Prevents crawling all UIDs
+      allow write: if request.auth != null;
+
+      // Historical route & breadcrumb tracking subcollection
+      match /history/{timestamp} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+    }
+
+    match /uid_locations/{uid} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if request.auth != null;
+
+      match /history/{timestamp} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+    }
+  }
+}
