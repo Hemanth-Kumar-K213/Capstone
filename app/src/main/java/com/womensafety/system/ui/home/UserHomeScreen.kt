@@ -323,8 +323,20 @@ fun UserHomeScreen(
                                     color = if (state.userProfile?.locationTrackingEnabled == true) StatusApproved else OnSurfaceVariantDark
                                 )
                             }
-                            TextButton(onClick = onNavigateToLocationSettings) {
-                                Text("Configure", color = GradientAmber, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(
+                                    onClick = {
+                                        val target = state.currentUid?.uid?.ifBlank { state.userProfile?.currentWeeklyUid ?: state.userProfile?.authUserId ?: "" } ?: ""
+                                        onNavigateToLiveMap(target)
+                                    }
+                                ) {
+                                    Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(16.dp), tint = GradientAmber)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Map", color = GradientAmber, fontWeight = FontWeight.Bold)
+                                }
+                                TextButton(onClick = onNavigateToLocationSettings) {
+                                    Text("Configure", color = OnSurfaceVariantDark, fontWeight = FontWeight.Normal)
+                                }
                             }
                         }
                     }
@@ -663,31 +675,30 @@ private fun SafetyUidCard(
                 color = androidx.compose.ui.graphics.Color(0xFF10B981),
                 fontWeight = FontWeight.Medium
             )
-            if (currentUidStr.isNotBlank()) {
-                Spacer(modifier = Modifier.height(14.dp))
-                OutlinedButton(
-                    onClick = {
-                        val target = currentUidStr.ifBlank { state.userProfile?.authUserId ?: "" }
-                        onNavigateToLiveMap(target)
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = GradientGold
-                    )
-                ) {
-                    Icon(
-                        Icons.Filled.MyLocation,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = GradientGold
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        "OPEN LIVE RADAR MAP",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+            Spacer(modifier = Modifier.height(14.dp))
+            Button(
+                onClick = {
+                    val target = currentUidStr.ifBlank { state.userProfile?.currentWeeklyUid ?: state.userProfile?.authUserId ?: "" }
+                    onNavigateToLiveMap(target)
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = GradientAmber
+                )
+            ) {
+                Icon(
+                    Icons.Filled.MyLocation,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = androidx.compose.ui.graphics.Color.Black
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "OPEN LIVE RADAR MAP",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = androidx.compose.ui.graphics.Color.Black
+                )
             }
         }
     }

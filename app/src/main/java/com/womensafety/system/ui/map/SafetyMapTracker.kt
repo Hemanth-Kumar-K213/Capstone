@@ -21,12 +21,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -146,21 +147,17 @@ class LivelyPulseOverlay(
 
         // 5. Specular highlight center point
         canvas.drawCircle(cx, cy, 5f, glintPaint)
-
-        // Trigger continuous 60fps radar animation while live
-        if (isLive) {
-            mapView.postInvalidateOnAnimation()
-        }
     }
 }
 
 /**
  * Production-ready Composable wrapping OSMDroid MapView for OpenStreetMap rendering.
  * Features:
- * - Lively pulsing radar beacon marker with 60fps animations
+ * - Lively pulsing radar beacon marker with smooth animation
+ * - Guaranteed map initialization and tile streaming with onResume/onPause lifecycle
+ * - Safe fallback coordinates (India/Bangalore) if GPS fix is pending
  * - Live 10-second stream status badge with dynamic pulsing dot
- * - Smooth camera navigation and auto-follow
- * - Recenter FAB and quick zoom controls
+ * - Smooth camera navigation, recenter FAB, and quick zoom controls
  * 100% Free & Open-Source (No Google Maps API keys or billing).
  */
 @Composable
@@ -168,7 +165,7 @@ fun SafetyMapTracker(
     userLatitude: Double,
     userLongitude: Double,
     modifier: Modifier = Modifier.fillMaxSize(),
-    zoomLevel: Double = 17.5,
+    zoomLevel: Double = 17.0,
     markerTitle: String = "User Location",
     uid: String? = null,
     bearing: Float? = null,
@@ -177,6 +174,7 @@ fun SafetyMapTracker(
     enableZoomControls: Boolean = true
 ) {
     val context = LocalContext.current
+    val fallbackCenter = remember { GeoPoint(12.9716, 77.5946) }
 
     // Initialize OSMDroid configuration with application context and package User-Agent
     DisposableEffect(Unit) {
@@ -189,6 +187,24 @@ fun SafetyMapTracker(
     var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
     var trackingMarker by remember { mutableStateOf<Marker?>(null) }
     var pulseOverlay by remember { mutableStateOf<LivelyPulseOverlay?>(null) }
+
+    // Ensure OSMDroid tile downloader threads are resumed and paused with Compose lifecycle
+    DisposableEffect(mapViewInstance) {
+        mapViewInstance?.onResume()
+        onDispose {
+            mapViewInstance?.onPause()
+        }
+    }
+
+    // Smooth ~25fps ticker for pulsing radar animation that doesn't starve tile loaders
+    LaunchedEffect(isLive, mapViewInstance) {
+        if (isLive) {
+            while (isActive) {
+                delay(40)
+                mapViewInstance?.postInvalidate()
+            }
+        }
+    }
 
     // Pulsing animation for the Compose Live Badge
     val infiniteTransition = rememberInfiniteTransition(label = "live_badge_pulse")
@@ -253,9 +269,34 @@ fun SafetyMapTracker(
                     setMultiTouchControls(true)
                     zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
                     controller.setZoom(zoomLevel)
-                    if (userLatitude != 0.0 || userLongitude != 0.0) {
-                        controller.setCenter(GeoPoint(userLatitude, userLongitude))
+
+                    val startPoint = if (userLatitude != 0.0 || userLongitude != 0.0) {
+                        GeoPoint(userLatitude, userLongitude)
+                    } else {
+                        fallbackCenter
                     }
+                    controller.setCenter(startPoint)
+
+                    if (userLatitude != 0.0 || userLongitude != 0.0) {
+                        val overlay = LivelyPulseOverlay(
+                            geoPoint = startPoint,
+                            bearing = bearing,
+                            isLive = isLive
+                        )
+                        overlays.add(overlay)
+                        pulseOverlay = overlay
+
+                        val marker = Marker(this).apply {
+                            position = startPoint
+                            title = markerTitle
+                            snippet = if (!uid.isNullOrBlank()) "UID: $uid (10s live GPS)" else "Live Tracking Active"
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        }
+                        overlays.add(marker)
+                        trackingMarker = marker
+                    }
+
+                    onResume()
                     mapViewInstance = this
                 }
             },
@@ -366,9 +407,12 @@ fun SafetyMapTracker(
                 // Recenter / Lock on user button
                 FloatingActionButton(
                     onClick = {
-                        if (userLatitude != 0.0 || userLongitude != 0.0) {
-                            mapViewInstance?.controller?.animateTo(GeoPoint(userLatitude, userLongitude))
+                        val targetPoint = if (userLatitude != 0.0 || userLongitude != 0.0) {
+                            GeoPoint(userLatitude, userLongitude)
+                        } else {
+                            fallbackCenter
                         }
+                        mapViewInstance?.controller?.animateTo(targetPoint)
                     },
                     modifier = Modifier.size(46.dp),
                     shape = CircleShape,

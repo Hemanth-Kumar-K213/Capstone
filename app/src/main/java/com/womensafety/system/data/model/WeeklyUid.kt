@@ -44,6 +44,17 @@ data class WeeklyUid(
             return false
         }
 
+    fun toMap(): Map<String, Any?> = mapOf(
+        "userId" to userId,
+        "uid" to uid,
+        "userName" to userName,
+        "generatedAt" to generatedAt,
+        "expiresAt" to expiresAt,
+        "active" to active,
+        "retiredAt" to retiredAt,
+        "replacedBy" to replacedBy
+    )
+
     companion object {
         const val TRANSITION_GRACE_PERIOD_MS = 2 * 60 * 60 * 1000L // 2-hour transition grace period
 

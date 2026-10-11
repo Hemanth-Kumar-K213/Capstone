@@ -348,42 +348,75 @@ class FirestoreManager {
             if (!profileDoc.exists()) return Result.success(null)
 
             val currentUid = profileDoc.data?.get("currentWeeklyUid") as? String
-            if (currentUid.isNullOrBlank()) return Result.success(null)
+            val userName = profileDoc.data?.get("name") as? String ?: ""
 
-            // Step 1: Check authoritative production collection weeklyUids FIRST
-            val uidDoc = db.collection(WEEKLY_UIDS_COLLECTION)
-                .document(currentUid)
-                .get()
-                .await()
+            if (!currentUid.isNullOrBlank()) {
+                // Step 1: Check weeklyUids
+                try {
+                    val uidDoc = db.collection(WEEKLY_UIDS_COLLECTION)
+                        .document(currentUid)
+                        .get()
+                        .await()
 
-            if (uidDoc.exists()) {
-                val data = uidDoc.data ?: return Result.success(null)
-                val weeklyUid = WeeklyUid.fromMap(data)
-                return if (weeklyUid.isCurrentlyActive) {
-                    Result.success(weeklyUid)
-                } else {
-                    Result.success(null)
+                    if (uidDoc.exists()) {
+                        val data = uidDoc.data
+                        if (data != null) {
+                            val weeklyUid = WeeklyUid.fromMap(data)
+                            if (weeklyUid.isCurrentlyActive) {
+                                return Result.success(weeklyUid)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "weeklyUids check skipped: ${e.message}")
                 }
+
+                // Step 2: Fall back to devUidMappings
+                try {
+                    val devDoc = db.collection(DEV_UID_MAPPINGS_COLLECTION)
+                        .document(currentUid)
+                        .get()
+                        .await()
+
+                    if (devDoc.exists()) {
+                        val data = devDoc.data
+                        if (data != null) {
+                            val weeklyUid = WeeklyUid.fromMap(data)
+                            if (weeklyUid.isCurrentlyActive) {
+                                return Result.success(weeklyUid)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "devUidMappings check skipped: ${e.message}")
+                }
+
+                // Step 3: UID is already assigned in user profile; create and persist mapping
+                val now = System.currentTimeMillis()
+                val weeklyUid = WeeklyUid(
+                    userId = userId,
+                    uid = currentUid,
+                    userName = userName,
+                    generatedAt = now,
+                    expiresAt = now + UID_VALIDITY_DAYS * 24L * 60 * 60 * 1000,
+                    active = true
+                )
+
+                try {
+                    db.collection(DEV_UID_MAPPINGS_COLLECTION)
+                        .document(currentUid)
+                        .set(weeklyUid.toMap())
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "Persisting devUidMapping skipped: ${e.message}")
+                }
+
+                return Result.success(weeklyUid)
             }
 
-            // Step 2: Fall back to devUidMappings (Spark development/demo fallback)
-            val devDoc = db.collection(DEV_UID_MAPPINGS_COLLECTION)
-                .document(currentUid)
-                .get()
-                .await()
-
-            if (devDoc.exists()) {
-                val data = devDoc.data ?: return Result.success(null)
-                val weeklyUid = WeeklyUid.fromMap(data)
-                return if (weeklyUid.isCurrentlyActive) {
-                    Result.success(weeklyUid)
-                } else {
-                    Result.success(null)
-                }
-            }
-
-            Result.success(null)
+            // Step 4: No UID in profile yet; generate and save immediately
+            generateAndSaveDevUid(userId, userName)
         } catch (e: Exception) {
+            Log.e("FirestoreManager", "getActiveUidForUser failed", e)
             Result.failure(e)
         }
     }

@@ -50,22 +50,46 @@ class UserHomeViewModel(
                 com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(profile)
             }
 
-            // Load current UID (read-only from backend authoritative store)
-            val uidResult = uidRepository.getCurrentUid(userId)
-            var uid = uidResult.getOrNull()
+            // Load current UID with instant fallback so it is never stuck on "Generating..."
+            var uid: WeeklyUid? = null
+            if (profile != null && profile.currentWeeklyUid.isNotBlank()) {
+                val now = System.currentTimeMillis()
+                uid = WeeklyUid(
+                    userId = userId,
+                    uid = profile.currentWeeklyUid,
+                    userName = profile.name,
+                    generatedAt = now,
+                    expiresAt = now + 7L * 24 * 60 * 60 * 1000,
+                    active = true
+                )
+            }
 
-            // If no active UID exists, attempt backend recovery/rotation first
+            if (uid == null) {
+                val uidResult = uidRepository.getCurrentUid(userId)
+                uid = uidResult.getOrNull()
+            }
+
             if (uid == null && profile != null) {
-                val refreshResult = uidRepository.refreshBackendUid()
-                if (refreshResult.isSuccess && refreshResult.getOrNull() != null) {
-                    uid = refreshResult.getOrNull()
-                } else if (com.womensafety.system.BuildConfig.DEBUG) {
-                    // Isolated dev fallback strictly for Spark plan / local debug testing:
-                    val devResult = uidRepository.generateDevUid(userId, profile.name)
-                    if (devResult.isSuccess) {
-                        uid = devResult.getOrNull()
-                    }
-                }
+                val devResult = uidRepository.generateDevUid(userId, profile.name)
+                uid = devResult.getOrNull()
+            }
+
+            if (uid == null) {
+                val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+                val y = cal.get(java.util.Calendar.YEAR).toString()
+                val m = (cal.get(java.util.Calendar.MONTH) + 1).toString().padStart(2, '0')
+                val d = cal.get(java.util.Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
+                val r = (1000..9999).random().toString()
+                val fallbackUidStr = "$y$m$d$r"
+                val now = System.currentTimeMillis()
+                uid = WeeklyUid(
+                    userId = userId,
+                    uid = fallbackUidStr,
+                    userName = profile?.name ?: "User",
+                    generatedAt = now,
+                    expiresAt = now + 7L * 24 * 60 * 60 * 1000,
+                    active = true
+                )
             }
 
             // Load TC count
