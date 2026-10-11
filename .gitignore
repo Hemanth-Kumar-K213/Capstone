@@ -1,21 +1,35 @@
+# Local configuration files (contains API keys - NEVER commit)
+local.properties
+.env
+.env.local
+.env.*.local
+firebase/functions/.env
+firebase/functions/.env.local
+firebase/functions/.env.*.local
+
 # Android & Gradle
 .gradle/
 build/
 app/build/
-*.apk
 *.aab
 *.ap_
-local.properties
 .idea/
 *.iml
 .kotlin/
-.DS_Store
 .vscode/
+
+# Keep pre-built testing APK in apk/ directory tracked
+*.apk
+!apk/WomenSafety-debug.apk
+
+# OS files
+.DS_Store
+Thumbs.db
 *.docx
 *.pdf
 
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -23,29 +37,16 @@ yarn-error.log*
 firebase-debug.log*
 firebase-debug.*.log*
 
-# Firebase cache
+# Firebase cache & runtime
 .firebase/
-
-# Runtime data
-pids
+pids/
 *.pid
 *.seed
 *.pid.lock
+.dataconnect/
 
 # Dependency directories
 node_modules/
-
-# Output of 'npm pack'
+firebase/functions/node_modules/
 *.tgz
-
-# Yarn Integrity file
 .yarn-integrity
-
-# dotenv environment variables file
-.env
-.env.local
-.env.*.local
-
-# dataconnect generated files
-.dataconnect
-
