@@ -126,7 +126,7 @@ export async function sendOTP(
     const message = `Women Safety OTP: ${otp}. Valid for 10 minutes.`;
 
     const params = new URLSearchParams({
-      module: "OTP",
+      module: "TRANS_SMS",
       apikey: apiKey,
       to: normalizedPhone,
       from: senderId,
@@ -195,7 +195,7 @@ export async function sendSOSAlert(
     const message = `🚨 EMERGENCY: ${userName} triggered SOS. Location: ${address || "GPS attached"} - ${mapLink}`;
 
     const params = new URLSearchParams({
-      module: "TRANSACTIONAL_SMS",
+      module: "TRANS_SMS",
       apikey: apiKey,
       to: normalizedPhone,
       from: senderId,
@@ -253,7 +253,7 @@ export async function sendTransactionalSMS(
     const apiUrl = getApiUrl();
 
     const params = new URLSearchParams({
-      module: "TRANSACTIONAL_SMS",
+      module: "TRANS_SMS",
       apikey: apiKey,
       to: normalizedPhone,
       from: senderId,

@@ -47,7 +47,7 @@ object TwoFactorClient {
             val normalized = normalizePhone(phoneNumber)
             val message = "Women Safety OTP: $otp. Valid for 10 minutes."
 
-            val params = "module=" + URLEncoder.encode("OTP", "UTF-8") +
+            val params = "module=" + URLEncoder.encode("TRANS_SMS", "UTF-8") +
                     "&apikey=" + URLEncoder.encode(apiKey, "UTF-8") +
                     "&to=" + URLEncoder.encode(normalized, "UTF-8") +
                     "&from=" + URLEncoder.encode(senderId, "UTF-8") +
@@ -109,7 +109,7 @@ object TwoFactorClient {
             }
             val message = "🚨 EMERGENCY: $userName triggered SOS. Location: ${address ?: "GPS attached"} - $mapLink"
 
-            val params = "module=" + URLEncoder.encode("TRANSACTIONAL_SMS", "UTF-8") +
+            val params = "module=" + URLEncoder.encode("TRANS_SMS", "UTF-8") +
                     "&apikey=" + URLEncoder.encode(apiKey, "UTF-8") +
                     "&to=" + URLEncoder.encode(normalized, "UTF-8") +
                     "&from=" + URLEncoder.encode(senderId, "UTF-8") +

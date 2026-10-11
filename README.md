@@ -343,12 +343,14 @@ firebase functions:list
 To verify your API key and sender ID independently of Firebase:
 ```bash
 curl -X POST "https://2factor.in/API/R1/" \
-  -d "module=OTP" \
+  -d "module=TRANS_SMS" \
   -d "apikey=YOUR_2FACTOR_API_KEY" \
   -d "to=919876543210" \
   -d "from=WSAFETY" \
   -d "msg=Women Safety OTP: 123456. Valid for 10 minutes."
 ```
+> **Note on `module` parameter**: 2Factor's `API/R1/` endpoint requires `module=TRANS_SMS` for transactional OTP and alert messages. Specifying `module=OTP` or `module=TRANSACTIONAL_SMS` will return `{"Status":"Error","Details":"Invalid module name passed"}`.
+
 **Expected Response**:
 ```json
 {
@@ -357,7 +359,11 @@ curl -X POST "https://2factor.in/API/R1/" \
 }
 ```
 
-### 3. Monitoring Function Logs
+### 3. "Invalid module name passed" Error
+**Root Cause**: Passing `module=OTP` or `module=TRANSACTIONAL_SMS` to `https://2factor.in/API/R1/`.
+**Fix**: Use `module=TRANS_SMS`. Both `TwoFactorClient.kt` (direct fallback) and `twoFactorHelper.ts` (Cloud Functions) have been updated to use `TRANS_SMS`.
+
+### 4. Monitoring Function Logs
 Check real-time execution logs when clicking "Send OTP" on your mobile device:
 ```bash
 firebase functions:log

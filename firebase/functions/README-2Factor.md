@@ -90,6 +90,7 @@ The Android application (`com.womensafety.system`) interacts seamlessly with the
 ## 6. Troubleshooting
 
 - **"Invalid phone number"**: Phone number must be 10 digits (`9876543210`) or E.164 (`+919876543210`). The helper automatically normalizes it to `919876543210`.
+- **"Invalid module name passed"**: 2Factor `API/R1/` requires `module=TRANS_SMS`. Do not use `module=OTP` or `module=TRANSACTIONAL_SMS`.
 - **"2Factor API credentials not configured"**: Run `firebase functions:config:set twofactor.api_key="..." twofactor.sender_id="WSAFETY"`.
 - **"Sender ID not approved"**: Ensure your DLT-approved sender ID matches the `TWOFACTOR_SENDER_ID` variable.
 - **Check Logs**:
