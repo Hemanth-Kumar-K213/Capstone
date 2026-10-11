@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Shield, 
@@ -84,12 +84,41 @@ const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [lastPingTime, setLastPingTime] = useState<Date>(new Date());
 
+  const [mapViewAddress, setMapViewAddress] = useState<string | null>(null);
+  const [isCustomMapView, setIsCustomMapView] = useState(false);
+
   // Redirect if no session exists
   useEffect(() => {
     if (!uid || !userId) {
       navigate('/');
     }
   }, [uid, userId, navigate]);
+
+  // Synchronize reverse-geocoded physical address with current map coordinates
+  useEffect(() => {
+    if (!currentLocation?.latitude || !currentLocation?.longitude) return;
+    let isMounted = true;
+    reverseGeocode(currentLocation.latitude, currentLocation.longitude).then((addr) => {
+      if (isMounted && addr) {
+        setResolvedAddress(addr);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [currentLocation?.latitude, currentLocation?.longitude]);
+
+  const handleMapCenterChange = useCallback((centerLat: number, centerLng: number, isUserLocation: boolean) => {
+    if (isUserLocation) {
+      setIsCustomMapView(false);
+      setMapViewAddress(null);
+    } else {
+      setIsCustomMapView(true);
+      reverseGeocode(centerLat, centerLng).then((addr) => {
+        if (addr) setMapViewAddress(addr);
+      });
+    }
+  }, []);
 
   // Subscribe to real-time location stream
   useEffect(() => {
@@ -100,15 +129,18 @@ const DashboardPage: React.FC = () => {
       setLastPingTime(new Date());
       soundEffects.playPing();
 
-      // Reverse geocode address immediately
-      if (newLoc.address && newLoc.address.trim().length > 0) {
-        setResolvedAddress(newLoc.address);
-      } else {
-        setResolvedAddress(`${newLoc.latitude.toFixed(5)}° N, ${newLoc.longitude.toFixed(5)}° E`);
-        reverseGeocode(newLoc.latitude, newLoc.longitude).then((addr) => {
-          if (addr) setResolvedAddress(addr);
-        });
-      }
+      // Immediately resolve physical address for current map coordinates
+      reverseGeocode(newLoc.latitude, newLoc.longitude).then((addr) => {
+        if (addr) {
+          setResolvedAddress(addr);
+        } else if (newLoc.address && newLoc.address.trim().length > 0) {
+          setResolvedAddress(newLoc.address);
+        }
+      }).catch(() => {
+        if (newLoc.address && newLoc.address.trim().length > 0) {
+          setResolvedAddress(newLoc.address);
+        }
+      });
 
       setLocationHistory((prev) => {
         const isDuplicate = prev.length > 0 && 
@@ -357,6 +389,7 @@ const DashboardPage: React.FC = () => {
                   latitude={currentLocation.latitude}
                   longitude={currentLocation.longitude}
                   accuracy={currentLocation.accuracy}
+                  address={isCustomMapView && mapViewAddress ? mapViewAddress : resolvedAddress}
                   userName={userData?.name || initialUserName}
                   uid={uid || undefined}
                   bearing={currentLocation.bearing}
@@ -365,6 +398,7 @@ const DashboardPage: React.FC = () => {
                   status={currentLocation.status}
                   activeSOS={activeSOSEvent}
                   activeJourney={activeJourney}
+                  onMapCenterChange={handleMapCenterChange}
                 />
               )}
             </div>
@@ -388,9 +422,20 @@ const DashboardPage: React.FC = () => {
                 </div>
 
                 <div className="mt-4">
-                  <p className="text-xs text-slate-400">Current Street Address</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-slate-400">
+                      {isCustomMapView ? 'Current Map View Address' : 'Current Street Address'}
+                    </p>
+                    {isCustomMapView && (
+                      <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                        Map Panned
+                      </span>
+                    )}
+                  </div>
                   <p className="text-base font-bold text-white mt-1 leading-snug">
-                    {resolvedAddress || currentLocation.address || 'Resolving physical street address...'}
+                    {isCustomMapView && mapViewAddress
+                      ? mapViewAddress
+                      : (resolvedAddress || currentLocation.address || 'Resolving physical street address...')}
                   </p>
                 </div>
 

@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Crosshair, Navigation, AlertTriangle, Maximize, Minimize, Gauge, ExternalLink, Compass } from 'lucide-react';
+import { Crosshair, Navigation, AlertTriangle, Maximize, Minimize, Gauge, ExternalLink, Compass, MapPin } from 'lucide-react';
 import { JourneyData, SOSEvent } from '../types/safety';
 
 interface MapContainerProps {
   latitude: number;
   longitude: number;
   accuracy: number;
+  address?: string;
   userName?: string;
   uid?: string;
   bearing?: number;
@@ -16,12 +17,14 @@ interface MapContainerProps {
   status?: string;
   activeSOS?: SOSEvent | null;
   activeJourney?: JourneyData | null;
+  onMapCenterChange?: (lat: number, lng: number, isUserLocation: boolean) => void;
 }
 
 const MapContainer: React.FC<MapContainerProps> = ({
   latitude,
   longitude,
   accuracy,
+  address,
   userName = 'User',
   uid,
   bearing,
@@ -30,6 +33,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   status = 'ONLINE',
   activeSOS,
   activeJourney,
+  onMapCenterChange,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -92,6 +96,14 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     map.on('dragstart', () => {
       setAutoCenter(false);
+    });
+
+    map.on('moveend', () => {
+      if (onMapCenterChange && mapInstanceRef.current) {
+        const center = mapInstanceRef.current.getCenter();
+        const dist = center.distanceTo(L.latLng(latitude || 0, longitude || 0));
+        onMapCenterChange(center.lat, center.lng, dist < 25);
+      }
     });
 
     return () => {
@@ -184,7 +196,8 @@ const MapContainer: React.FC<MapContainerProps> = ({
           </span>
         </div>
         ${uid ? `<div style="font-size: 11px; font-family: monospace; color: #7C3AED; font-weight: 700; margin-bottom: 4px;">UID: ${uid}</div>` : ''}
-        <div style="font-size: 11px; color: #64748B; font-family: monospace; margin-bottom: 6px;">
+        ${address ? `<div style="font-size: 11px; font-weight: 700; color: #059669; margin-bottom: 4px; line-height: 1.3;">📍 ${address}</div>` : ''}
+        <div style="font-size: 10px; color: #64748B; font-family: monospace; margin-bottom: 6px;">
           ${latitude.toFixed(6)}° N, ${longitude.toFixed(6)}° E
         </div>
         <div style="padding-top: 6px; border-top: 1px solid #E2E8F0; font-size: 11px; color: #334155; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
@@ -294,7 +307,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       map.removeLayer(sosIncidentMarkerRef.current);
       sosIncidentMarkerRef.current = null;
     }
-  }, [latitude, longitude, accuracy, activeSOS, userName, uid, bearing, speed, altitude, autoCenter, mapReady]);
+  }, [latitude, longitude, accuracy, activeSOS, userName, uid, bearing, speed, altitude, autoCenter, mapReady, address]);
 
   // Execute marker update on props change or map ready
   useEffect(() => {
@@ -349,6 +362,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
     setAutoCenter(true);
     if (mapInstanceRef.current && latitude && longitude && !isNaN(latitude) && !isNaN(longitude)) {
       mapInstanceRef.current.setView([latitude, longitude], 16, { animate: true });
+      if (onMapCenterChange) {
+        onMapCenterChange(latitude, longitude, true);
+      }
     }
   };
 
@@ -446,13 +462,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
       </div>
 
       {/* Bottom Coordinates & Telemetry Bar */}
-      <div className="absolute bottom-4 left-4 z-10 flex flex-wrap items-center gap-3 bg-[#090D16]/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-700/80 text-xs text-slate-300 font-mono shadow-2xl">
-        <div className="flex items-center gap-1.5 text-purple-400">
-          <Navigation className="w-4 h-4" />
+      <div className="absolute bottom-4 left-4 right-4 sm:right-auto z-10 flex flex-wrap items-center gap-3 bg-[#090D16]/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-700/80 text-xs text-slate-300 font-mono shadow-2xl">
+        <div className="flex items-center gap-1.5 text-purple-400 shrink-0">
+          <Navigation className="w-4 h-4 shrink-0" />
           <span className="text-slate-200">
             {latitude ? latitude.toFixed(6) : '0.000000'}° N, {longitude ? longitude.toFixed(6) : '0.000000'}° E
           </span>
         </div>
+        {address && (
+          <div className="flex items-center gap-1.5 text-emerald-300 border-l border-slate-700 pl-3 font-sans font-medium text-xs max-w-[260px] sm:max-w-[420px] truncate" title={address}>
+            <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="truncate">{address}</span>
+          </div>
+        )}
         {speed !== undefined && (
           <div className="flex items-center gap-1 text-slate-400 border-l border-slate-700 pl-3">
             <Gauge className="w-3.5 h-3.5 text-purple-400" />
