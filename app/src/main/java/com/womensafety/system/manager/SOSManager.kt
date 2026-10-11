@@ -99,7 +99,7 @@ object SOSManager {
         val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
 
         // 5. Dispatch Direct Cellular SIM SMS + 2Factor Cloud SMS to contacts
-        dispatchEmergencyAlerts(
+        val smsCount = dispatchEmergencyAlerts(
             context = context,
             contacts = emergencyContacts,
             userName = userName,
@@ -115,8 +115,15 @@ object SOSManager {
             callMade = initiateEmergencyCall(context, primaryContact.phone)
         }
 
-        val updatedEvent = sosEvent.copy(callMade = callMade)
+        val updatedEvent = sosEvent.copy(callMade = callMade, smsSent = smsCount)
         _activeEvent.value = updatedEvent
+        sosRepository.updateDeliveryStats(
+            eventId = eventId,
+            notificationsSent = 0,
+            smsSent = smsCount,
+            callMade = callMade,
+            fcmTokens = emptyList()
+        )
         return updatedEvent
     }
 
@@ -167,14 +174,14 @@ object SOSManager {
         }
     }
 
-    private fun dispatchEmergencyAlerts(
+    fun dispatchEmergencyAlerts(
         context: Context,
         contacts: List<com.womensafety.system.data.model.EmergencyContact>,
         userName: String,
         latitude: Double,
         longitude: Double,
         timestamp: Long
-    ) {
+    ): Int {
         val timeStr = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.US).format(java.util.Date(timestamp))
         val mapLink = if (latitude != 0.0 && longitude != 0.0) {
             "https://maps.google.com/?q=$latitude,$longitude"
@@ -194,9 +201,12 @@ object SOSManager {
             Manifest.permission.SEND_SMS
         ) == PackageManager.PERMISSION_GRANTED
 
-        Log.i(TAG, "Dispatching SOS alerts to ${contacts.size} contacts. SEND_SMS granted: $hasSmsPermission")
+        val validContacts = contacts.filter { it.phone.isNotBlank() }
+        Log.i(TAG, "Dispatching SOS alerts to ${validContacts.size} contacts. SEND_SMS granted: $hasSmsPermission")
 
-        contacts.filter { it.phone.isNotBlank() }.forEach { contact ->
+        var simSentCount = 0
+
+        validContacts.forEach { contact ->
             val phone = contact.phone.trim()
 
             // 1. Direct device cellular SIM dispatch via SmsManager (highest priority, direct carrier)
@@ -215,6 +225,7 @@ object SOSManager {
                     } else {
                         smsManager.sendTextMessage(phone, null, messageText, null, null)
                     }
+                    simSentCount++
                     Log.i(TAG, "Direct cellular SIM SMS alert successfully dispatched to $phone")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed sending direct cellular SIM SMS to $phone", e)
@@ -243,5 +254,32 @@ object SOSManager {
                 }
             }
         }
+
+        return if (hasSmsPermission && simSentCount > 0) simSentCount else validContacts.size
+    }
+
+    suspend fun redispatchSMS(context: Context, event: SOSEvent): Int {
+        val currentUserId = authManager.currentUserId ?: return 0
+        val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
+        val userName = userProfile?.name?.ifBlank { "User" } ?: event.userName.ifBlank { "User" }
+        val contacts = userProfile?.emergencyContacts ?: emptyList()
+        val count = dispatchEmergencyAlerts(
+            context = context,
+            contacts = contacts,
+            userName = userName,
+            latitude = event.latitude ?: 0.0,
+            longitude = event.longitude ?: 0.0,
+            timestamp = event.triggeredAt
+        )
+        val updated = event.copy(smsSent = count)
+        _activeEvent.value = updated
+        sosRepository.updateDeliveryStats(
+            eventId = event.id,
+            notificationsSent = event.notificationsSent,
+            smsSent = count,
+            callMade = event.callMade,
+            fcmTokens = event.fcmTokensSent
+        )
+        return count
     }
 }

@@ -73,6 +73,17 @@ class SOSViewModel(
         }
     }
 
+    fun retrySmsDispatch(context: Context) {
+        val event = activeSOSEvent.value ?: return
+        viewModelScope.launch {
+            try {
+                SOSManager.redispatchSMS(context, event)
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Failed to redispatch SMS"
+            }
+        }
+    }
+
     fun markAsSafe(context: Context, eventId: String, onResolved: (() -> Unit)? = null) {
         viewModelScope.launch {
             _isLoading.value = true
