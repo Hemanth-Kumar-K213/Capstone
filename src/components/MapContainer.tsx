@@ -257,20 +257,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
       });
     }
 
-    // 4. Live Breadcrumb Trail
-    if (!trailLayerRef.current) {
-      trailLayerRef.current = L.polyline([position], {
-        color: isSOS ? '#EF4444' : '#10B981',
-        weight: 3.5,
-        opacity: 0.85,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(map);
-    } else {
-      trailLayerRef.current.addLatLng(position);
-      trailLayerRef.current.setStyle({
-        color: isSOS ? '#EF4444' : '#10B981',
-      });
+    // 4. Remove any extra trail/breadcrumb line extending from the marker
+    if (trailLayerRef.current) {
+      map.removeLayer(trailLayerRef.current);
+      trailLayerRef.current = null;
     }
 
     // 5. SOS Ground-Zero Incident Marker
