@@ -298,12 +298,9 @@ service cloud.firestore {
     // ============================================================
 
     match /otps/{phoneNumber} {
-      // Only Cloud Functions via Firebase Admin SDK can create/update OTP records
-      // Client writes denied to prevent spoofing or unauthorized verification
-      allow write: if false;
-
-      // Users can check verification status
-      allow read: if true;
+      // Only Cloud Functions via Firebase Admin SDK can create/update/read OTP records.
+      // All client reads and writes are denied to prevent credential leakage or spoofing.
+      allow read, write: if false;
     }
 
 

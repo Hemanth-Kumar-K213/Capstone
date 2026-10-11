@@ -37,27 +37,27 @@ export function validatePhoneNumber(phone: string): {
   // Remove whitespace, dashes, parentheses
   const cleaned = phone.replace(/\D/g, "");
 
-  // 10-digit Indian phone number: prepend 91
+  // 10-digit Indian phone number: 2Factor API expects 10 digits
   if (cleaned.length === 10) {
     return {
       valid: true,
-      normalized: `91${cleaned}`,
+      normalized: cleaned,
     };
   }
 
-  // 12-digit Indian phone number starting with 91
+  // 12-digit Indian phone number starting with 91: strip 91
   if (cleaned.length === 12 && cleaned.startsWith("91")) {
     return {
       valid: true,
-      normalized: cleaned,
+      normalized: cleaned.substring(2),
     };
   }
 
-  // E.164 with +91
-  if (phone.startsWith("+91") && cleaned.length === 12) {
+  // E.164 with +91: strip +91
+  if (phone.startsWith("+91") && cleaned.length >= 12) {
     return {
       valid: true,
-      normalized: cleaned,
+      normalized: cleaned.slice(-10),
     };
   }
 
@@ -78,20 +78,25 @@ export function validatePhoneNumber(phone: string): {
 export interface TwoFactorResult {
   success: boolean;
   messageId?: string;
+  sessionId?: string;
   otp?: string;
   error?: string;
 }
 
 /**
- * Send OTP via 2Factor API
- * Supports:
- * - sendOTP(phoneNumber, otpCode, userName)
- * - sendOTP(phoneNumber, userName)
+ * Send 6-digit OTP via 2Factor SMS-specific AUTOGEN2 API.
+ * Documented Endpoint:
+ *   GET https://2factor.in/API/V1/:api_key/SMS/:phone_number/AUTOGEN2/:otp_template_name
+ *
+ * Requirements:
+ * - Explicitly uses the `/SMS/` endpoint.
+ * - Strictly delivers via SMS (zero voice calls or voice fallback).
+ * - Automatically generates a 6-digit OTP and returns both session ID (Details) and OTP in response.
  */
 export async function sendOTP(
   phoneNumber: string,
-  arg2?: string,
-  arg3?: string
+  _arg2?: string,
+  _arg3?: string
 ): Promise<TwoFactorResult> {
   try {
     const phoneValidation = validatePhoneNumber(phoneNumber);
@@ -100,88 +105,104 @@ export async function sendOTP(
     }
 
     const normalizedPhone = phoneValidation.normalized!;
-
-    // Resolve OTP and userName based on argument types
-    let otp = "";
-    let userName = "User";
-
-    if (arg2 && /^\d{4,8}$/.test(arg2)) {
-      otp = arg2;
-      userName = arg3 || "User";
-    } else {
-      userName = arg2 || "User";
-      otp = arg3 && /^\d{4,8}$/.test(arg3)
-        ? arg3
-        : Math.floor(100000 + Math.random() * 900000).toString();
-    }
-
     const apiKey = getApiKey();
-    const senderId = getSenderId();
-    const apiUrl = getApiUrl();
+    const templateName =
+      process.env.TWOFACTOR_OTP_TEMPLATE ||
+      functions.config().twofactor?.otp_template ||
+      "";
 
     if (!apiKey) {
       console.warn("[2FactorHelper] TWOFACTOR_API_KEY not configured.");
+      return { success: false, error: "2Factor API Key not configured" };
     }
 
-    // Attempt 1: 2Factor dedicated OTP endpoint (No custom DLT TemplateName required)
-    try {
-      const v1Url = `https://2factor.in/API/V1/${apiKey}/SMS/${normalizedPhone}/${otp}`;
-      console.log(`[2FactorHelper] Dispatching OTP to ${normalizedPhone} via 2Factor V1 endpoint...`);
+    // Attempt 1: Call AUTOGEN2 with custom template name if configured
+    if (templateName) {
+      try {
+        const urlWithTemplate = `https://2factor.in/API/V1/${apiKey}/SMS/${normalizedPhone}/AUTOGEN2/${encodeURIComponent(templateName)}`;
+        console.log(`[2FactorHelper] Dispatching SMS OTP via AUTOGEN2 with template '${templateName}' to ${normalizedPhone}...`);
 
-      const v1Response = await axios.get(v1Url, { timeout: 10000 });
-      console.log(`[2FactorHelper] V1 response for ${normalizedPhone}:`, v1Response.data);
+        const response = await axios.get(urlWithTemplate, { timeout: 10000 });
+        console.log(`[2FactorHelper] AUTOGEN2 template dispatch status: ${response.data?.Status}, sessionId: ${response.data?.Details}`);
 
-      if (v1Response.data?.Status === "Success") {
-        return {
-          success: true,
-          messageId: v1Response.data.Details,
-          otp: otp,
-        };
+        if (response.data?.Status === "Success") {
+          return {
+            success: true,
+            messageId: response.data.Details,
+            sessionId: response.data.Details,
+            otp: response.data.OTP,
+          };
+        }
+      } catch (templateErr: any) {
+        console.warn(
+          `[2FactorHelper] Template '${templateName}' dispatch note:`,
+          templateErr?.response?.data || templateErr.message
+        );
       }
-    } catch (v1Error: any) {
-      console.warn(
-        `[2FactorHelper] V1 OTP endpoint attempt note:`,
-        v1Error?.response?.data || v1Error.message
-      );
     }
 
-    // Attempt 2: R1 Transactional route (module: TRANS_SMS)
-    const message = `Women Safety OTP: ${otp}. Valid for 10 minutes.`;
+    // Attempt 2: Universal AUTOGEN2 endpoint (default approved SMS template)
+    const defaultUrl = `https://2factor.in/API/V1/${apiKey}/SMS/${normalizedPhone}/AUTOGEN2`;
+    console.log(`[2FactorHelper] Dispatching SMS OTP via universal AUTOGEN2 to ${normalizedPhone}...`);
 
-    const params = new URLSearchParams({
-      module: "TRANS_SMS",
-      apikey: apiKey,
-      to: normalizedPhone,
-      from: senderId,
-      msg: message,
-    });
-
-    console.log(`[2FactorHelper] Dispatching OTP to ${normalizedPhone} via 2Factor R1...`);
-
-    const response = await axios.post(apiUrl, params.toString(), {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      timeout: 10000,
-    });
-
-    console.log(`[2FactorHelper] Response for ${normalizedPhone}:`, response.data);
+    const response = await axios.get(defaultUrl, { timeout: 10000 });
+    console.log(`[2FactorHelper] Universal AUTOGEN2 dispatch status: ${response.data?.Status}, sessionId: ${response.data?.Details}`);
 
     if (response.data?.Status === "Success") {
       return {
         success: true,
         messageId: response.data.Details,
-        otp: otp,
+        sessionId: response.data.Details,
+        otp: response.data.OTP,
       };
     } else {
       return {
         success: false,
-        error: response.data?.Details || "Failed to send OTP via 2Factor",
+        error: response.data?.Details || "Failed to dispatch SMS OTP via 2Factor AUTOGEN2",
       };
     }
   } catch (error: any) {
     const errorDetails = error.response?.data?.Details || error.message || "Unknown error";
-    console.error(`[2FactorHelper] Error sending OTP to ${phoneNumber}:`, errorDetails);
+    console.error(`[2FactorHelper] Error sending SMS OTP to ${phoneNumber}:`, errorDetails);
+    return {
+      success: false,
+      error: errorDetails,
+    };
+  }
+}
+
+/**
+ * Verify OTP code against 2Factor server using official SMS/VERIFY endpoint.
+ * Documented Endpoint:
+ *   GET https://2factor.in/API/V1/:api_key/SMS/VERIFY/:session_id/:otp_input
+ */
+export async function verifyOTP(
+  sessionId: string,
+  otpInput: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      return { success: false, error: "2Factor API key not configured" };
+    }
+
+    const verifyUrl = `https://2factor.in/API/V1/${apiKey}/SMS/VERIFY/${encodeURIComponent(sessionId)}/${encodeURIComponent(otpInput.trim())}`;
+    console.log(`[2FactorHelper] Verifying OTP against 2Factor session ${sessionId}...`);
+
+    const response = await axios.get(verifyUrl, { timeout: 10000 });
+    console.log(`[2FactorHelper] VERIFY status: ${response.data?.Status}, details: ${response.data?.Details}`);
+
+    if (response.data?.Status === "Success" && response.data?.Details === "OTP Matched") {
+      return { success: true };
+    } else {
+      return {
+        success: false,
+        error: response.data?.Details || "OTP Mismatch",
+      };
+    }
+  } catch (error: any) {
+    const errorDetails = error.response?.data?.Details || error.message || "Verification request failed";
+    console.error(`[2FactorHelper] Error verifying OTP:`, errorDetails);
     return {
       success: false,
       error: errorDetails,

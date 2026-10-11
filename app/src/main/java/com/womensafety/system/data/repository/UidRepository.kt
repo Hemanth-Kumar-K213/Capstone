@@ -40,6 +40,14 @@ class UidRepository(
     }
 
     /**
+     * Requests on-demand UID verification or rotation from the authoritative backend Cloud Function.
+     * Recovers from missing initial UIDs or delayed scheduled rotation without client-side generation.
+     */
+    suspend fun refreshBackendUid(): Result<WeeklyUid?> {
+        return firestoreManager.requestBackendUidRefresh()
+    }
+
+    /**
      * DEV/DEMO ONLY: Generates a UID on the client and saves it to devUidMappings.
      * Also updates the user's profile with currentWeeklyUid.
      *

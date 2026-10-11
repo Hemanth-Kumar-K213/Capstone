@@ -50,15 +50,21 @@ class UserHomeViewModel(
                 com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(profile)
             }
 
-            // Load current UID (read-only from backend, or dev fallback)
-            var uidResult = uidRepository.getCurrentUid(userId)
+            // Load current UID (read-only from backend authoritative store)
+            val uidResult = uidRepository.getCurrentUid(userId)
             var uid = uidResult.getOrNull()
 
-            // If no UID exists, generate one (Spark plan dev/demo fallback)
+            // If no active UID exists, attempt backend recovery/rotation first
             if (uid == null && profile != null) {
-                val devResult = uidRepository.generateDevUid(userId, profile.name)
-                if (devResult.isSuccess) {
-                    uid = devResult.getOrNull()
+                val refreshResult = uidRepository.refreshBackendUid()
+                if (refreshResult.isSuccess && refreshResult.getOrNull() != null) {
+                    uid = refreshResult.getOrNull()
+                } else if (com.womensafety.system.BuildConfig.DEBUG) {
+                    // Isolated dev fallback strictly for Spark plan / local debug testing:
+                    val devResult = uidRepository.generateDevUid(userId, profile.name)
+                    if (devResult.isSuccess) {
+                        uid = devResult.getOrNull()
+                    }
                 }
             }
 

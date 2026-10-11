@@ -3,8 +3,10 @@
  * Cloud Function: rotateWeeklyUids
  *
  * Scheduled function that runs weekly to rotate UIDs for all active users.
- * - Expires old UIDs
- * - Generates new UIDs
+ * - Idempotent: Checks expiry and avoids re-rotating recently generated UIDs
+ * - Zero-Downtime: Replacement UID is committed atomically before retiring previous UID
+ * - Transition Continuity: Retiring UID remains resolvable during a 2-hour grace period
+ * - Error Isolation: Individual user rotation errors do not abort the entire batch
  *
  * Existing Trusted Contact relationships are NOT affected because they
  * reference stable Firebase Auth UIDs, never the weekly UID.
@@ -27,26 +29,44 @@ exports.rotateWeeklyUids = functions.pubsub
             .collection("users")
             .where("accountType", "==", "USER")
             .get();
-        console.log(`Rotating UIDs for ${usersSnapshot.size} users`);
-        let successCount = 0;
+        console.log(`Starting weekly UID rotation evaluation for ${usersSnapshot.size} users`);
+        let rotatedCount = 0;
+        let skippedCount = 0;
         let errorCount = 0;
         for (const userDoc of usersSnapshot.docs) {
             const userId = userDoc.id;
-            try {
-                const uid = await (0, uidUtils_1.createUidForUser)(db, userId);
-                console.log(`Rotated UID for user ${userId}: ${uid}`);
-                successCount++;
-            }
-            catch (error) {
-                console.error(`Failed to rotate UID for user ${userId}:`, error);
-                errorCount++;
+            let attemptSuccess = false;
+            const maxAttempts = 3;
+            for (let attempt = 1; attempt <= maxAttempts && !attemptSuccess; attempt++) {
+                try {
+                    // Idempotent: creates replacement only if missing, expired, or due for rotation
+                    const result = await (0, uidUtils_1.createOrRotateUidForUser)(db, userId, { force: false });
+                    if (result.rotated) {
+                        console.log(`Successfully rotated UID for user ${userId}: ${result.uid}`);
+                        rotatedCount++;
+                    }
+                    else {
+                        console.log(`User ${userId} UID ${result.uid} is still valid; rotation skipped.`);
+                        skippedCount++;
+                    }
+                    // Clean up any historical orphaned active UIDs
+                    await (0, uidUtils_1.cleanupOrphanedUidsForUser)(db, userId, result.uid);
+                    attemptSuccess = true;
+                }
+                catch (error) {
+                    console.warn(`Attempt ${attempt}/${maxAttempts} failed for user ${userId}:`, error);
+                    if (attempt === maxAttempts) {
+                        console.error(`Final failure rotating UID for user ${userId}`);
+                        errorCount++;
+                    }
+                }
             }
         }
-        console.log(`UID rotation complete. Success: ${successCount}, Errors: ${errorCount}`);
+        console.log(`UID rotation complete. Rotated: ${rotatedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
         return null;
     }
     catch (error) {
-        console.error("UID rotation failed:", error);
+        console.error("UID rotation batch execution failed:", error);
         throw error;
     }
 });

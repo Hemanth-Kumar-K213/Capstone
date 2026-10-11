@@ -161,56 +161,51 @@ class AuthViewModel(
         requestPhoneOTP(state.phone, state.name)
     }
 
-    private var lastDirectSignupOtp: String? = null
-    private var directSignupPhone: String? = null
-    private var directSignupExpiry: Long = 0L
+    companion object {
+        private var signupSessionId: String? = null
+        private var signupSessionPhone: String? = null
+        private var signupSessionExpiry: Long = 0L
+        private var signupLastSent: Long = 0L
+    }
 
     fun requestPhoneOTP(phoneNumber: String, userName: String) {
         val normalizedPhone = Validators.normalizePhone(phoneNumber)
+        val now = System.currentTimeMillis()
+
+        if (signupSessionPhone == normalizedPhone && (now - signupLastSent) < 60000) {
+            val remainingSecs = ((60000 - (now - signupLastSent)) / 1000).toInt()
+            _signupState.value = _signupState.value.copy(
+                error = "Please wait $remainingSecs second(s) before requesting another OTP."
+            )
+            return
+        }
+
         _signupState.value = _signupState.value.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
             try {
-                val payload = hashMapOf(
-                    "phoneNumber" to normalizedPhone,
-                    "userName" to userName.ifBlank { "User" }
-                )
+                val result = com.womensafety.system.data.sms.TwoFactorClient.sendOTP(normalizedPhone, userName = userName)
 
-                try {
-                    FirebaseFunctions.getInstance()
-                        .getHttpsCallable("sendOTPFunction")
-                        .call(payload)
-                        .await()
-                } catch (e: Exception) {
-                    if (e is com.google.firebase.functions.FirebaseFunctionsException &&
-                        e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
-                        try {
-                            FirebaseFunctions.getInstance("asia-south1")
-                                .getHttpsCallable("sendOTPFunction")
-                                .call(payload)
-                                .await()
-                        } catch (asiaEx: Exception) {
-                            // Direct Fallback to 2Factor Gateway
-                            val generatedOtp = (100000..999999).random().toString()
-                            val directResult = com.womensafety.system.data.sms.TwoFactorClient.sendOTP(normalizedPhone, generatedOtp, userName)
-                            if (directResult.isSuccess) {
-                                lastDirectSignupOtp = generatedOtp
-                                directSignupPhone = normalizedPhone
-                                directSignupExpiry = System.currentTimeMillis() + 10 * 60 * 1000
-                            } else {
-                                throw directResult.exceptionOrNull() ?: Exception("Direct 2Factor SMS failed")
-                            }
-                        }
-                    } else {
-                        throw e
-                    }
+                if (result.isSuccess) {
+                    val sessionId = result.getOrNull()
+                    signupSessionId = sessionId
+                    signupSessionPhone = normalizedPhone
+                    signupSessionExpiry = System.currentTimeMillis() + 10 * 60 * 1000
+                    signupLastSent = System.currentTimeMillis()
+
+                    _signupState.value = _signupState.value.copy(
+                        isLoading = false,
+                        verificationId = sessionId ?: "2FACTOR_OTP",
+                        resendCooldown = 60,
+                        error = null
+                    )
+                } else {
+                    val errMsg = result.exceptionOrNull()?.message ?: "Failed to dispatch SMS OTP via 2Factor."
+                    _signupState.value = _signupState.value.copy(
+                        isLoading = false,
+                        error = errMsg
+                    )
                 }
-
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    verificationId = "2FACTOR_OTP",
-                    resendCooldown = 60
-                )
             } catch (e: Exception) {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
@@ -243,47 +238,29 @@ class AuthViewModel(
         }
 
         val normalizedPhone = Validators.normalizePhone(state.phone)
-        _signupState.value = state.copy(isLoading = true, error = null)
+        val sessionId = signupSessionId
 
-        // Check direct fallback session first
-        if (directSignupPhone == normalizedPhone && lastDirectSignupOtp != null) {
-            if (System.currentTimeMillis() > directSignupExpiry) {
-                _signupState.value = state.copy(isLoading = false, error = "OTP expired. Please request a new code.")
-                return
-            }
-            if (lastDirectSignupOtp == state.otpCode.trim()) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    phoneVerified = true,
-                    currentStep = 3,
-                    error = null
-                )
-                return
-            } else {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = "Invalid OTP code. Please check and try again."
-                )
-                return
-            }
+        if (sessionId == null || signupSessionPhone != normalizedPhone) {
+            _signupState.value = state.copy(error = "No active OTP request found. Please request an OTP first.")
+            return
         }
+
+        if (System.currentTimeMillis() > signupSessionExpiry) {
+            _signupState.value = state.copy(error = "OTP expired. Please request a new code.")
+            return
+        }
+
+        _signupState.value = state.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
             try {
-                val payload = hashMapOf(
-                    "phoneNumber" to normalizedPhone,
-                    "otp" to state.otpCode.trim()
+                val verifyResult = com.womensafety.system.data.sms.TwoFactorClient.verifyOTP(
+                    sessionId,
+                    state.otpCode.trim()
                 )
 
-                val result = FirebaseFunctions.getInstance()
-                    .getHttpsCallable("verifyOTPFunction")
-                    .call(payload)
-                    .await()
-
-                val data = result.getData() as? Map<*, *>
-                val isSuccess = (data?.get("success") as? Boolean) == true
-
-                if (isSuccess) {
+                if (verifyResult.isSuccess && verifyResult.getOrNull() == true) {
+                    signupSessionId = null
                     _signupState.value = _signupState.value.copy(
                         isLoading = false,
                         phoneVerified = true,
@@ -297,15 +274,9 @@ class AuthViewModel(
                     )
                 }
             } catch (e: Exception) {
-                val errorMsg = if (e is com.google.firebase.functions.FirebaseFunctionsException &&
-                    e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.NOT_FOUND) {
-                    "Cloud Function 'verifyOTPFunction' not found. Please deploy Cloud Functions to Firebase project 'women-safety-system-65893'."
-                } else {
-                    e.message ?: "OTP verification failed. Please try again."
-                }
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = errorMsg
+                    error = e.message ?: "OTP verification failed. Please try again."
                 )
             }
         }

@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import * as crypto from "crypto";
 import {
   sendOTP as send2FactorOTP,
   validatePhoneNumber,
@@ -13,11 +14,28 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 /**
- * HTTPS Callable Function: Generates and dispatches a 6-digit OTP via 2Factor API.
- * Called from mobile application during User / Trusted Contact signup or 2FA login.
+ * Computes a salted cryptographic SHA-256 hash of the OTP and phone number.
+ * Plaintext OTPs are NEVER persisted to the database.
+ */
+function hashOtp(phoneNumber: string, otp: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(`${phoneNumber}:${otp.trim()}:TrinetraSalt2026`)
+    .digest("hex");
+}
+
+/**
+ * HTTPS Callable Function: Dispatches a 6-digit OTP via 2Factor SMS AUTOGEN2 endpoint.
+ * Called from mobile application during User / Trusted Contact signup or phone verification.
+ *
+ * Security Protections:
+ * - 60-second atomic resend cooldown enforced server-side.
+ * - 15-minute lockout enforced server-side on brute-force attempts.
+ * - Plaintext OTP is NEVER persisted in Firestore (only salted SHA-256 hash).
+ * - Plaintext OTP is NEVER returned in the client response payload.
  */
 export const sendOTPFunction = functions.https.onCall(
-  async (data: any, context: functions.https.CallableContext) => {
+  async (data: any, _context: functions.https.CallableContext) => {
     const phoneNumber = data?.phoneNumber;
     const userName = data?.userName || "User";
 
@@ -38,63 +56,99 @@ export const sendOTPFunction = functions.https.onCall(
     }
 
     const normalizedPhone = validation.normalized;
+    const otpDocRef = db.collection("otps").doc(normalizedPhone);
+    const now = Date.now();
 
     try {
-      // 2. Generate secure 6-digit numeric OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // 2. Atomic Cooldown and Lockout Verification via Transaction
+      await db.runTransaction(async (transaction) => {
+        const existingDoc = await transaction.get(otpDocRef);
 
-      // 3. Calculate 10-minute expiry time
-      const expiryTime = Date.now() + 10 * 60 * 1000; // 10 minutes in milliseconds
+        if (existingDoc.exists) {
+          const existingData = existingDoc.data();
 
-      // 4. Check existing OTP document for rate limiting / lockout
-      const otpDocRef = db.collection("otps").doc(normalizedPhone);
-      const existingDoc = await otpDocRef.get();
+          // Check if phone number is currently locked out
+          if (existingData?.locked && (existingData.lockedUntil || 0) > now) {
+            const remainingMins = Math.ceil(((existingData.lockedUntil || 0) - now) / 60000);
+            throw new functions.https.HttpsError(
+              "resource-exhausted",
+              `This phone number is temporarily locked due to too many failed attempts. Try again in ${remainingMins} minute(s).`
+            );
+          }
 
-      if (existingDoc.exists) {
-        const existingData = existingDoc.data();
-        if (existingData?.locked && existingData.lockedUntil > Date.now()) {
-          const remainingMins = Math.ceil((existingData.lockedUntil - Date.now()) / 60000);
-          throw new functions.https.HttpsError(
-            "resource-exhausted",
-            `This phone number is temporarily locked due to too many failed attempts. Try again in ${remainingMins} minute(s).`
-          );
+          // Check 60-second resend cooldown
+          const lastSentAt = existingData?.lastSentAt || 0;
+          if (lastSentAt && (now - lastSentAt) < 60000) {
+            const remainingSecs = Math.ceil((60000 - (now - lastSentAt)) / 1000);
+            throw new functions.https.HttpsError(
+              "resource-exhausted",
+              `Please wait ${remainingSecs} second(s) before requesting another OTP.`
+            );
+          }
         }
+
+        // Atomically claim the resend slot
+        transaction.set(
+          otpDocRef,
+          {
+            lastSentAt: now,
+            pendingDispatch: true,
+          },
+          { merge: true }
+        );
+      });
+
+      // 3. Dispatch 6-digit OTP strictly via 2Factor SMS AUTOGEN2 endpoint
+      let result;
+      try {
+        result = await send2FactorOTP(normalizedPhone, userName);
+      } catch (dispatchError: any) {
+        // Revert lastSentAt on provider dispatch failure so user is not locked out of retry
+        await otpDocRef.set({ lastSentAt: 0, pendingDispatch: false }, { merge: true });
+        throw dispatchError;
       }
 
-      // 5. Send OTP via 2Factor API
-      const result = await send2FactorOTP(normalizedPhone, otp, userName);
-
-      if (!result.success) {
-        console.error(`[sendOTPFunction] 2Factor dispatch failure for ${normalizedPhone}:`, result.error);
+      if (!result.success || !result.otp) {
+        await otpDocRef.set({ lastSentAt: 0, pendingDispatch: false }, { merge: true });
+        console.error(`[sendOTPFunction] 2Factor SMS dispatch failure for ${normalizedPhone}:`, result.error);
         throw new functions.https.HttpsError(
           "internal",
-          `2Factor SMS dispatch failed: ${result.error}`
+          `2Factor SMS dispatch failed: ${result.error || "Unable to send SMS OTP"}`
         );
       }
 
-      // 6. Store OTP record in Firestore
+      // 4. Calculate 10-minute expiry time
+      const expiryTime = now + 10 * 60 * 1000;
+      const hashedOtp = hashOtp(normalizedPhone, result.otp);
+
+      // 5. Secure Server-Side Storage: Store salted hash, NEVER plaintext OTP
       await otpDocRef.set(
         {
-          otp: otp,
           phoneNumber: normalizedPhone,
           userName: userName,
+          otpHash: hashedOtp,
+          sessionId: result.sessionId || result.messageId || null,
+          messageId: result.messageId || null,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSentAt: now,
           expiresAt: expiryTime,
           verified: false,
+          consumed: false,
           attempts: 0,
           locked: false,
-          messageId: result.messageId || null,
+          pendingDispatch: false,
         },
         { merge: true }
       );
 
       console.log(
-        `[sendOTPFunction] Successfully dispatched OTP to ${normalizedPhone}. MessageId: ${result.messageId}`
+        `[sendOTPFunction] Successfully dispatched SMS OTP to ${normalizedPhone}. SessionId: ${result.sessionId}`
       );
 
+      // 6. Return response to mobile client (OTP is strictly omitted)
       return {
         success: true,
-        message: `OTP sent to ${normalizedPhone}`,
+        message: `OTP sent via SMS to ${normalizedPhone}`,
         expiresIn: 600, // 10 minutes in seconds
         messageId: result.messageId,
       };
@@ -105,17 +159,24 @@ export const sendOTPFunction = functions.https.onCall(
       console.error("[sendOTPFunction] Unexpected error:", error);
       throw new functions.https.HttpsError(
         "internal",
-        error instanceof Error ? error.message : "Failed to dispatch verification OTP."
+        error instanceof Error ? error.message : "Failed to dispatch verification OTP via SMS."
       );
     }
   }
 );
 
 /**
- * HTTPS Callable Function: Validates the 6-digit OTP code submitted by the mobile client.
+ * HTTPS Callable Function: Authoritatively validates the 6-digit OTP code submitted by the mobile client.
+ *
+ * Security Protections:
+ * - Atomic validation in Firestore transaction preventing concurrent brute-force bypass.
+ * - Single-use enforcement (consumed flag prevents replay attacks).
+ * - Expiration check (10 minutes) using authoritative server timestamp.
+ * - Failed attempt counting with 15-minute lockout after 5 consecutive failures.
+ * - Invalidates OTP challenge hash upon successful verification.
  */
 export const verifyOTPFunction = functions.https.onCall(
-  async (data: any, context: functions.https.CallableContext) => {
+  async (data: any, _context: functions.https.CallableContext) => {
     const phoneNumber = data?.phoneNumber;
     const otp = data?.otp;
 
@@ -137,75 +198,119 @@ export const verifyOTPFunction = functions.https.onCall(
     const normalizedPhone = validation.normalized;
     const submittedOtp = otp.toString().trim();
 
+    if (!/^\d{6}$/.test(submittedOtp)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Verification code must be exactly 6 digits."
+      );
+    }
+
+    const otpDocRef = db.collection("otps").doc(normalizedPhone);
+    const now = Date.now();
+
     try {
-      const otpDocRef = db.collection("otps").doc(normalizedPhone);
-      const otpDoc = await otpDocRef.get();
+      await db.runTransaction(async (transaction) => {
+        const otpDoc = await transaction.get(otpDocRef);
 
-      if (!otpDoc.exists) {
-        throw new functions.https.HttpsError(
-          "not-found",
-          "No active OTP request found for this phone number. Please request a new OTP."
-        );
-      }
-
-      const otpData = otpDoc.data();
-
-      // Check if locked
-      if (otpData?.locked && (otpData.lockedUntil || 0) > Date.now()) {
-        const remainingMins = Math.ceil((otpData.lockedUntil - Date.now()) / 60000);
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          `Too many invalid attempts. Phone number locked for ${remainingMins} minute(s).`
-        );
-      }
-
-      // Check expiration
-      if ((otpData?.expiresAt || 0) < Date.now()) {
-        throw new functions.https.HttpsError(
-          "deadline-exceeded",
-          "OTP has expired. Please request a new code."
-        );
-      }
-
-      // Verify OTP match
-      if (otpData?.otp !== submittedOtp) {
-        const currentAttempts = (otpData?.attempts || 0) + 1;
-        const updates: any = {
-          attempts: admin.firestore.FieldValue.increment(1),
-        };
-
-        if (currentAttempts >= 5) {
-          updates.locked = true;
-          updates.lockedUntil = Date.now() + 15 * 60 * 1000; // 15-minute lockout
+        if (!otpDoc.exists) {
+          throw new functions.https.HttpsError(
+            "not-found",
+            "No active OTP request found for this phone number. Please request a new OTP."
+          );
         }
 
-        await otpDocRef.update(updates);
+        const otpData = otpDoc.data()!;
 
+        // 1. Check if locked out
+        if (otpData.locked && (otpData.lockedUntil || 0) > now) {
+          const remainingMins = Math.ceil(((otpData.lockedUntil || 0) - now) / 60000);
+          throw new functions.https.HttpsError(
+            "permission-denied",
+            `Too many invalid attempts. Phone number locked for ${remainingMins} minute(s).`
+          );
+        }
+
+        // 2. Check if already verified or consumed (prevent replay attacks)
+        if (otpData.consumed || otpData.verified) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "This verification code has already been used. Please request a new OTP."
+          );
+        }
+
+        // 3. Check expiration (10 minutes)
+        if ((otpData.expiresAt || 0) < now) {
+          throw new functions.https.HttpsError(
+            "deadline-exceeded",
+            "OTP has expired. Please request a new code."
+          );
+        }
+
+        // 4. Check attempt limits
+        const currentAttempts = otpData.attempts || 0;
         if (currentAttempts >= 5) {
+          transaction.update(otpDocRef, {
+            locked: true,
+            lockedUntil: now + 15 * 60 * 1000,
+          });
           throw new functions.https.HttpsError(
             "permission-denied",
             "Too many failed attempts. Phone locked for 15 minutes."
           );
         }
 
-        const remainingAttempts = 5 - currentAttempts;
-        throw new functions.https.HttpsError(
-          "unauthenticated",
-          `Invalid verification code. ${remainingAttempts} attempt(s) remaining.`
-        );
-      }
+        // 5. Verify the submitted OTP against salted cryptographic hash
+        const submittedHash = hashOtp(normalizedPhone, submittedOtp);
+        const expectedHash = otpData.otpHash;
+        const isMatched = expectedHash
+          ? expectedHash === submittedHash
+          : otpData.otp === submittedOtp; // Fallback for pre-migration documents
 
-      // Mark verified
-      await otpDocRef.update({
-        verified: true,
-        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        if (!isMatched) {
+          const newAttempts = currentAttempts + 1;
+          const updates: any = {
+            attempts: newAttempts,
+          };
+
+          if (newAttempts >= 5) {
+            updates.locked = true;
+            updates.lockedUntil = now + 15 * 60 * 1000; // 15-minute lockout
+          }
+
+          transaction.update(otpDocRef, updates);
+
+          if (newAttempts >= 5) {
+            throw new functions.https.HttpsError(
+              "permission-denied",
+              "Too many failed attempts. Phone locked for 15 minutes."
+            );
+          }
+
+          const remainingAttempts = 5 - newAttempts;
+          throw new functions.https.HttpsError(
+            "unauthenticated",
+            `Invalid verification code. ${remainingAttempts} attempt(s) remaining.`
+          );
+        }
+
+        // 6. Atomic Success: Consume challenge, invalidate hash and sessionId to prevent any replay
+        transaction.update(otpDocRef, {
+          verified: true,
+          consumed: true,
+          verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+          otpHash: null,
+          otp: null,
+          sessionId: null,
+          attempts: 0,
+          locked: false,
+        });
       });
 
       console.log(`[verifyOTPFunction] Phone number verified successfully: ${normalizedPhone}`);
 
       return {
         success: true,
-        message: "OTP verified successfully.",
+        message: "Phone number verified successfully",
         phoneNumber: normalizedPhone,
       };
     } catch (error: any) {

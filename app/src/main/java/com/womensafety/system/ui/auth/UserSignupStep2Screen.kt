@@ -119,9 +119,9 @@ fun UserSignupStep2Screen(
                     }
                 }
             } else if (state.verificationId == null) {
-                // Send OTP via Twilio SMS
+                // Send OTP
                 PrimaryButton(
-                    text = "SEND OTP VIA TWILIO SMS",
+                    text = "SEND OTP",
                     onClick = { viewModel.sendPhoneOtp() },
                     isLoading = state.isLoading
                 )
@@ -152,7 +152,7 @@ fun UserSignupStep2Screen(
                     TextButton(
                         onClick = { viewModel.sendPhoneOtp() }
                     ) {
-                        Text("Resend OTP via Twilio SMS")
+                        Text("Resend OTP")
                     }
                 }
             }

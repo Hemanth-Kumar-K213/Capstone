@@ -15,6 +15,7 @@ import java.net.URLEncoder
  * Direct HTTP client for 2Factor SMS Gateway (https://2factor.in/API/R1/).
  * Fallback client for testing and direct dispatch when Cloud Functions are unavailable.
  */
+@Deprecated("Unused legacy client; all OTP operations run securely via Cloud Functions")
 class TwoFactorClient {
     private val apiUrl = "https://2factor.in/API/R1/"
     private var apiKey = com.womensafety.system.BuildConfig.TWOFACTOR_API_KEY
@@ -34,9 +35,11 @@ class TwoFactorClient {
         try {
             val cleaned = phoneNumber.replace(Regex("\\D"), "")
             val normalizedPhone = when {
-                phoneNumber.startsWith("+91") -> phoneNumber.substring(1)
-                cleaned.length == 10 -> "91$cleaned"
-                cleaned.length == 12 && cleaned.startsWith("91") -> cleaned
+                cleaned.length == 10 -> cleaned
+                cleaned.length == 12 && cleaned.startsWith("91") -> cleaned.substring(2)
+                cleaned.length == 11 && cleaned.startsWith("0") -> cleaned.substring(1)
+                phoneNumber.startsWith("+91") && cleaned.length >= 12 -> cleaned.takeLast(10)
+                cleaned.length > 10 -> cleaned.takeLast(10)
                 else -> cleaned
             }
 
@@ -46,21 +49,18 @@ class TwoFactorClient {
                 return@withContext Result.failure(Exception(err))
             }
 
-            // Attempt 1: V1 Open OTP endpoint (works out of the box without DLT template)
-            val otpMatch = Regex("\\b\\d{4,8}\\b").find(message)?.value
-            if (otpMatch != null) {
-                val v1Url = "https://2factor.in/API/V1/$apiKey/SMS/$normalizedPhone/$otpMatch"
-                val v1Conn = (URL(v1Url).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                }
-                val v1Stream = if (v1Conn.responseCode in 200..299) v1Conn.inputStream else v1Conn.errorStream
-                val v1Text = BufferedReader(InputStreamReader(v1Stream)).use { it.readText() }
-                Log.d(TAG, "2Factor V1 Response: $v1Text")
-                if (v1Text.contains("\"Status\":\"Success\"")) {
-                    return@withContext Result.success(v1Text)
-                }
+            // Attempt 1: V1 SMS AUTOGEN2 endpoint (delivers strictly via SMS)
+            val v1Url = "https://2factor.in/API/V1/$apiKey/SMS/$normalizedPhone/AUTOGEN2"
+            val v1Conn = (URL(v1Url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10000
+                readTimeout = 10000
+            }
+            val v1Stream = if (v1Conn.responseCode in 200..299) v1Conn.inputStream else v1Conn.errorStream
+            val v1Text = BufferedReader(InputStreamReader(v1Stream)).use { it.readText() }
+            Log.d(TAG, "2Factor V1 Response: $v1Text")
+            if (v1Text.contains("\"Status\":\"Success\"")) {
+                return@withContext Result.success(v1Text)
             }
 
             // Attempt 2: R1 Route with module=TRANS_SMS

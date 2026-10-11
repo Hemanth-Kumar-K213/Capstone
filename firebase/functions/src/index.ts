@@ -17,7 +17,7 @@ if (!admin.apps.length) {
 }
 
 // UID Management Functions
-export { onUserCreated } from "./generateUid";
+export { onUserCreated, ensureActiveUidFunction } from "./generateUid";
 export { rotateWeeklyUids } from "./rotateUids";
 
 // 2Factor SMS Functions

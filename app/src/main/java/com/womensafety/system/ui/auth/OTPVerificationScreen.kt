@@ -124,7 +124,7 @@ fun OTPVerificationScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "We sent a 6-digit security code via Twilio SMS to\n$phoneNumber",
+                text = "We sent a 6-digit security code via SMS to\n$phoneNumber",
                 style = MaterialTheme.typography.bodyMedium,
                 color = OnSurfaceVariantDark,
                 textAlign = TextAlign.Center
@@ -241,7 +241,7 @@ fun OTPVerificationScreen(
                         }
                     ) {
                         Text(
-                            text = "Resend OTP via Twilio SMS",
+                            text = "Resend OTP",
                             color = GradientAmber,
                             fontWeight = FontWeight.SemiBold
                         )

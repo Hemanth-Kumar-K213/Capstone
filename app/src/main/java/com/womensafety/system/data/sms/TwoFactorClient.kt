@@ -14,9 +14,7 @@ import java.net.URLEncoder
 
 /**
  * Direct HTTP client for 2Factor SMS Gateway (https://2factor.in/).
- * Operates with dual-endpoint resilience:
- * 1. Primary: R1 endpoint with `module=TRANS_SMS` (DLT Sender ID e.g. WSAFETY)
- * 2. Fallback: V1 Open OTP endpoint (works instantly on trial/new accounts without DLT approval)
+ * Strictly delivers via SMS (enforces 10-digit Indian number format).
  */
 object TwoFactorClient {
     private const val TAG = "TwoFactorClient"
@@ -32,23 +30,57 @@ object TwoFactorClient {
                 apiKey.contains("YOUR_", ignoreCase = true)
     }
 
+    /**
+     * Normalizes phone number to 10-digit format for 2Factor India SMS gateway.
+     * 2Factor strictly expects 10 digits for Indian numbers (rejects 12-digit numbers with "Length Mismatch").
+     */
     fun normalizePhone(phone: String): String {
         val cleaned = phone.replace(Regex("\\D"), "")
         return when {
-            cleaned.length == 10 -> "91$cleaned"
-            cleaned.length == 12 && cleaned.startsWith("91") -> cleaned
-            phone.startsWith("+91") && cleaned.length == 12 -> cleaned
-            cleaned.length in 10..15 -> cleaned
+            cleaned.length == 10 -> cleaned
+            cleaned.length == 12 && cleaned.startsWith("91") -> cleaned.substring(2)
+            cleaned.length == 11 && cleaned.startsWith("0") -> cleaned.substring(1)
+            phone.startsWith("+91") && cleaned.length >= 12 -> cleaned.takeLast(10)
+            cleaned.length > 10 -> cleaned.takeLast(10)
             else -> cleaned
         }
     }
 
     /**
-     * Sends a 6-digit OTP via 2Factor REST API (R1 TRANS_SMS with V1 Open OTP fallback)
+     * Executes an HTTP GET request with timeout and error handling.
+     */
+    private fun executeGetRequest(urlString: String): Result<String> {
+        return try {
+            val url = URL(urlString)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10000
+                readTimeout = 10000
+            }
+            val responseCode = conn.responseCode
+            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+            val responseText = BufferedReader(InputStreamReader(stream)).use { it.readText() }
+            if (responseCode in 200..299) {
+                Result.success(responseText)
+            } else {
+                Result.failure(Exception("HTTP $responseCode: $responseText"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Sends a 6-digit OTP via 2Factor dedicated SMS AUTOGEN API.
+     *
+     * Strict SMS Delivery:
+     * - Uses 10-digit normalized Indian phone number format (bypasses length mismatch).
+     * - Calls standard SMS /AUTOGEN endpoint (returns session ID).
+     * - Falls back to /AUTOGEN2 if needed.
      */
     suspend fun sendOTP(
         phoneNumber: String,
-        otp: String,
+        otp: String = "",
         userName: String = "User"
     ): Result<String> = withContext(Dispatchers.IO) {
         if (isPlaceholderKey()) {
@@ -58,81 +90,92 @@ object TwoFactorClient {
         }
 
         val normalized = normalizePhone(phoneNumber)
-        val message = "Women Safety OTP: $otp. Valid for 10 minutes."
 
-        // Attempt 1: Universal V1 OTP Endpoint (Works out of the box with zero template/DLT requirements)
+        // Attempt 1: Standard SMS AUTOGEN endpoint
         try {
-            val v1Url = "https://2factor.in/API/V1/$apiKey/SMS/$normalized/$otp"
-            Log.d(TAG, "Dispatching 2Factor V1 OTP to $normalized...")
+            val autogenUrl = "https://2factor.in/API/V1/$apiKey/SMS/$normalized/AUTOGEN"
+            Log.d(TAG, "Dispatching 2Factor SMS OTP via AUTOGEN to $normalized...")
 
-            val url = URL(v1Url)
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 10000
-                readTimeout = 10000
+            val reqResult = executeGetRequest(autogenUrl)
+            if (reqResult.isSuccess) {
+                val responseText = reqResult.getOrNull()!!
+                Log.d(TAG, "2Factor AUTOGEN response: $responseText")
+
+                val json = JSONObject(responseText)
+                val status = json.optString("Status", "")
+                val details = json.optString("Details", "")
+
+                if (status.equals("Success", ignoreCase = true)) {
+                    return@withContext Result.success(details)
+                }
+            } else {
+                Log.w(TAG, "AUTOGEN failed: ${reqResult.exceptionOrNull()?.message}")
             }
-
-            val responseCode = conn.responseCode
-            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
-            val responseText = BufferedReader(InputStreamReader(stream)).use { it.readText() }
-
-            Log.d(TAG, "2Factor V1 response ($responseCode): $responseText")
-
-            val json = JSONObject(responseText)
-            val status = json.optString("Status", "")
-            val details = json.optString("Details", "")
-
-            if (status.equals("Success", ignoreCase = true)) {
-                return@withContext Result.success(details)
-            }
-
-            Log.w(TAG, "V1 dispatch returned $responseText. Trying R1 route fallback...")
         } catch (e: Exception) {
-            Log.w(TAG, "V1 dispatch threw: ${e.message}. Trying R1 route fallback...")
+            Log.w(TAG, "AUTOGEN request exception: ${e.message}")
         }
 
-        // Attempt 2: Transactional R1 Route (module=TRANS_SMS)
+        // Attempt 2: Standard SMS AUTOGEN2 endpoint
         try {
-            val params = "module=" + URLEncoder.encode("TRANS_SMS", "UTF-8") +
-                    "&apikey=" + URLEncoder.encode(apiKey, "UTF-8") +
-                    "&to=" + URLEncoder.encode(normalized, "UTF-8") +
-                    "&from=" + URLEncoder.encode(senderId, "UTF-8") +
-                    "&msg=" + URLEncoder.encode(message, "UTF-8")
+            val autogen2Url = "https://2factor.in/API/V1/$apiKey/SMS/$normalized/AUTOGEN2"
+            Log.d(TAG, "Dispatching 2Factor SMS OTP via AUTOGEN2 to $normalized...")
 
-            Log.d(TAG, "Dispatching 2Factor R1 OTP to $normalized...")
+            val reqResult = executeGetRequest(autogen2Url)
+            if (reqResult.isSuccess) {
+                val responseText = reqResult.getOrNull()!!
+                Log.d(TAG, "2Factor AUTOGEN2 response: $responseText")
 
-            val url = URL(API_URL)
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                doOutput = true
-                connectTimeout = 10000
-                readTimeout = 10000
-                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            }
+                val json = JSONObject(responseText)
+                val status = json.optString("Status", "")
+                val details = json.optString("Details", "")
 
-            OutputStreamWriter(conn.outputStream).use { writer ->
-                writer.write(params)
-                writer.flush()
-            }
+                if (status.equals("Success", ignoreCase = true)) {
+                    return@withContext Result.success(details)
+                }
 
-            val responseCode = conn.responseCode
-            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
-            val responseText = BufferedReader(InputStreamReader(stream)).use { it.readText() }
-
-            Log.d(TAG, "2Factor R1 response ($responseCode): $responseText")
-
-            val json = JSONObject(responseText)
-            val status = json.optString("Status", "")
-            val details = json.optString("Details", "")
-
-            if (status.equals("Success", ignoreCase = true)) {
-                return@withContext Result.success(details)
-            } else {
                 return@withContext Result.failure(Exception(if (details.isNotBlank()) details else "2Factor error: $responseText"))
+            } else {
+                return@withContext Result.failure(reqResult.exceptionOrNull() ?: Exception("HTTP request failed"))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Direct 2Factor R1 dispatch exception", e)
+            Log.e(TAG, "Direct 2Factor AUTOGEN2 dispatch exception", e)
             return@withContext Result.failure(e)
+        }
+    }
+
+    /**
+     * Verifies the OTP with 2Factor server using official SMS/VERIFY endpoint.
+     * Documented Endpoint:
+     *   GET https://2factor.in/API/V1/:api_key/SMS/VERIFY/:session_id/:otp_input
+     */
+    suspend fun verifyOTP(
+        sessionId: String,
+        otpInput: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val verifyUrl = "https://2factor.in/API/V1/$apiKey/SMS/VERIFY/${URLEncoder.encode(sessionId, "UTF-8")}/${URLEncoder.encode(otpInput.trim(), "UTF-8")}"
+            Log.d(TAG, "Verifying OTP via 2Factor SMS/VERIFY endpoint...")
+
+            val reqResult = executeGetRequest(verifyUrl)
+            if (reqResult.isSuccess) {
+                val responseText = reqResult.getOrNull()!!
+                Log.d(TAG, "2Factor VERIFY response: $responseText")
+
+                val json = JSONObject(responseText)
+                val status = json.optString("Status", "")
+                val details = json.optString("Details", "")
+
+                if (status.equals("Success", ignoreCase = true) && details.contains("Match", ignoreCase = true)) {
+                    Result.success(true)
+                } else {
+                    Result.success(false)
+                }
+            } else {
+                Result.failure(reqResult.exceptionOrNull() ?: Exception("Verification request failed"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "2Factor SMS/VERIFY exception", e)
+            Result.failure(e)
         }
     }
 
@@ -143,8 +186,7 @@ object TwoFactorClient {
         phoneNumber: String,
         message: String
     ): Result<String> {
-        val extractedOtp = Regex("\\b\\d{4,8}\\b").find(message)?.value
-            ?: (100000..999999).random().toString()
+        val extractedOtp = Regex("\\b\\d{4,8}\\b").find(message)?.value ?: ""
         return sendOTP(phoneNumber, extractedOtp, "User")
     }
 
