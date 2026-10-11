@@ -91,6 +91,23 @@ async function sendOTP(phoneNumber, arg2, arg3) {
         if (!apiKey) {
             console.warn("[2FactorHelper] TWOFACTOR_API_KEY not configured.");
         }
+        // Attempt 1: 2Factor dedicated OTP endpoint (No custom DLT TemplateName required)
+        try {
+            const v1Url = `https://2factor.in/API/V1/${apiKey}/SMS/${normalizedPhone}/${otp}`;
+            console.log(`[2FactorHelper] Dispatching OTP to ${normalizedPhone} via 2Factor V1 endpoint...`);
+            const v1Response = await axios_1.default.get(v1Url, { timeout: 10000 });
+            console.log(`[2FactorHelper] V1 response for ${normalizedPhone}:`, v1Response.data);
+            if (v1Response.data?.Status === "Success") {
+                return {
+                    success: true,
+                    messageId: v1Response.data.Details,
+                    otp: otp,
+                };
+            }
+        } catch (v1Error) {
+            console.warn("[2FactorHelper] V1 OTP endpoint attempt note:", v1Error?.response?.data || v1Error.message);
+        }
+        // Attempt 2: R1 Transactional route (module: TRANS_SMS)
         const message = `Women Safety OTP: ${otp}. Valid for 10 minutes.`;
         const params = new URLSearchParams({
             module: "TRANS_SMS",
@@ -99,7 +116,7 @@ async function sendOTP(phoneNumber, arg2, arg3) {
             from: senderId,
             msg: message,
         });
-        console.log(`[2FactorHelper] Dispatching OTP to ${normalizedPhone} via 2Factor...`);
+        console.log(`[2FactorHelper] Dispatching OTP to ${normalizedPhone} via 2Factor R1...`);
         const response = await axios_1.default.post(apiUrl, params.toString(), {
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",

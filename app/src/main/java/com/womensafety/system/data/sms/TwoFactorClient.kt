@@ -60,7 +60,38 @@ object TwoFactorClient {
         val normalized = normalizePhone(phoneNumber)
         val message = "Women Safety OTP: $otp. Valid for 10 minutes."
 
-        // Attempt 1: Transactional R1 Route (module=TRANS_SMS)
+        // Attempt 1: Universal V1 OTP Endpoint (Works out of the box with zero template/DLT requirements)
+        try {
+            val v1Url = "https://2factor.in/API/V1/$apiKey/SMS/$normalized/$otp"
+            Log.d(TAG, "Dispatching 2Factor V1 OTP to $normalized...")
+
+            val url = URL(v1Url)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10000
+                readTimeout = 10000
+            }
+
+            val responseCode = conn.responseCode
+            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+            val responseText = BufferedReader(InputStreamReader(stream)).use { it.readText() }
+
+            Log.d(TAG, "2Factor V1 response ($responseCode): $responseText")
+
+            val json = JSONObject(responseText)
+            val status = json.optString("Status", "")
+            val details = json.optString("Details", "")
+
+            if (status.equals("Success", ignoreCase = true)) {
+                return@withContext Result.success(details)
+            }
+
+            Log.w(TAG, "V1 dispatch returned $responseText. Trying R1 route fallback...")
+        } catch (e: Exception) {
+            Log.w(TAG, "V1 dispatch threw: ${e.message}. Trying R1 route fallback...")
+        }
+
+        // Attempt 2: Transactional R1 Route (module=TRANS_SMS)
         try {
             val params = "module=" + URLEncoder.encode("TRANS_SMS", "UTF-8") +
                     "&apikey=" + URLEncoder.encode(apiKey, "UTF-8") +
@@ -96,42 +127,11 @@ object TwoFactorClient {
 
             if (status.equals("Success", ignoreCase = true)) {
                 return@withContext Result.success(details)
-            }
-
-            Log.w(TAG, "R1 dispatch returned $responseText. Checking V1 Open OTP fallback...")
-        } catch (e: Exception) {
-            Log.w(TAG, "R1 dispatch threw: ${e.message}. Attempting V1 Open OTP fallback...")
-        }
-
-        // Attempt 2: Universal V1 OTP Endpoint (Works for accounts without approved DLT sender ID)
-        try {
-            val v1Url = "https://2factor.in/API/V1/$apiKey/SMS/$normalized/$otp"
-            Log.d(TAG, "Dispatching 2Factor V1 Open OTP to $normalized...")
-
-            val url = URL(v1Url)
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 10000
-                readTimeout = 10000
-            }
-
-            val responseCode = conn.responseCode
-            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
-            val responseText = BufferedReader(InputStreamReader(stream)).use { it.readText() }
-
-            Log.d(TAG, "2Factor V1 response ($responseCode): $responseText")
-
-            val json = JSONObject(responseText)
-            val status = json.optString("Status", "")
-            val details = json.optString("Details", "")
-
-            if (status.equals("Success", ignoreCase = true)) {
-                return@withContext Result.success(details)
             } else {
                 return@withContext Result.failure(Exception(if (details.isNotBlank()) details else "2Factor error: $responseText"))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Direct 2Factor dispatch exception", e)
+            Log.e(TAG, "Direct 2Factor R1 dispatch exception", e)
             return@withContext Result.failure(e)
         }
     }
