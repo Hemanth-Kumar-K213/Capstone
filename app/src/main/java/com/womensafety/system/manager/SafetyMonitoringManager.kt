@@ -131,18 +131,18 @@ object SafetyMonitoringManager {
                         if (isJourneyActive) {
                             LocationTrackingService.startTracking(context, 5000L) // 5s high frequency
                         } else {
-                            LocationTrackingService.startTracking(context, 30000L) // 30s setup/standby
+                            LocationTrackingService.startTracking(context, 10000L) // 10s setup/standby
                         }
                     }
                     SafetyMode.WORKING -> {
-                        LocationTrackingService.startTracking(context, 15000L) // 15s updates
+                        LocationTrackingService.startTracking(context, 10000L) // 10s updates
                     }
                     SafetyMode.SLEEPING -> {
                         LocationTrackingService.startTracking(context, 60000L) // 60s lower frequency
                     }
                     SafetyMode.REGULAR -> {
                         if (profile.locationTrackingEnabled) {
-                            LocationTrackingService.startTracking(context, 30000L) // 30s normal updates
+                            LocationTrackingService.startTracking(context, 10000L) // 10s normal updates
                         } else {
                             LocationTrackingService.stopTracking(context)
                         }

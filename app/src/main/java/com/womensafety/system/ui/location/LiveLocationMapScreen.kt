@@ -39,7 +39,7 @@ fun LiveLocationMapScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val liveLocation by viewModel.observeUserLocation(userId).collectAsState(initial = null)
+    val liveLocation by viewModel.observeLocationByUserIdOrUid(userId).collectAsState(initial = null)
 
     Scaffold(
         topBar = {
@@ -76,6 +76,10 @@ fun LiveLocationMapScreen(
                     userLatitude = liveLocation!!.latitude,
                     userLongitude = liveLocation!!.longitude,
                     markerTitle = "${liveLocation!!.userName.ifBlank { "User" }} (Live)",
+                    uid = liveLocation!!.uid.ifBlank { userId },
+                    bearing = liveLocation!!.bearing,
+                    accuracy = liveLocation!!.accuracy,
+                    isLive = true,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -139,7 +143,7 @@ fun LiveLocationMapScreen(
                                         color = OnSurfaceDark
                                     )
                                     Text(
-                                        text = "Updated ${DateUtils.formatDateTime(location.timestamp)} (±${location.accuracy.toInt()}m)",
+                                        text = "UID: ${location.uid.ifBlank { userId }} • 10s Live Sync (±${location.accuracy.toInt()}m)",
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                         color = GradientGold
                                     )

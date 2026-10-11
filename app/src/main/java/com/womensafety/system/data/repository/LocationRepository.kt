@@ -28,6 +28,22 @@ class LocationRepository(
         return firestoreManager.listenToUserLocation(userId)
     }
 
+    suspend fun saveUidLocation(uid: String, location: UserLocation): Result<Unit> {
+        return firestoreManager.saveUidLocation(uid, location)
+    }
+
+    suspend fun getLatestUidLocation(uid: String): Result<UserLocation?> {
+        return firestoreManager.getLatestUidLocation(uid)
+    }
+
+    fun observeUidLocation(uid: String): Flow<UserLocation?> {
+        return firestoreManager.listenToUidLocation(uid)
+    }
+
+    fun observeLocationByUserIdOrUid(identifier: String): Flow<UserLocation?> {
+        return firestoreManager.listenToLocationByUserIdOrUid(identifier)
+    }
+
     suspend fun deleteOldLocations(userId: String, beforeTimestamp: Long): Result<Unit> {
         return firestoreManager.deleteOldLocations(userId, beforeTimestamp)
     }

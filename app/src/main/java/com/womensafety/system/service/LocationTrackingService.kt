@@ -23,6 +23,7 @@ import com.womensafety.system.data.model.LocationServiceState
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.repository.LocationRepository
 import com.womensafety.system.data.repository.UserRepository
+import com.womensafety.system.data.repository.UidRepository
 import com.womensafety.system.manager.SafetyMonitoringManager
 import com.womensafety.system.manager.TravelModeManager
 import com.womensafety.system.utils.NotificationChannelManager
@@ -52,7 +53,7 @@ class LocationTrackingService : Service() {
 
         const val EXTRA_INTERVAL_MS = "extra_interval_ms"
 
-        const val DEFAULT_NORMAL_INTERVAL_MS = 30_000L // 30 seconds
+        const val DEFAULT_NORMAL_INTERVAL_MS = 10_000L // 10 seconds for real-time live tracking
         const val SOS_INTERVAL_MS = 5_000L              // 5 seconds
 
         private val _currentLocation = MutableStateFlow<UserLocation?>(null)
@@ -122,10 +123,12 @@ class LocationTrackingService : Service() {
 
     private val locationRepository = LocationRepository()
     private val userRepository = UserRepository()
+    private val uidRepository = UidRepository()
     private val authManager = FirebaseAuthManager()
 
     private var currentIntervalMs = DEFAULT_NORMAL_INTERVAL_MS
     private var cachedUserName: String = "User"
+    private var cachedWeeklyUid: String = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -145,7 +148,23 @@ class LocationTrackingService : Service() {
             val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
             if (userProfile != null) {
                 cachedUserName = userProfile.name
+                if (userProfile.currentWeeklyUid.isNotBlank()) {
+                    cachedWeeklyUid = userProfile.currentWeeklyUid
+                }
             }
+            if (cachedWeeklyUid.isBlank()) {
+                val activeUid = uidRepository.getCurrentUid(currentUserId).getOrNull()
+                if (activeUid != null && activeUid.uid.isNotBlank()) {
+                    cachedWeeklyUid = activeUid.uid
+                }
+            }
+            if (cachedWeeklyUid.isBlank()) {
+                val devUid = uidRepository.generateDevUid(currentUserId, cachedUserName).getOrNull()
+                if (devUid != null && devUid.uid.isNotBlank()) {
+                    cachedWeeklyUid = devUid.uid
+                }
+            }
+            Log.d(TAG, "Location tracking initialized for UID: $cachedWeeklyUid, User: $cachedUserName")
         }
     }
 
@@ -248,8 +267,8 @@ class LocationTrackingService : Service() {
                 Priority.PRIORITY_HIGH_ACCURACY,
                 currentIntervalMs
             ).apply {
-                setMinUpdateIntervalMillis(currentIntervalMs / 2)
-                setMinUpdateDistanceMeters(if (isSosMode) 0f else 10f)
+                setMinUpdateIntervalMillis(5_000L) // 5s fastest interval
+                setMinUpdateDistanceMeters(0f)     // Emit every 10s even when stationary
                 setWaitForAccurateLocation(isSosMode)
             }.build()
 
@@ -273,13 +292,29 @@ class LocationTrackingService : Service() {
         val currentUserId = authManager.currentUserId ?: return
 
         serviceScope.launch {
+            // Ensure cachedWeeklyUid is populated
+            if (cachedWeeklyUid.isBlank()) {
+                val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
+                if (userProfile != null && userProfile.currentWeeklyUid.isNotBlank()) {
+                    cachedWeeklyUid = userProfile.currentWeeklyUid
+                } else {
+                    val activeUid = uidRepository.getCurrentUid(currentUserId).getOrNull()
+                    if (activeUid != null && activeUid.uid.isNotBlank()) {
+                        cachedWeeklyUid = activeUid.uid
+                    }
+                }
+            }
+
             val address = reverseGeocode(location.latitude, location.longitude)
             val userLocation = UserLocation(
                 userId = currentUserId,
+                uid = cachedWeeklyUid,
                 userName = cachedUserName,
                 latitude = location.latitude,
                 longitude = location.longitude,
                 accuracy = location.accuracy,
+                bearing = if (location.hasBearing()) location.bearing else null,
+                altitude = if (location.hasAltitude()) location.altitude else null,
                 timestamp = System.currentTimeMillis(),
                 speed = if (location.hasSpeed()) location.speed else null,
                 address = address,
@@ -289,11 +324,23 @@ class LocationTrackingService : Service() {
             // 1. Update StateFlow for immediate in-app UI
             _currentLocation.value = userLocation
 
-            // 2. Persist to Firestore subcollection
+            // 2. Persist to standard Firestore subcollection (userLocations)
             locationRepository.saveLocation(currentUserId, userLocation)
             Log.d(TAG, "Location saved to Firestore: ${location.latitude}, ${location.longitude}")
 
-            // 3. Notify SafetyMonitoringManager
+            // 3. Persist every 10 seconds to dedicated child_locations collection by UID
+            if (cachedWeeklyUid.isNotBlank()) {
+                val uidResult = locationRepository.saveUidLocation(cachedWeeklyUid, userLocation)
+                if (uidResult.isSuccess) {
+                    Log.d(TAG, "Uploaded 10s location to child_locations for UID: $cachedWeeklyUid")
+                } else {
+                    Log.w(TAG, "Failed uploading location for UID: $cachedWeeklyUid", uidResult.exceptionOrNull())
+                }
+            } else {
+                Log.w(TAG, "UID is still empty for user $currentUserId; skipping child_locations upload this cycle")
+            }
+
+            // 4. Notify SafetyMonitoringManager & TravelModeManager
             SafetyMonitoringManager.onLocationUpdated(userLocation)
             TravelModeManager.onLocationUpdated(userLocation)
         }

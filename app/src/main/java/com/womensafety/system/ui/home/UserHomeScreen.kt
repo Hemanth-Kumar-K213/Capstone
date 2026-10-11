@@ -41,7 +41,8 @@ fun UserHomeScreen(
     onNavigateToLocationSettings: () -> Unit = {},
     onNavigateToShakeSettings: () -> Unit = {},
     onNavigateToSafety: () -> Unit = {},
-    onNavigateToTravelMode: () -> Unit = {}
+    onNavigateToTravelMode: () -> Unit = {},
+    onNavigateToLiveMap: (String) -> Unit = {}
 ) {
     val state by viewModel.homeState.collectAsState()
 
@@ -381,7 +382,7 @@ fun UserHomeScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SafetyUidCard(state)
+                SafetyUidCard(state, onNavigateToLiveMap)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -396,7 +397,7 @@ fun UserHomeScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SafetyUidCard(state)
+                SafetyUidCard(state, onNavigateToLiveMap)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -621,7 +622,11 @@ private fun TrustedContactsCard(state: UserHomeViewModel.HomeState) {
 }
 
 @Composable
-private fun SafetyUidCard(state: UserHomeViewModel.HomeState) {
+private fun SafetyUidCard(
+    state: UserHomeViewModel.HomeState,
+    onNavigateToLiveMap: (String) -> Unit = {}
+) {
+    val currentUidStr = state.currentUid?.uid ?: ""
     GlassCard(
         accentGradient = Brush.horizontalGradient(
             colors = listOf(
@@ -643,7 +648,7 @@ private fun SafetyUidCard(state: UserHomeViewModel.HomeState) {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                state.currentUid?.uid ?: "Generating…",
+                if (currentUidStr.isNotBlank()) currentUidStr else "Generating…",
                 style = MaterialTheme.typography.headlineMedium.copy(
                     letterSpacing = 4.sp
                 ),
@@ -651,12 +656,39 @@ private fun SafetyUidCard(state: UserHomeViewModel.HomeState) {
                 color = GradientGold,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                "Changes automatically every week",
+                "Syncs to child_locations every 10 seconds",
                 style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceVariantDark.copy(alpha = 0.6f)
+                color = androidx.compose.ui.graphics.Color(0xFF10B981),
+                fontWeight = FontWeight.Medium
             )
+            if (currentUidStr.isNotBlank()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                OutlinedButton(
+                    onClick = {
+                        val target = currentUidStr.ifBlank { state.userProfile?.authUserId ?: "" }
+                        onNavigateToLiveMap(target)
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = GradientGold
+                    )
+                ) {
+                    Icon(
+                        Icons.Filled.MyLocation,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = GradientGold
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "OPEN LIVE RADAR MAP",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }

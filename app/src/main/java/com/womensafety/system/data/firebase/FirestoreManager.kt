@@ -46,6 +46,8 @@ class FirestoreManager {
         const val RELATIONSHIPS_COLLECTION = "relationships"
         const val USER_LOCATIONS_COLLECTION = "userLocations"
         const val LOCATIONS_SUBCOLLECTION = "locations"
+        const val CHILD_LOCATIONS_COLLECTION = "child_locations"
+        const val UID_LOCATIONS_COLLECTION = "uid_locations"
         const val SOS_EVENTS_COLLECTION = "sosEvents"
         const val RISK_EVENTS_COLLECTION = "riskEvents"
         const val JOURNEYS_COLLECTION = "journeys"
@@ -735,6 +737,153 @@ class FirestoreManager {
             }
 
         awaitClose { listener.remove() }
+    }
+
+    /**
+     * Saves a user's location to the dedicated child_locations collection indexed by UID.
+     * Updated every 10 seconds so the tracking website can track children by UID directly.
+     * Document Path: child_locations/{uid}
+     * History Path: child_locations/{uid}/history/{timestamp}
+     * Also mirrors to uid_locations/{uid} for alias compatibility.
+     */
+    suspend fun saveUidLocation(uid: String, location: UserLocation): Result<Unit> {
+        if (uid.isBlank()) return Result.failure(IllegalArgumentException("UID cannot be blank"))
+        return try {
+            val docId = uid.trim()
+            val locationToSave = location.copy(uid = docId)
+            val data = locationToSave.toMap().toMutableMap().apply {
+                put("lastUpdated", FieldValue.serverTimestamp())
+                put("status", "ONLINE")
+            }
+
+            // 1. Primary dedicated collection for website tracking: child_locations/{uid}
+            db.collection(CHILD_LOCATIONS_COLLECTION)
+                .document(docId)
+                .set(data, SetOptions.merge())
+                .await()
+
+            // Also record breadcrumb history for path replay: child_locations/{uid}/history/{timestamp}
+            val historyId = location.timestamp.toString()
+            db.collection(CHILD_LOCATIONS_COLLECTION)
+                .document(docId)
+                .collection("history")
+                .document(historyId)
+                .set(locationToSave.toMap())
+                .await()
+
+            // 2. Also mirror to uid_locations/{uid} for alias compatibility
+            db.collection(UID_LOCATIONS_COLLECTION)
+                .document(docId)
+                .set(data, SetOptions.merge())
+                .await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "saveUidLocation failed for uid: $uid", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieves the latest known location by UID from child_locations.
+     */
+    suspend fun getLatestUidLocation(uid: String): Result<UserLocation?> {
+        if (uid.isBlank()) return Result.success(null)
+        return try {
+            val snapshot = db.collection(CHILD_LOCATIONS_COLLECTION)
+                .document(uid.trim())
+                .get()
+                .await()
+
+            if (snapshot.exists()) {
+                val data = snapshot.data
+                val loc = data?.let { UserLocation.fromMap(snapshot.id, it) }
+                Result.success(loc)
+            } else {
+                Result.success(null)
+            }
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getLatestUidLocation failed for uid: $uid", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Real-time listener for child's live location by UID.
+     * Directly streams updates as they occur every 10 seconds.
+     */
+    fun listenToUidLocation(uid: String): Flow<UserLocation?> = callbackFlow {
+        if (uid.isBlank()) {
+            trySend(null)
+            close()
+            return@callbackFlow
+        }
+        val docRef = db.collection(CHILD_LOCATIONS_COLLECTION).document(uid.trim())
+        val listener = docRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e("FirestoreManager", "listenToUidLocation error for $uid", error)
+                trySend(null)
+                return@addSnapshotListener
+            }
+
+            if (snapshot != null && snapshot.exists()) {
+                val data = snapshot.data
+                if (data != null) {
+                    val loc = UserLocation.fromMap(snapshot.id, data)
+                    trySend(loc)
+                    return@addSnapshotListener
+                }
+            }
+            trySend(null)
+        }
+
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * Dual-mode listener that observes location by UID (from child_locations)
+     * or by auth userId (from userLocations).
+     */
+    fun listenToLocationByUserIdOrUid(identifier: String): Flow<UserLocation?> = callbackFlow {
+        if (identifier.isBlank()) {
+            trySend(null)
+            close()
+            return@callbackFlow
+        }
+        val target = identifier.trim()
+
+        // 1. Try child_locations/{target}
+        val childDocRef = db.collection(CHILD_LOCATIONS_COLLECTION).document(target)
+        val childListener = childDocRef.addSnapshotListener { childSnap, error ->
+            if (error == null && childSnap != null && childSnap.exists()) {
+                val data = childSnap.data
+                if (data != null) {
+                    val loc = UserLocation.fromMap(childSnap.id, data)
+                    trySend(loc)
+                }
+            }
+        }
+
+        // 2. Also listen to userLocations/{target}/locations (subcollection)
+        val userListener = db.collection(USER_LOCATIONS_COLLECTION)
+            .document(target)
+            .collection(LOCATIONS_SUBCOLLECTION)
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(1)
+            .addSnapshotListener { userSnap, error ->
+                if (error == null && userSnap != null && !userSnap.isEmpty) {
+                    val doc = userSnap.documents.first()
+                    val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                    if (loc != null) {
+                        trySend(loc)
+                    }
+                }
+            }
+
+        awaitClose {
+            childListener.remove()
+            userListener.remove()
+        }
     }
 
     /**

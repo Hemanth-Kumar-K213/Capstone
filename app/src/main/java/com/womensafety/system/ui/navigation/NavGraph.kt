@@ -344,7 +344,10 @@ fun AppNavGraph(
                             restoreState = true
                         }
                     },
-                    onNavigateToTravelMode = { navController.navigate(com.womensafety.system.ui.navigation.TravelMode) }
+                    onNavigateToTravelMode = { navController.navigate(com.womensafety.system.ui.navigation.TravelMode) },
+                    onNavigateToLiveMap = { targetId ->
+                        navController.navigate(LiveLocationMapScreen(userId = targetId))
+                    }
                 )
             }
 

@@ -230,6 +230,44 @@ service cloud.firestore {
 
 
     // ============================================================
+    // CHILD LOCATIONS (Dedicated for Website & App Tracking by UID)
+    // child_locations/{uid} & uid_locations/{uid}
+    // Updated every 10 seconds.
+    // ============================================================
+
+    match /child_locations/{uid} {
+      // Authenticated user can update their own location using their active UID
+      allow write: if isSignedIn()
+                   && request.resource.data.userId == request.auth.uid;
+
+      // Anyone with the child's rotating UID (website or app) can track their live location
+      allow get: if true;
+      allow list: if isSignedIn();
+
+      match /history/{historyId} {
+        allow write: if isSignedIn()
+                     && request.resource.data.userId == request.auth.uid;
+        allow get: if true;
+        allow list: if isSignedIn();
+      }
+    }
+
+    match /uid_locations/{uid} {
+      allow write: if isSignedIn()
+                   && request.resource.data.userId == request.auth.uid;
+      allow get: if true;
+      allow list: if isSignedIn();
+
+      match /history/{historyId} {
+        allow write: if isSignedIn()
+                     && request.resource.data.userId == request.auth.uid;
+        allow get: if true;
+        allow list: if isSignedIn();
+      }
+    }
+
+
+    // ============================================================
     // SOS EVENTS
     // sosEvents/{eventId}
     // ============================================================

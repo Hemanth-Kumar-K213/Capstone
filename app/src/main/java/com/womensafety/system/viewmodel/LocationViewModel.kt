@@ -86,6 +86,14 @@ class LocationViewModel(
         return locationRepository.observeUserLocation(userId)
     }
 
+    fun observeUidLocation(uid: String): Flow<UserLocation?> {
+        return locationRepository.observeUidLocation(uid)
+    }
+
+    fun observeLocationByUserIdOrUid(identifier: String): Flow<UserLocation?> {
+        return locationRepository.observeLocationByUserIdOrUid(identifier)
+    }
+
     fun clearHistory(userId: String, beforeTimestamp: Long) {
         viewModelScope.launch {
             _isLoading.value = true

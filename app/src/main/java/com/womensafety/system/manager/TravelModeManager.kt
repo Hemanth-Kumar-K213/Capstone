@@ -178,14 +178,14 @@ object TravelModeManager {
                     LocationTrackingService.stopTracking(ctx)
                 } else {
                     val interval = when (mode) {
-                        SafetyMode.WORKING -> 15000L
+                        SafetyMode.WORKING -> 10000L
                         SafetyMode.SLEEPING -> 60000L
-                        else -> 30000L
+                        else -> 10000L
                     }
                     LocationTrackingService.startTracking(ctx, interval)
                 }
             } else {
-                LocationTrackingService.startTracking(ctx, 30000L)
+                LocationTrackingService.startTracking(ctx, 10000L)
             }
         }
 
@@ -206,14 +206,14 @@ object TravelModeManager {
                     LocationTrackingService.stopTracking(ctx)
                 } else {
                     val interval = when (mode) {
-                        SafetyMode.WORKING -> 15000L
+                        SafetyMode.WORKING -> 10000L
                         SafetyMode.SLEEPING -> 60000L
-                        else -> 30000L
+                        else -> 10000L
                     }
                     LocationTrackingService.startTracking(ctx, interval)
                 }
             } else {
-                LocationTrackingService.startTracking(ctx, 30000L)
+                LocationTrackingService.startTracking(ctx, 10000L)
             }
         }
 
