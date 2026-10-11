@@ -12,12 +12,22 @@ android {
     namespace = "com.womensafety.system"
     compileSdk = 35
 
+    val localProps = Properties().apply {
+        val file = rootProject.file("local.properties")
+        if (file.exists()) load(file.inputStream())
+    }
+    val twoFactorApiKey = localProps.getProperty("TWOFACTOR_API_KEY") ?: "7e825d24-XXXX-XXXX-XXXX-0200cd936042"
+    val twoFactorSenderId = localProps.getProperty("TWOFACTOR_SENDER_ID") ?: "WSAFETY"
+
     defaultConfig {
         applicationId = "com.womensafety.system"
         minSdk = 26
         targetSdk = 35
         versionCode = 2
         versionName = "1.0.1"
+
+        buildConfigField("String", "TWOFACTOR_API_KEY", "\"$twoFactorApiKey\"")
+        buildConfigField("String", "TWOFACTOR_SENDER_ID", "\"$twoFactorSenderId\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

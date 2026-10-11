@@ -361,9 +361,25 @@ curl -X POST "https://2factor.in/API/R1/" \
 
 ### 3. "Invalid module name passed" Error
 **Root Cause**: Passing `module=OTP` or `module=TRANSACTIONAL_SMS` to `https://2factor.in/API/R1/`.
-**Fix**: Use `module=TRANS_SMS`. Both `TwoFactorClient.kt` (direct fallback) and `twoFactorHelper.ts` (Cloud Functions) have been updated to use `TRANS_SMS`.
+**Fix**: Use `module=TRANS_SMS`. Both `TwoFactorClient.kt` (direct fallback) and `twoFactorHelper.ts` (Cloud Functions) use `TRANS_SMS`.
 
-### 4. Monitoring Function Logs
+### 4. "Invalid API Key or TRANSACTIONAL_SMS Service is inactive" Error
+**Root Cause**:
+1. The API key contains placeholder characters (e.g., `7e825d24-XXXX-XXXX...` or `YOUR_API_KEY_HERE`).
+2. Or the account's custom DLT Sender ID (`WSAFETY`) or Transactional Route is pending approval on 2Factor.
+**Fix**:
+1. Add your real 2Factor API Key from [https://www.2factor.in/](https://www.2factor.in/) to `local.properties`:
+   ```properties
+   TWOFACTOR_API_KEY=your_actual_2factor_api_key_here
+   TWOFACTOR_SENDER_ID=WSAFETY
+   ```
+2. For Cloud Functions, configure runtime config:
+   ```bash
+   firebase functions:config:set twofactor.api_key="your_key" twofactor.sender_id="WSAFETY"
+   ```
+3. `TwoFactorClient.kt` includes an automatic fallback to 2Factor's Open OTP route (`https://2factor.in/API/V1/{API_KEY}/SMS/{PHONE}/{OTP}`), which delivers OTPs immediately using 2Factor's pre-approved template without waiting for DLT approval!
+
+### 5. Monitoring Function Logs
 Check real-time execution logs when clicking "Send OTP" on your mobile device:
 ```bash
 firebase functions:log

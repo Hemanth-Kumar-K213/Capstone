@@ -91,6 +91,7 @@ The Android application (`com.womensafety.system`) interacts seamlessly with the
 
 - **"Invalid phone number"**: Phone number must be 10 digits (`9876543210`) or E.164 (`+919876543210`). The helper automatically normalizes it to `919876543210`.
 - **"Invalid module name passed"**: 2Factor `API/R1/` requires `module=TRANS_SMS`. Do not use `module=OTP` or `module=TRANSACTIONAL_SMS`.
+- **"Invalid API Key or TRANSACTIONAL_SMS Service is inactive"**: Set your real API key from https://www.2factor.in/ in `local.properties` (for Android) or via `firebase functions:config:set` (for Cloud Functions). The Android client also includes automatic fallback to the universal V1 OTP route (`https://2factor.in/API/V1/{API_KEY}/SMS/...`) which works immediately on trial accounts.
 - **"2Factor API credentials not configured"**: Run `firebase functions:config:set twofactor.api_key="..." twofactor.sender_id="WSAFETY"`.
 - **"Sender ID not approved"**: Ensure your DLT-approved sender ID matches the `TWOFACTOR_SENDER_ID` variable.
 - **Check Logs**:
