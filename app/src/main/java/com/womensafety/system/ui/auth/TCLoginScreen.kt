@@ -111,7 +111,7 @@ fun TCLoginScreen(
 
             if (!state.otpSent) {
                 Button(
-                    onClick = { activity?.let { viewModel.sendLoginOtp(it) } },
+                    onClick = { viewModel.sendLoginOtp(activity) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
@@ -167,7 +167,7 @@ fun TCLoginScreen(
                     )
                 } else {
                     TextButton(
-                        onClick = { activity?.let { viewModel.sendLoginOtp(it) } }
+                        onClick = { viewModel.sendLoginOtp(activity) }
                     ) {
                         Text("Resend OTP", color = GradientRose)
                     }

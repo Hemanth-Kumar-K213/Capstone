@@ -382,11 +382,15 @@ class LocationTrackingService : Service() {
             val geocoder = Geocoder(applicationContext, Locale.getDefault())
             @Suppress("DEPRECATION")
             val addresses: List<Address>? = geocoder.getFromLocation(lat, lng, 1)
-            addresses?.firstOrNull()?.let { addr ->
+            val addr = addresses?.firstOrNull()
+            if (addr != null) {
                 val street = addr.thoroughfare ?: addr.featureName ?: ""
                 val locality = addr.locality ?: addr.subAdminArea ?: ""
                 val admin = addr.adminArea ?: ""
-                listOf(street, locality, admin).filter { it.isNotBlank() }.joinToString(", ")
+                val subLocality = addr.subLocality ?: ""
+                listOf(street, subLocality, locality, admin).filter { it.isNotBlank() }.joinToString(", ").ifBlank { null }
+            } else {
+                null
             }
         } catch (e: Exception) {
             Log.w(TAG, "Reverse geocoding failed: ${e.message}")

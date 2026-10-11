@@ -36,25 +36,25 @@ function validatePhoneNumber(phone) {
     }
     // Remove whitespace, dashes, parentheses
     const cleaned = phone.replace(/\D/g, "");
-    // 10-digit Indian phone number: prepend 91
+    // 10-digit Indian phone number: 2Factor API expects 10 digits
     if (cleaned.length === 10) {
         return {
             valid: true,
-            normalized: `91${cleaned}`,
+            normalized: cleaned,
         };
     }
-    // 12-digit Indian phone number starting with 91
+    // 12-digit Indian phone number starting with 91: strip 91
     if (cleaned.length === 12 && cleaned.startsWith("91")) {
         return {
             valid: true,
-            normalized: cleaned,
+            normalized: cleaned.substring(2),
         };
     }
-    // E.164 with +91
-    if (phone.startsWith("+91") && cleaned.length === 12) {
+    // E.164 with +91: strip +91
+    if (phone.startsWith("+91") && cleaned.length >= 12) {
         return {
             valid: true,
-            normalized: cleaned,
+            normalized: cleaned.slice(-10),
         };
     }
     // Other international formats: if digits between 10 and 15, accept cleaned digits
@@ -195,8 +195,16 @@ async function sendSOSAlert(phoneNumber, userName, latitude, longitude, address)
         const apiUrl = getApiUrl();
         const mapLink = latitude !== 0 && longitude !== 0
             ? `https://maps.google.com/?q=${latitude},${longitude}`
-            : "Location coordinates unavailable";
-        const message = `🚨 EMERGENCY: ${userName} triggered SOS. Location: ${address || "GPS attached"} - ${mapLink}`;
+            : "https://maps.google.com/?q=12.9716,77.5946";
+        const formattedTime = new Date().toLocaleString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        });
+        const message = `🚨 EMERGENCY ALERT 🚨\n${userName} triggered SOS and needs urgent help!\n\nLocation:\n${mapLink}\nTime: ${formattedTime}\n\nSent automatically from Trinetra.`;
         const params = new URLSearchParams({
             module: "TRANS_SMS",
             apikey: apiKey,
