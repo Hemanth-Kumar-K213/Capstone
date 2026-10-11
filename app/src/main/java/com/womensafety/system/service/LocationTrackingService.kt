@@ -263,6 +263,22 @@ class LocationTrackingService : Service() {
     @SuppressLint("MissingPermission")
     private fun requestLocationUpdates() {
         try {
+            // 1. Immediately request cached/last known location to acquire instant fix!
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    Log.d(TAG, "Instant lastLocation fix acquired: ${loc.latitude}, ${loc.longitude}")
+                    handleNewLocation(loc)
+                }
+            }
+
+            // 2. Also request fresh one-shot current location immediately!
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).addOnSuccessListener { loc ->
+                if (loc != null) {
+                    Log.d(TAG, "Instant getCurrentLocation fix acquired: ${loc.latitude}, ${loc.longitude}")
+                    handleNewLocation(loc)
+                }
+            }
+
             val locationRequest = LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY,
                 currentIntervalMs

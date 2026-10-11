@@ -1,7 +1,12 @@
 package com.womensafety.system.ui.location
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -20,7 +25,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.womensafety.system.data.model.UserLocation
+import com.womensafety.system.manager.TrinetraLocationManager
 import com.womensafety.system.service.LocationTrackingService
 import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.map.SafetyMapTracker
@@ -28,11 +36,13 @@ import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.utils.MapUtils
 import com.womensafety.system.viewmodel.LocationViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Live Location Map Screen using OpenStreetMap (OSMDroid).
  * 100% Free & Open-Source (No Google Maps API keys or billing needed).
- * Renders the live map immediately and streams user/child coordinates every 10 seconds.
+ * Renders the live map immediately, handles runtime permissions and GPS enablement,
+ * and streams coordinates every 10 seconds.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,18 +52,58 @@ fun LiveLocationMapScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     val liveLocation by viewModel.observeLocationByUserIdOrUid(userId).collectAsState(initial = null)
     val localServiceLocation by LocationTrackingService.currentLocation.collectAsState()
+    var immediateFix by remember { mutableStateOf<UserLocation?>(null) }
+    var isGpsOff by remember { mutableStateOf(!TrinetraLocationManager.isGpsEnabled(context)) }
 
-    // Ensure background tracking is active if tracking local user
-    LaunchedEffect(Unit) {
-        if (!LocationTrackingService.isRunning) {
+    // Launcher for runtime location permissions
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
             LocationTrackingService.startTracking(context)
+            coroutineScope.launch {
+                val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
+                if (fix != null) immediateFix = fix
+            }
         }
     }
 
+    // Check permissions and acquire instant location fix on mount
+    LaunchedEffect(Unit) {
+        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasFine && !hasCoarse) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        } else {
+            if (!LocationTrackingService.isRunning) {
+                LocationTrackingService.startTracking(context)
+            }
+            val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
+            if (fix != null) {
+                immediateFix = fix
+            }
+        }
+    }
+
+    // Refresh GPS status periodically
+    LaunchedEffect(Unit) {
+        isGpsOff = !TrinetraLocationManager.isGpsEnabled(context)
+    }
+
     // Determine the most accurate available coordinate fix
-    val effectiveLocation = liveLocation ?: localServiceLocation
+    val effectiveLocation = liveLocation ?: localServiceLocation ?: immediateFix
     val hasFix = effectiveLocation != null && (effectiveLocation.latitude != 0.0 || effectiveLocation.longitude != 0.0)
 
     val lat = if (hasFix) effectiveLocation!!.latitude else 12.9716
@@ -96,7 +146,7 @@ fun LiveLocationMapScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // OpenStreetMap (OSMDroid) Live Map Tracker is ALWAYS rendered immediately
+            // OpenStreetMap (OSMDroid) Live Map Tracker
             SafetyMapTracker(
                 userLatitude = lat,
                 userLongitude = lng,
@@ -108,15 +158,47 @@ fun LiveLocationMapScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Top Status Pill if still awaiting first GPS fix
-            if (!hasFix) {
+            // Warning Banner if Device Location / GPS is toggled OFF
+            if (isGpsOff) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF7F1D1D).copy(alpha = 0.92f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                    shadowElevation = 8.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.LocationOff, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Device Location is OFF", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                            Text("Turn on GPS in phone settings for accurate fix", fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
+                        }
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Text("ENABLE", color = Color(0xFFFDE047), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            } else if (!hasFix) {
+                // Top Status Pill while acquiring satellite coordinate lock
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp),
                     shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF1E1B2E).copy(alpha = 0.9f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber.copy(alpha = 0.5f))
+                    color = Color(0xFF1E1B2E).copy(alpha = 0.92f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber.copy(alpha = 0.5f)),
+                    shadowElevation = 6.dp
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -129,7 +211,7 @@ fun LiveLocationMapScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Connecting to 10s live GPS stream...",
+                            text = "Acquiring GPS fix (updates every 10s)...",
                             fontSize = 12.sp,
                             color = GradientAmber,
                             fontWeight = FontWeight.Medium
@@ -206,7 +288,7 @@ fun LiveLocationMapScreen(
                             text = if (hasFix) {
                                 "Coordinates: ${String.format("%.5f", lat)}, ${String.format("%.5f", lng)} (±${effectiveLocation?.accuracy?.toInt() ?: 0}m)"
                             } else {
-                                "Waiting for GPS satellite coordinate fix..."
+                                "Acquiring GPS coordinates from satellite/network providers..."
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
