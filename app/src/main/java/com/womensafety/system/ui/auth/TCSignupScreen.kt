@@ -109,7 +109,7 @@ fun TCSignupScreen(
             if (!state.otpSent) {
                 PrimaryButton(
                     text = "SEND OTP",
-                    onClick = { activity?.let { viewModel.sendSignupOtp(it) } },
+                    onClick = { viewModel.sendSignupOtp(activity) },
                     isLoading = state.isLoading
                 )
             } else {
@@ -136,7 +136,7 @@ fun TCSignupScreen(
                     )
                 } else {
                     TextButton(
-                        onClick = { activity?.let { viewModel.sendSignupOtp(it) } }
+                        onClick = { viewModel.sendSignupOtp(activity) }
                     ) {
                         Text("Resend OTP")
                     }

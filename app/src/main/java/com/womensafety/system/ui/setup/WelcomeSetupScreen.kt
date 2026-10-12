@@ -21,10 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.womensafety.system.R
-import com.womensafety.system.ui.components.PrimaryButton
-import com.womensafety.system.ui.components.SecondaryButton
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.*
 import com.womensafety.system.ui.theme.*
 
 @Composable
@@ -35,15 +34,7 @@ fun WelcomeSetupScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        GradientDeepPurple,
-                        BackgroundDark,
-                        BackgroundDark
-                    )
-                )
-            )
+            .background(SafetyDarkBackground)
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -53,30 +44,30 @@ fun WelcomeSetupScreen(
         // App Logo
         Image(
             painter = painterResource(id = R.drawable.app_logo),
-            contentDescription = "Women Safety System Logo",
+            contentDescription = "Trinetra Logo",
             modifier = Modifier
-                .size(110.dp)
+                .size(92.dp)
         )
 
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            text = "Let's Set Up Your Safety System",
+            text = "Welcome to Personal Safety",
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontSize = 26.sp,
                 lineHeight = 32.sp
             ),
             fontWeight = FontWeight.Bold,
-            color = GradientGold,
+            color = SafetyTextPrimary,
             textAlign = TextAlign.Center
         )
 
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            text = "We'll help you configure location tracking, emergency contacts, and safety preferences in just a few quick steps.",
+            text = "Set up critical safety features so you're prepared in an emergency. You can change these anytime in Your info.",
             style = MaterialTheme.typography.bodyMedium,
-            color = OnSurfaceVariantDark,
+            color = SafetyTextSecondary,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 12.dp)
         )
@@ -86,7 +77,7 @@ fun WelcomeSetupScreen(
         // Value Cards
         SetupFeatureCard(
             icon = Icons.Filled.LocationOn,
-            iconColor = GradientAmber,
+            iconColor = SafetyPrimaryBlue,
             title = "Real-Time Location Tracking",
             description = "Share your live location automatically when emergency SOS is triggered."
         )
@@ -95,33 +86,35 @@ fun WelcomeSetupScreen(
 
         SetupFeatureCard(
             icon = Icons.Filled.ContactPhone,
-            iconColor = GradientRose,
-            title = "Emergency SMS & Calling",
-            description = "Instantly notify parents, friends, or trusted guardians even if they don't have the app."
+            iconColor = SafetyPrimaryBlue,
+            title = "Emergency Contacts",
+            description = "Instantly notify parents, friends, or trusted guardians when help is needed."
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         SetupFeatureCard(
             icon = Icons.Filled.Vibration,
-            iconColor = GradientGold,
+            iconColor = SafetyPrimaryBlue,
             title = "Smart SOS & Shake Detection",
-            description = "Discreetly trigger emergency mode by shaking your phone when you are in danger."
+            description = "Discreetly trigger emergency alerts by shaking your phone."
         )
 
         Spacer(modifier = Modifier.height(36.dp))
 
         // Action Buttons
-        PrimaryButton(
-            text = "GET STARTED",
-            onClick = onGetStarted
+        SafetyPillButton(
+            text = "Set Up Now",
+            onClick = onGetStarted,
+            modifier = Modifier.fillMaxWidth().height(48.dp)
         )
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        SecondaryButton(
-            text = "SKIP FOR NOW",
-            onClick = onSkip
+        SafetyOutlinedPillButton(
+            text = "Not Now",
+            onClick = onSkip,
+            modifier = Modifier.fillMaxWidth().height(48.dp)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -135,11 +128,15 @@ private fun SetupFeatureCard(
     title: String,
     description: String
 ) {
-    GlassCard {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = SafetyCardBackground),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -162,15 +159,15 @@ private fun SetupFeatureCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = OnSurfaceDark
+                    color = SafetyTextPrimary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark
+                    color = SafetyTextSecondary
                 )
             }
         }

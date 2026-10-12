@@ -1,15 +1,16 @@
 package com.womensafety.system.ui.home
 
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,384 +18,762 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.womensafety.system.R
+import com.womensafety.system.data.model.SafetyMode
+import com.womensafety.system.data.model.UserLocation
+import com.womensafety.system.data.model.SOSTriggerMethod
+import com.womensafety.system.data.model.SOSStatus
+import com.womensafety.system.manager.JourneyState
+import com.womensafety.system.manager.SafetyMonitoringManager
+import com.womensafety.system.manager.TravelModeManager
+import com.womensafety.system.service.LocationTrackingService
+import com.womensafety.system.ui.components.*
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.Constants
 import com.womensafety.system.viewmodel.UserHomeViewModel
+import com.womensafety.system.viewmodel.SOSViewModel
+import kotlinx.coroutines.delay
 
 @Composable
 fun UserHomeScreen(
     viewModel: UserHomeViewModel,
+    sosViewModel: SOSViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
     onNavigateToLocationSettings: () -> Unit = {},
     onNavigateToShakeSettings: () -> Unit = {},
-    onNavigateToSafety: () -> Unit = {}
+    onNavigateToSafety: () -> Unit = {},
+    onNavigateToAlert: (String) -> Unit = {},
+    onNavigateToTravelMode: () -> Unit = {},
+    onNavigateToLiveMap: (String) -> Unit = {}
 ) {
     val state by viewModel.homeState.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.loadHomeData() }
+
+    LaunchedEffect(state.userProfile?.locationTrackingEnabled, state.currentUid?.uid) {
+        val uid = state.currentUid?.uid
+        if (!uid.isNullOrBlank()) {
+            LocationTrackingService.setTargetUid(uid, state.currentUid?.userName ?: "")
+        }
+        try {
+            val hasLocationPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (hasLocationPerm && state.userProfile != null && state.userProfile?.locationTrackingEnabled != false && !LocationTrackingService.isRunning) {
+                LocationTrackingService.startTracking(context)
+            }
+        } catch (e: Throwable) {
+            android.util.Log.w("UserHome", "Deferred location tracking: ${e.message}")
+        }
+    }
+
+    var showSOSConfirmDialog by remember { mutableStateOf(false) }
+    var sosConfirmCountdown by remember { mutableIntStateOf(3) }
+    val activeSOSEvent by sosViewModel.activeSOSEvent.collectAsState()
+
+    LaunchedEffect(activeSOSEvent) {
+        if (activeSOSEvent != null && activeSOSEvent!!.status == SOSStatus.ACTIVE) {
+            onNavigateToAlert(activeSOSEvent!!.id)
+        }
+    }
+
+    if (showSOSConfirmDialog) {
+        LaunchedEffect(showSOSConfirmDialog) {
+            sosConfirmCountdown = 3
+            while (sosConfirmCountdown > 0) {
+                delay(1000)
+                sosConfirmCountdown -= 1
+            }
+            showSOSConfirmDialog = false
+            sosViewModel.triggerSOS(context, SOSTriggerMethod.BUTTON) { eventId ->
+                onNavigateToAlert(eventId)
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { showSOSConfirmDialog = false },
+            containerColor = SafetyCardBackground,
+            icon = {
+                Icon(
+                    Icons.Filled.CrisisAlert,
+                    contentDescription = null,
+                    tint = StatusDenied,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    "Trigger Emergency SOS?",
+                    color = SafetyTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Alerting in $sosConfirmCountdown seconds...",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = StatusDenied
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Auto-call will be initiated and emergency location SMS will be dispatched immediately to your contacts.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SafetyTextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            confirmButton = {
+                SafetyPillButton(
+                    text = "TRIGGER NOW",
+                    onClick = {
+                        showSOSConfirmDialog = false
+                        sosViewModel.triggerSOS(context, SOSTriggerMethod.BUTTON) { eventId ->
+                            onNavigateToAlert(eventId)
+                        }
+                    },
+                    containerColor = StatusDenied,
+                    contentColor = Color.White
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showSOSConfirmDialog = false }) {
+                    Text("CANCEL", color = SafetyTextMuted)
+                }
+            }
+        )
+    }
+
+    var showRequestsDialog by remember { mutableStateOf(false) }
+
+    if (showRequestsDialog) {
+        val dialogContext = LocalContext.current
+        var actionInProgressId by remember { mutableStateOf<String?>(null) }
+        val pendingList = state.pendingRequests
+
+        AlertDialog(
+            onDismissRequest = { showRequestsDialog = false },
+            containerColor = SafetyCardBackground,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.NotificationsActive,
+                        contentDescription = null,
+                        tint = SafetyPrimaryBlue,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Trusted Contact Requests",
+                        color = SafetyTextPrimary,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (pendingList.isEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = StatusApproved,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "No Pending Requests",
+                                color = SafetyTextPrimary,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val displayUid = state.currentUid?.uid?.ifBlank {
+                                state.userProfile?.currentWeeklyUid ?: state.userProfile?.authUserId ?: ""
+                            } ?: ""
+                            Text(
+                                text = if (displayUid.isNotBlank())
+                                    "When a trusted contact sends a request using your UID ($displayUid), it will appear here for you to accept or reject."
+                                else
+                                    "When a trusted contact sends a request using your UID, it will appear here for you to accept or reject.",
+                                color = SafetyTextSecondary,
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "The following contacts entered your UID to monitor your safety and receive emergency SOS alerts:",
+                            color = SafetyTextSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        pendingList.forEach { rel ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = SafetyCardBackgroundElevated
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(SafetyPrimaryBlue.copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Person,
+                                                contentDescription = null,
+                                                tint = SafetyPrimaryBlue,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = rel.trustedContactName.ifBlank { "Trusted Contact" },
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = SafetyTextPrimary
+                                            )
+                                            if (rel.trustedContactPhone.isNotBlank()) {
+                                                Text(
+                                                    text = "Phone: ${rel.trustedContactPhone}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = SafetyTextSecondary
+                                                )
+                                            }
+                                            Text(
+                                                text = "Requested: ${com.womensafety.system.utils.DateUtils.formatDateTime(rel.requestedAt)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = SafetyTextMuted
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        // ACCEPT BUTTON
+                                        Button(
+                                            onClick = {
+                                                actionInProgressId = rel.id
+                                                viewModel.approveRequest(rel.id) { success, errMsg ->
+                                                    actionInProgressId = null
+                                                    if (success) {
+                                                        android.widget.Toast.makeText(
+                                                            dialogContext,
+                                                            "✓ Accepted! ${rel.trustedContactName.ifBlank { "Contact" }} is now connected.",
+                                                            android.widget.Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    } else {
+                                                        android.widget.Toast.makeText(
+                                                            dialogContext,
+                                                            "Error: ${errMsg ?: "Could not accept"}",
+                                                            android.widget.Toast.LENGTH_LONG
+                                                        ).show()
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            enabled = actionInProgressId == null,
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = StatusApproved
+                                            )
+                                        ) {
+                                            if (actionInProgressId == rel.id) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    color = Color.White,
+                                                    strokeWidth = 2.dp
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Check,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("ACCEPT", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            }
+                                        }
+
+                                        // REJECT BUTTON
+                                        OutlinedButton(
+                                            onClick = {
+                                                actionInProgressId = rel.id
+                                                viewModel.denyRequest(rel.id) { success, errMsg ->
+                                                    actionInProgressId = null
+                                                    if (success) {
+                                                        android.widget.Toast.makeText(
+                                                            dialogContext,
+                                                            "Request rejected.",
+                                                            android.widget.Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    } else {
+                                                        android.widget.Toast.makeText(
+                                                            dialogContext,
+                                                            "Error: ${errMsg ?: "Could not reject"}",
+                                                            android.widget.Toast.LENGTH_LONG
+                                                        ).show()
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            enabled = actionInProgressId == null,
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                contentColor = StatusDenied
+                                            )
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Close,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = StatusDenied
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("REJECT", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = StatusDenied)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showRequestsDialog = false }) {
+                    Text("Close", color = SafetyPrimaryBlue, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
+    }
 
     if (state.isLoading) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(BackgroundDark),
+                .background(SafetyDarkBackground),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = GradientAmber)
+            CircularProgressIndicator(color = SafetyPrimaryBlue)
         }
         return
     }
 
+    val activeSafetyModeStr = state.userProfile?.activeSafetyMode ?: "REGULAR"
+    val activeMode = SafetyMode.fromString(activeSafetyModeStr)
+    val modeSuggestion by SafetyMonitoringManager.modeSuggestion.collectAsState()
+    val targetUid = state.currentUid?.uid?.ifBlank {
+        state.userProfile?.currentWeeklyUid ?: state.userProfile?.authUserId ?: ""
+    } ?: ""
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(GradientDeepPurple.copy(alpha = 0.6f), BackgroundDark)
-                )
-            )
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp)
+            .background(SafetyDarkBackground)
     ) {
-        // Header with logo
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+        // Top App Bar matching Google Personal Safety
+        SafetyTopAppBar(
+            title = "Personal Safety",
+            unreadNotificationsCount = state.pendingRequestCount,
+            onNotificationClick = {
+                viewModel.refreshRequests()
+                showRequestsDialog = true
+            },
+            onProfileClick = { /* Handled via bottom bar or detail */ }
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Welcome back,",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceVariantDark
+            // ─── Hero Illustration Card (Exact match to uploaded Image 2) ───
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(290.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = SafetyCardBackground
                 )
-                Text(
-                    state.userProfile?.name ?: "User",
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        letterSpacing = 1.sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = GradientGold
-                )
-            }
-            Image(
-                painter = painterResource(id = R.drawable.app_logo),
-                contentDescription = null,
-                modifier = Modifier.size(48.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Account Status — Glass card
-        GlassCard {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(StatusApproved.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Icon(
-                        Icons.Filled.VerifiedUser,
-                        contentDescription = null,
-                        tint = StatusApproved,
-                        modifier = Modifier.size(24.dp)
+                    // Center Illustration
+                    SafetyHeroIllustration(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
                     )
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        "Account Status",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = OnSurfaceVariantDark
+
+                    // 4 Floating Feature Badges
+                    // Top-Left: Emergency Sharing / Location
+                    SafetyHeroBadge(
+                        icon = Icons.Filled.ShareLocation,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 24.dp, top = 28.dp),
+                        onClick = {
+                            if (targetUid.isNotBlank()) onNavigateToLiveMap(targetUid)
+                            else onNavigateToLocationSettings()
+                        }
                     )
-                    Text(
-                        "✓ Verified & Active",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = StatusApproved
+
+                    // Top-Right: Emergency SOS
+                    SafetyHeroBadge(
+                        text = "SOS",
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 24.dp, top = 28.dp),
+                        onClick = {
+                            sosConfirmCountdown = 3
+                            showSOSConfirmDialog = true
+                        }
+                    )
+
+                    // Bottom-Left: Travel Mode / Car detection
+                    SafetyHeroBadge(
+                        icon = Icons.Filled.DirectionsCar,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 24.dp, bottom = 32.dp),
+                        onClick = onNavigateToTravelMode
+                    )
+
+                    // Bottom-Right: Power / Shake detection
+                    SafetyHeroBadge(
+                        icon = Icons.Filled.PowerSettingsNew,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 24.dp, bottom = 32.dp),
+                        onClick = onNavigateToShakeSettings
                     )
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // Location Tracking Status Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientAmber.copy(alpha = 0.08f),
-                    GradientGold.copy(alpha = 0.04f)
-                )
+            // ─── Headline & Subtitle ─────────────────────────
+            Text(
+                text = "Do more with Personal Safety",
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Medium
+                ),
+                color = SafetyTextPrimary,
+                textAlign = TextAlign.Center
             )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(GradientAmber.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            tint = GradientAmber,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Location Tracking",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = OnSurfaceDark
-                        )
-                        Text(
-                            if (state.userProfile?.locationTrackingEnabled == true) "Active • Sharing coordinates"
-                            else "Inactive",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (state.userProfile?.locationTrackingEnabled == true) StatusApproved else OnSurfaceVariantDark
-                        )
-                    }
-                    TextButton(onClick = onNavigateToLocationSettings) {
-                        Text("Configure", color = GradientAmber, fontWeight = FontWeight.Bold)
-                    }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Emergency Sharing, Safety Check, Shake Detection, and more are actively protecting you",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                ),
+                color = SafetyTextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // ─── Dual Action SOS & Safety Buttons (both SOS buttons trigger auto call + SMS) ───
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SafetyPillButton(
+                    text = "Emergency SOS",
+                    onClick = {
+                        sosConfirmCountdown = 3
+                        showSOSConfirmDialog = true
+                    },
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .height(48.dp),
+                    containerColor = StatusDenied,
+                    contentColor = Color.White
+                )
+                OutlinedButton(
+                    onClick = onNavigateToSafety,
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(100.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SafetyPrimaryBlue),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SafetyPrimaryBlue)
+                ) {
+                    Text("Safety Check", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // Shake Detection Status Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientRose.copy(alpha = 0.08f),
-                    GradientMagenta.copy(alpha = 0.04f)
-                )
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(GradientRose.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Vibration,
-                            contentDescription = null,
-                            tint = GradientRose,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Shake Detection",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = OnSurfaceDark
-                        )
-                        Text(
-                            if (state.userProfile?.shakeDetectionEnabled == true) "Active • Sensitivity ${state.userProfile?.shakeSensitivity}"
-                            else "Inactive",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (state.userProfile?.shakeDetectionEnabled == true) StatusApproved else OnSurfaceVariantDark
-                        )
-                    }
-                    TextButton(onClick = onNavigateToShakeSettings) {
-                        Text("Configure", color = GradientRose, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Trusted Contacts — Gradient-accent card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientRose.copy(alpha = 0.1f),
-                    GradientMagenta.copy(alpha = 0.05f)
-                )
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(GradientRose.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Contacts,
-                            contentDescription = null,
-                            tint = GradientRose
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Trusted Contacts",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = OnSurfaceDark
-                        )
-                        if (state.trustedContactCount < Constants.MIN_TRUSTED_CONTACTS) {
-                            Text(
-                                "Add at least ${Constants.MIN_TRUSTED_CONTACTS} contacts",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = StatusPending
+            // ─── Safety Mode Suggestion Card (if active) ─────
+            if (modeSuggestion != null && state.userProfile?.autoModeSuggestionsEnabled == true) {
+                val suggestion = modeSuggestion!!
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = SafetyCardBackground
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(SafetyPrimaryBlue.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Info,
+                                    contentDescription = null,
+                                    tint = SafetyPrimaryBlue,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Safety Mode Suggestion",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = SafetyTextPrimary
+                                )
+                                Text(
+                                    "You appear to be ${if (suggestion == SafetyMode.TRAVELLING) "travelling" else "at saved location"}. Switch to ${suggestion.displayName}?",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SafetyTextSecondary
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { SafetyMonitoringManager.dismissSuggestion() }) {
+                                Text("Dismiss", color = SafetyTextMuted)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            SafetyPillButton(
+                                text = "Switch Mode",
+                                onClick = { viewModel.updateActiveSafetyMode(suggestion) },
+                                modifier = Modifier.height(38.dp)
                             )
                         }
                     }
-                    Text(
-                        "${state.trustedContactCount}",
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = GradientRose
-                    )
                 }
-                if (state.pendingRequestCount > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // ─── Operating Mode & System Status Group ────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = SafetyCardBackground
+                )
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1E3A2F)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = StatusApproved,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "System Protected",
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = SafetyTextPrimary
+                            )
+                            Text(
+                                text = "Mode: ${activeMode.displayName} • Location sync active",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                                color = SafetyTextSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = SafetyCardDivider)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "SAFETY OPERATING MODE",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp),
+                        fontWeight = FontWeight.Medium,
+                        color = SafetyTextMuted
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Mode Selector Pill Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SafetyMode.values().forEach { modeOption ->
+                            val isSelected = activeMode == modeOption
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(100.dp))
+                                    .background(
+                                        if (isSelected) SafetyIndicatorBlue
+                                        else Color(0xFF282B30)
+                                    )
+                                    .clickable { viewModel.updateActiveSafetyMode(modeOption) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = modeOption.displayName.split("/")[0],
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) SafetyPrimaryBlue else SafetyTextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Safety UID quick indicator
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Icon(
-                            Icons.Filled.Notifications,
+                            imageVector = Icons.Filled.Key,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = StatusPending
+                            tint = SafetyPrimaryBlue,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "${state.pendingRequestCount} pending request(s)",
+                            text = "Safety UID: ${if (targetUid.isNotBlank()) targetUid else "Syncing..."}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = StatusPending
+                            color = SafetyTextSecondary,
+                            modifier = Modifier.weight(1f)
                         )
+                        TextButton(
+                            onClick = {
+                                if (targetUid.isNotBlank()) onNavigateToLiveMap(targetUid)
+                            }
+                        ) {
+                            Text(
+                                "Radar Map",
+                                color = SafetyPrimaryBlue,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Current Safety UID — Gradient accent card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientAmber.copy(alpha = 0.1f),
-                    GradientGold.copy(alpha = 0.05f)
-                )
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "CURRENT SAFETY ID",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        letterSpacing = 3.sp
-                    ),
-                    color = OnSurfaceVariantDark
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    state.currentUid?.uid ?: "Generating…",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        letterSpacing = 4.sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = GradientGold,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Changes automatically every week",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark.copy(alpha = 0.6f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Safety Center Action Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(StatusDenied.copy(alpha = 0.15f), StatusDenied.copy(alpha = 0.04f))
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(20.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(StatusDenied.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Filled.Sos,
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = StatusDenied
+            // Mode-specific views for TRAVELLING, WORKING, and SLEEPING
+            when (activeMode) {
+                SafetyMode.TRAVELLING -> {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TravellingModeView(
+                        userProfile = state.userProfile,
+                        onNavigateToTravel = onNavigateToTravelMode,
+                        onNavigateToLiveMap = {
+                            if (targetUid.isNotBlank()) onNavigateToLiveMap(targetUid)
+                        }
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    "Safety Center & SOS",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = OnSurfaceDark
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Instant cellular SMS alerts, siren alarms, and GPS broadcasting",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Button(
-                    onClick = onNavigateToSafety,
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Text("OPEN SAFETY CENTER", fontWeight = FontWeight.Bold)
+                SafetyMode.WORKING -> {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    WorkingModeView(
+                        userProfile = state.userProfile,
+                        viewModel = viewModel,
+                        onNavigateToSafety = onNavigateToSafety
+                    )
                 }
+                SafetyMode.SLEEPING -> {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SleepingModeView(
+                        userProfile = state.userProfile,
+                        viewModel = viewModel,
+                        onNavigateToSafety = onNavigateToSafety
+                    )
+                }
+                else -> { /* Clean view */ }
             }
-        }
 
-        Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
 
 /**
- * Reusable glass-morphism card component with optional gradient accent.
+ * Reusable Card component for backward compatibility across subviews
  */
 @Composable
 fun GlassCard(
@@ -405,17 +784,10 @@ fun GlassCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(GlassBorder, GlassBorder.copy(alpha = 0.1f))
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+            .clip(RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = SurfaceVariantDark
+            containerColor = SafetyCardBackground
         )
     ) {
         Box(

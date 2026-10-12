@@ -18,6 +18,9 @@ import com.womensafety.system.R
 import com.womensafety.system.data.model.SOSTriggerMethod
 import com.womensafety.system.data.model.ShakeSensitivity
 import com.womensafety.system.manager.SOSManager
+import com.womensafety.system.data.firebase.FirebaseAuthManager
+import com.womensafety.system.data.repository.UserRepository
+import com.womensafety.system.manager.SafetyMonitoringManager
 import com.womensafety.system.utils.NotificationChannelManager
 import com.womensafety.system.utils.ShakeDetector
 import kotlinx.coroutines.CoroutineScope
@@ -44,30 +47,42 @@ class ShakeDetectionService : Service() {
             private set
 
         fun startService(context: Context, sensitivity: ShakeSensitivity = ShakeSensitivity.MEDIUM) {
-            val intent = Intent(context, ShakeDetectionService::class.java).apply {
-                action = ACTION_START_SHAKE_DETECTION
-                putExtra(EXTRA_SENSITIVITY, sensitivity.name)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                val intent = Intent(context, ShakeDetectionService::class.java).apply {
+                    action = ACTION_START_SHAKE_DETECTION
+                    putExtra(EXTRA_SENSITIVITY, sensitivity.name)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed startService in ShakeDetectionService", e)
             }
         }
 
         fun stopService(context: Context) {
-            val intent = Intent(context, ShakeDetectionService::class.java).apply {
-                action = ACTION_STOP_SHAKE_DETECTION
+            try {
+                val intent = Intent(context, ShakeDetectionService::class.java).apply {
+                    action = ACTION_STOP_SHAKE_DETECTION
+                }
+                context.startService(intent)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed stopService in ShakeDetectionService", e)
             }
-            context.startService(intent)
         }
 
         fun updateSensitivity(context: Context, sensitivity: ShakeSensitivity) {
-            val intent = Intent(context, ShakeDetectionService::class.java).apply {
-                action = ACTION_UPDATE_SENSITIVITY
-                putExtra(EXTRA_SENSITIVITY, sensitivity.name)
+            try {
+                val intent = Intent(context, ShakeDetectionService::class.java).apply {
+                    action = ACTION_UPDATE_SENSITIVITY
+                    putExtra(EXTRA_SENSITIVITY, sensitivity.name)
+                }
+                context.startService(intent)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed updateSensitivity in ShakeDetectionService", e)
             }
-            context.startService(intent)
         }
     }
 
@@ -75,6 +90,8 @@ class ShakeDetectionService : Service() {
     private lateinit var sensorManager: SensorManager
     private var shakeDetector: ShakeDetector? = null
     private var currentSensitivity = ShakeSensitivity.MEDIUM
+    private val authManager = FirebaseAuthManager()
+    private val userRepository = UserRepository()
 
     override fun onCreate() {
         super.onCreate()
@@ -104,15 +121,29 @@ class ShakeDetectionService : Service() {
     }
 
     private fun startShakeMonitoring() {
-        startForeground(NOTIFICATION_ID, buildNotification())
-        isRunning = true
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            }
+            isRunning = true
 
-        shakeDetector?.stop(sensorManager)
-        shakeDetector = ShakeDetector(sensitivity = currentSensitivity) {
-            onShakeTriggered()
+            shakeDetector?.stop(sensorManager)
+            shakeDetector = ShakeDetector(sensitivity = currentSensitivity) {
+                onShakeTriggered()
+            }
+            shakeDetector?.start(sensorManager)
+            Log.d(TAG, "Shake detection monitoring started with sensitivity: ${currentSensitivity.displayName}")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed startShakeMonitoring in ShakeDetectionService", e)
+            isRunning = false
+            stopSelf()
         }
-        shakeDetector?.start(sensorManager)
-        Log.d(TAG, "Shake detection monitoring started with sensitivity: ${currentSensitivity.displayName}")
     }
 
     private fun stopShakeMonitoring() {
@@ -124,20 +155,34 @@ class ShakeDetectionService : Service() {
     }
 
     private fun onShakeTriggered() {
-        Log.w(TAG, "EMERGENCY SHAKE DETECTED! Initiating SOS sequence...")
+        Log.w(TAG, "EMERGENCY SHAKE DETECTED!")
 
         // 1. Provide urgent haptic vibration (3 short bursts)
         vibratePhone()
 
-        // 2. Trigger SOS orchestration
+        // 2. Route to proactive safety monitoring if enabled, else legacy SOS
         serviceScope.launch {
             try {
-                SOSManager.triggerSOS(
-                    context = applicationContext,
-                    triggerMethod = SOSTriggerMethod.SHAKE
-                )
+                val userId = authManager.currentUserId
+                val proactiveEnabled = if (userId != null) {
+                    userRepository.getUserProfile(userId).getOrNull()?.proactiveMonitoringEnabled ?: false
+                } else {
+                    false
+                }
+
+                val activeMode = SafetyMonitoringManager.activeSafetyMode.value
+                val isSleeping = activeMode == com.womensafety.system.data.model.SafetyMode.SLEEPING
+
+                if (proactiveEnabled && !isSleeping) {
+                    SafetyMonitoringManager.reportShakeEvent()
+                } else {
+                    SOSManager.triggerSOS(
+                        context = applicationContext,
+                        triggerMethod = SOSTriggerMethod.SHAKE
+                    )
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "Error executing SOS on shake", e)
+                Log.e(TAG, "Error handling shake trigger", e)
             }
         }
     }
@@ -187,7 +232,7 @@ class ShakeDetectionService : Service() {
         )
 
         return NotificationCompat.Builder(this, NotificationChannelManager.CHANNEL_SHAKE_DETECTION)
-            .setContentTitle("Women Safety • Shake Detection Active")
+            .setContentTitle("Trinetra • Shake Detection Active")
             .setContentText("Shake phone vigorously to trigger SOS (${currentSensitivity.displayName})")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)

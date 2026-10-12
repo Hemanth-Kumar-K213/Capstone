@@ -50,33 +50,29 @@ fun TCLoginScreen(
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = SafetyDarkBackground,
         topBar = {
             TopAppBar(
                 title = { },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurfaceDark)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = SafetyTextPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = SafetyDarkBackground)
             )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
-                    )
-                )
+                .background(SafetyDarkBackground)
                 .padding(padding)
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
@@ -84,13 +80,21 @@ fun TCLoginScreen(
                 modifier = Modifier.size(64.dp)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "TRUSTED CONTACT LOGIN",
-                style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 2.sp),
+                "Guardian Sign In",
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = GradientRose
+                color = SafetyTextPrimary
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                "Trusted Contact Phone Verification",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SafetyTextSecondary
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -110,25 +114,11 @@ fun TCLoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             if (!state.otpSent) {
-                Button(
-                    onClick = { activity?.let { viewModel.sendLoginOtp(it) } },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    enabled = !state.isLoading,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientRose)
-                ) {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = OnPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("SEND OTP", fontWeight = FontWeight.Bold)
-                    }
-                }
+                SafetyPillButton(
+                    text = if (state.isLoading) "Sending OTP..." else "Send Verification OTP",
+                    onClick = { if (!state.isLoading) viewModel.sendLoginOtp(activity) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
             } else {
                 OtpInputField(
                     otpCode = state.otpCode,
@@ -137,25 +127,11 @@ fun TCLoginScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                Button(
-                    onClick = { viewModel.verifyLoginOtp() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    enabled = !state.isLoading,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientRose)
-                ) {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = OnPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("VERIFY & LOGIN", fontWeight = FontWeight.Bold)
-                    }
-                }
+                SafetyPillButton(
+                    text = if (state.isLoading) "Verifying..." else "Verify & Sign In",
+                    onClick = { if (!state.isLoading) viewModel.verifyLoginOtp() },
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -163,31 +139,32 @@ fun TCLoginScreen(
                     Text(
                         "Resend available in ${state.resendCooldown}s",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark
+                        color = SafetyTextSecondary
                     )
                 } else {
                     TextButton(
-                        onClick = { activity?.let { viewModel.sendLoginOtp(it) } }
+                        onClick = { viewModel.sendLoginOtp(activity) }
                     ) {
-                        Text("Resend OTP", color = GradientRose)
+                        Text("Resend OTP", color = SafetyPrimaryBlue)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            Text(
-                "Don't have an account?",
-                style = MaterialTheme.typography.bodyMedium,
-                color = OnSurfaceVariantDark
-            )
-
-            TextButton(onClick = onNavigateToSignup) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "SIGN UP",
-                    fontWeight = FontWeight.Bold,
-                    color = GradientRose
+                    "Don't have an account?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SafetyTextSecondary
                 )
+                TextButton(onClick = onNavigateToSignup) {
+                    Text(
+                        "Sign Up",
+                        fontWeight = FontWeight.Bold,
+                        color = SafetyPrimaryBlue
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(32.dp))

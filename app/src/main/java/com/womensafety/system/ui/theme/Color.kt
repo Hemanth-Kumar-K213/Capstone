@@ -32,14 +32,30 @@ val OnSurfaceLight = Color(0xFF1C1B1F)
 val OnSurfaceVariantLight = Color(0xFF5C5064)
 val OutlineLight = Color(0xFF8A7E94)
 
-// ─── Dark Theme (Premium dark matching logo background) ──────────
-val BackgroundDark = Color(0xFF0E0B14)
-val SurfaceDark = Color(0xFF14101C)
-val SurfaceVariantDark = Color(0xFF1E1828)
-val OnBackgroundDark = Color(0xFFEDE6F3)
-val OnSurfaceDark = Color(0xFFEDE6F3)
-val OnSurfaceVariantDark = Color(0xFFCBC2D6)
-val OutlineDark = Color(0xFF8A7E94)
+// ─── Google Personal Safety Theme Palette ────────────────────────
+val SafetyDarkBackground = Color(0xFF111315)
+val SafetyCardBackground = Color(0xFF1E2124)
+val SafetyCardBackgroundElevated = Color(0xFF282B30)
+val SafetyCardDivider = Color(0xFF2E3238)
+val SafetyPrimaryBlue = Color(0xFFA8C7FA)
+val SafetyOnPrimaryBlue = Color(0xFF003354)
+val SafetyIndicatorBlue = Color(0xFF004A77)
+val SafetyIconBadgeBg = Color(0xFF1D2939)
+val SafetyTextPrimary = Color(0xFFE2E2E6)
+val SafetyTextSecondary = Color(0xFFC4C7C5)
+val SafetyTextMuted = Color(0xFF8E9196)
+val SafetyEmergencyRed = Color(0xFFF2B8B5)
+val SafetyEmergencyRedDark = Color(0xFF8C1D18)
+val SafetyEmergencyRedContainer = Color(0xFF601410)
+
+// ─── Dark Theme (Google Pixel Personal Safety standard) ──────────
+val BackgroundDark = Color(0xFF111315)
+val SurfaceDark = Color(0xFF111315)
+val SurfaceVariantDark = Color(0xFF1E2124)
+val OnBackgroundDark = Color(0xFFE2E2E6)
+val OnSurfaceDark = Color(0xFFE2E2E6)
+val OnSurfaceVariantDark = Color(0xFFC4C7C5)
+val OutlineDark = Color(0xFF44474E)
 
 // ─── Status Colors ───────────────────────────────────────────────
 val StatusApproved = Color(0xFF4CAF50)

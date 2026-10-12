@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
@@ -44,74 +45,65 @@ fun RoleSelectionScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        GradientDeepPurple,
-                        BackgroundDark
-                    )
-                )
-            )
+            .background(SafetyDarkBackground)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             // Logo
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
-                contentDescription = "Women Safety System",
+                contentDescription = "Trinetra",
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(92.dp)
                     .alpha(logoAlpha.value)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             Text(
-                text = "WOMEN SAFETY SYSTEM",
+                text = "TRINETRA",
                 style = MaterialTheme.typography.titleLarge.copy(
                     letterSpacing = 3.sp
                 ),
                 fontWeight = FontWeight.Bold,
-                color = GradientGold,
+                color = SafetyTextPrimary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.alpha(logoAlpha.value)
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             Text(
-                text = "Who are you?",
+                text = "Choose your account role",
                 style = MaterialTheme.typography.titleMedium,
-                color = OnSurfaceVariantDark,
+                color = SafetyTextSecondary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.alpha(logoAlpha.value)
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // User Button — Gradient card
-            GlassRoleCard(
+            // User Role Card
+            SafetyRoleCard(
                 icon = Icons.Filled.Person,
                 title = "USER",
-                subtitle = "I need safety protection",
-                gradientColors = listOf(GradientAmber, GradientGold),
+                subtitle = "I want personal safety protection and SOS features",
                 onClick = onUserSelected,
                 modifier = Modifier.alpha(card1Alpha.value)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Trusted Contact Button — Gradient card
-            GlassRoleCard(
+            // Trusted Contact Role Card
+            SafetyRoleCard(
                 icon = Icons.Filled.SupervisedUserCircle,
                 title = "TRUSTED CONTACT",
-                subtitle = "I want to protect someone",
-                gradientColors = listOf(GradientRose, GradientMagenta),
+                subtitle = "I am a guardian monitoring safety of someone",
                 onClick = onTrustedContactSelected,
                 modifier = Modifier.alpha(card2Alpha.value)
             )
@@ -120,11 +112,10 @@ fun RoleSelectionScreen(
 }
 
 @Composable
-private fun GlassRoleCard(
+private fun SafetyRoleCard(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    gradientColors: List<androidx.compose.ui.graphics.Color>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -132,57 +123,45 @@ private fun GlassRoleCard(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(88.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        GlassBorder,
-                        gradientColors.first().copy(alpha = 0.3f)
-                    )
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ),
-        shape = RoundedCornerShape(16.dp),
+            .clip(RoundedCornerShape(20.dp)),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = GlassWhite
+            containerColor = SafetyCardBackground
         )
     ) {
         Row(
             modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            gradientColors.first().copy(alpha = 0.15f),
-                            gradientColors.last().copy(alpha = 0.05f)
-                        )
-                    )
-                )
-                .padding(horizontal = 24.dp),
+                .fillMaxWidth()
+                .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size(36.dp),
-                tint = gradientColors.first()
-            )
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(SafetyPrimaryBlue.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(26.dp),
+                    tint = SafetyPrimaryBlue
+                )
+            }
             Spacer(modifier = Modifier.width(16.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        letterSpacing = 2.sp
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = gradientColors.first()
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SafetyTextPrimary
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark.copy(alpha = 0.7f)
+                    color = SafetyTextSecondary
                 )
             }
         }

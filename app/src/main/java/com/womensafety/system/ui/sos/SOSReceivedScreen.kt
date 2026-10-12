@@ -1,7 +1,5 @@
 package com.womensafety.system.ui.sos
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -20,16 +18,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
-import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
+import com.womensafety.system.utils.MapUtils
 import com.womensafety.system.viewmodel.LocationViewModel
 import com.womensafety.system.viewmodel.SOSViewModel
 
+/**
+ * Screen displayed to Trusted Contacts when an SOS alert is received.
+ * Renders real-time GPS coordinates using OpenStreetMap (OSMDroid).
+ * 100% Free & Open-Source (No Google Maps API Key required).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SOSReceivedScreen(
@@ -42,25 +43,6 @@ fun SOSReceivedScreen(
     val context = LocalContext.current
     val liveLocation by locationViewModel.observeUserLocation(userId).collectAsState(initial = null)
     val activeSOSEvent by sosViewModel.observeActiveSOS(userId).collectAsState(initial = null)
-
-    val defaultLatLng = LatLng(20.5937, 78.9629)
-    val userLatLng = remember(liveLocation) {
-        if (liveLocation != null && liveLocation!!.latitude != 0.0) {
-            LatLng(liveLocation!!.latitude, liveLocation!!.longitude)
-        } else {
-            defaultLatLng
-        }
-    }
-
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(userLatLng, 15f)
-    }
-
-    LaunchedEffect(userLatLng) {
-        if (liveLocation != null && liveLocation!!.latitude != 0.0) {
-            cameraPositionState.position = CameraPosition.fromLatLngZoom(userLatLng, 16f)
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -143,31 +125,29 @@ fun SOSReceivedScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Live Map Preview
+            // OpenStreetMap (OSMDroid) Live Map Preview
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(280.dp)
                     .clip(MaterialTheme.shapes.large)
             ) {
-                GoogleMap(
-                    modifier = Modifier.fillMaxSize(),
-                    cameraPositionState = cameraPositionState,
-                    uiSettings = MapUiSettings(zoomControlsEnabled = false, compassEnabled = true)
-                ) {
-                    if (liveLocation != null && liveLocation!!.latitude != 0.0) {
-                        Marker(
-                            state = MarkerState(position = userLatLng),
-                            title = liveLocation!!.userName.ifBlank { "User" },
-                            snippet = "Active SOS"
-                        )
-                        Circle(
-                            center = userLatLng,
-                            radius = (liveLocation!!.accuracy.coerceAtLeast(20f)).toDouble(),
-                            fillColor = StatusDenied.copy(alpha = 0.25f),
-                            strokeColor = StatusDenied,
-                            strokeWidth = 2f
-                        )
+                if (liveLocation != null && (liveLocation!!.latitude != 0.0 || liveLocation!!.longitude != 0.0)) {
+                    SafetyMapTracker(
+                        userLatitude = liveLocation!!.latitude,
+                        userLongitude = liveLocation!!.longitude,
+                        zoomLevel = 16.5,
+                        markerTitle = "🚨 ${liveLocation!!.userName.ifBlank { "User" }} (SOS)",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(SurfaceVariantDark),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = StatusDenied)
                     }
                 }
             }
@@ -212,19 +192,12 @@ fun SOSReceivedScreen(
             Button(
                 onClick = {
                     if (liveLocation != null) {
-                        val gmmIntentUri = Uri.parse("google.navigation:q=${liveLocation!!.latitude},${liveLocation!!.longitude}")
-                        val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply {
-                            setPackage("com.google.android.apps.maps")
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        }
-                        if (mapIntent.resolveActivity(context.packageManager) != null) {
-                            context.startActivity(mapIntent)
-                        } else {
-                            val webUri = Uri.parse("https://maps.google.com/?q=${liveLocation!!.latitude},${liveLocation!!.longitude}")
-                            context.startActivity(Intent(Intent.ACTION_VIEW, webUri).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            })
-                        }
+                        MapUtils.openExternalMap(
+                            context = context,
+                            latitude = liveLocation!!.latitude,
+                            longitude = liveLocation!!.longitude,
+                            label = "${liveLocation!!.userName} Emergency Location"
+                        )
                     }
                 },
                 modifier = Modifier

@@ -87,28 +87,20 @@ fun SplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        GradientDeepPurple,
-                        BackgroundDark,
-                        BackgroundDark
-                    )
-                )
-            ),
+            .background(SafetyDarkBackground),
         contentAlignment = Alignment.Center
     ) {
-        // Subtle radial glow behind logo
+        // Subtle clean safety glow
         Box(
             modifier = Modifier
                 .size(320.dp)
-                .alpha(0.15f)
+                .alpha(0.08f)
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            GradientAmber,
-                            GradientRose.copy(alpha = 0.3f),
-                            BackgroundDark.copy(alpha = 0f)
+                            SafetyPrimaryBlue,
+                            SafetyCardBackgroundElevated,
+                            SafetyDarkBackground
                         ),
                         radius = 400f
                     )
@@ -122,7 +114,7 @@ fun SplashScreen(
             // Logo
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
-                contentDescription = "Women Safety System",
+                contentDescription = "Trinetra",
                 modifier = Modifier
                     .size(160.dp)
                     .scale(logoScale.value)
@@ -130,50 +122,26 @@ fun SplashScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // App title with gradient text effect
+            // App title
             Text(
-                text = "WOMEN SAFETY",
+                text = "TRINETRA",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontSize = 32.sp,
-                    letterSpacing = 4.sp,
-                    shadow = Shadow(
-                        color = GradientAmber.copy(alpha = 0.4f),
-                        offset = Offset(0f, 4f),
-                        blurRadius = 12f
-                    )
+                    letterSpacing = 4.sp
                 ),
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                color = GradientGold,
+                color = SafetyTextPrimary,
                 modifier = Modifier.alpha(textAlpha.value)
             )
 
-            Text(
-                text = "SYSTEM",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 32.sp,
-                    letterSpacing = 8.sp,
-                    shadow = Shadow(
-                        color = GradientRose.copy(alpha = 0.3f),
-                        offset = Offset(0f, 4f),
-                        blurRadius = 12f
-                    )
-                ),
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                color = GradientRose,
-                modifier = Modifier.alpha(textAlpha.value)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Tagline
             Text(
-                text = "Your safety, our priority",
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    letterSpacing = 1.sp
-                ),
-                color = OnSurfaceVariantDark.copy(alpha = 0.8f),
+                text = "Personal Safety & Emergency Assistance",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SafetyTextSecondary,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .alpha(taglineAlpha.value)
@@ -183,11 +151,9 @@ fun SplashScreen(
             Spacer(modifier = Modifier.height(56.dp))
 
             if (sessionState.isChecking) {
-                // Custom loading indicator with brand colors
                 CircularProgressIndicator(
                     modifier = Modifier.size(28.dp),
-                    color = GradientAmber,
-                    trackColor = GradientDeepPurple,
+                    color = SafetyPrimaryBlue,
                     strokeWidth = 3.dp
                 )
             }

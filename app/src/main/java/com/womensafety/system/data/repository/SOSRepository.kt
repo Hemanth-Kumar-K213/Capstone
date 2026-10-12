@@ -49,6 +49,10 @@ class SOSRepository(
         return firestoreManager.getUserSOSHistory(userId, limit)
     }
 
+    suspend fun getSOSEvent(eventId: String): Result<SOSEvent?> {
+        return firestoreManager.getSOSEventById(eventId)
+    }
+
     fun observeActiveSOSEvent(userId: String): Flow<SOSEvent?> {
         return firestoreManager.listenToUserSOSEvents(userId)
     }

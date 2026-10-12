@@ -13,7 +13,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".WomenSafetyApp"
@@ -50,15 +49,7 @@
                 android:value="Emergency shake safety monitoring service" />
         </service>
 
-        <!-- Firebase Cloud Messaging Service -->
-        <service
-            android:name=".service.WomenSafetyMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
+        <!-- OpenStreetMap / OSMDroid requires no API key or meta-data configuration -->
     </application>
 
 </manifest>

@@ -149,21 +149,23 @@ class TrustedContactHomeViewModel(
                 return@launch
             }
 
-            // Get TC's own name from their profile (TC can read their own profile)
+            // Get TC's own name and phone from their profile (TC can read their own profile)
             val tcProfile = _homeState.value.profile
             val tcName = tcProfile?.name ?: ""
+            val tcPhone = tcProfile?.phone ?: ""
 
             // Get User's name from the UID mapping (denormalized there during UID generation)
             val userName = weeklyUid.userName
 
-            Log.d("TCHomeVM", "Creating relationship: userId=$userId, tcId=$tcId, userName=$userName, tcName=$tcName")
+            Log.d("TCHomeVM", "Creating relationship: userId=$userId, tcId=$tcId, userName=$userName, tcName=$tcName, tcPhone=$tcPhone")
 
-            // Create relationship request with denormalized names
+            // Create relationship request with denormalized names and phone
             val relResult = relationshipRepository.createRelationshipRequest(
                 userId = userId,
                 trustedContactId = tcId,
                 userName = userName,
-                tcName = tcName
+                tcName = tcName,
+                tcPhone = tcPhone
             )
 
             if (relResult.isSuccess) {

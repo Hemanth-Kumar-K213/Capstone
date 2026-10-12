@@ -82,6 +82,12 @@ class UserProfileViewModel(
                 it.permissionState == PermissionState.PENDING
             }
             val profile = profileResult.getOrNull()
+            if (profile != null) {
+                com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(profile)
+                com.womensafety.system.manager.SafetyMonitoringManager.setProactiveEnabled(profile.proactiveMonitoringEnabled)
+                com.womensafety.system.manager.SafetyMonitoringManager.setSafetyMode(profile.safetyMode)
+                com.womensafety.system.manager.TravelModeManager.routeDeviationToleranceMeters = profile.routeDeviationToleranceMeters
+            }
 
             _profileState.value = ProfileState(
                 userProfile = profile,
@@ -97,26 +103,67 @@ class UserProfileViewModel(
     }
 
     fun updateSafetyPreferences(
-        locationTrackingEnabled: Boolean,
-        shakeDetectionEnabled: Boolean,
-        shakeSensitivity: String,
-        sosAutoCall: Boolean = false
+        locationTrackingEnabled: Boolean = _profileState.value.userProfile?.locationTrackingEnabled ?: false,
+        shakeDetectionEnabled: Boolean = _profileState.value.userProfile?.shakeDetectionEnabled ?: false,
+        shakeSensitivity: String = _profileState.value.userProfile?.shakeSensitivity ?: "MEDIUM",
+        sosAutoCall: Boolean = _profileState.value.userProfile?.sosAutoCall ?: false,
+        proactiveMonitoringEnabled: Boolean = _profileState.value.userProfile?.proactiveMonitoringEnabled ?: false,
+        safetyMode: String = _profileState.value.userProfile?.safetyMode ?: "NORMAL",
+        routeDeviationToleranceMeters: Int = _profileState.value.userProfile?.routeDeviationToleranceMeters ?: 300,
+        activeSafetyMode: String = _profileState.value.userProfile?.activeSafetyMode ?: "REGULAR",
+        defaultSafetyMode: String = _profileState.value.userProfile?.defaultSafetyMode ?: "REGULAR",
+        autoModeSuggestionsEnabled: Boolean = _profileState.value.userProfile?.autoModeSuggestionsEnabled ?: true,
+        savedWorkplaceLatitude: Double? = _profileState.value.userProfile?.savedWorkplaceLatitude,
+        savedWorkplaceLongitude: Double? = _profileState.value.userProfile?.savedWorkplaceLongitude,
+        savedWorkplaceAddress: String? = _profileState.value.userProfile?.savedWorkplaceAddress,
+        savedHomeLatitude: Double? = _profileState.value.userProfile?.savedHomeLatitude,
+        savedHomeLongitude: Double? = _profileState.value.userProfile?.savedHomeLongitude,
+        savedHomeAddress: String? = _profileState.value.userProfile?.savedHomeAddress
     ) {
         val currentProfile = _profileState.value.userProfile ?: return
         val updatedProfile = currentProfile.copy(
             locationTrackingEnabled = locationTrackingEnabled,
             shakeDetectionEnabled = shakeDetectionEnabled,
             shakeSensitivity = shakeSensitivity,
-            sosAutoCall = sosAutoCall
+            sosAutoCall = sosAutoCall,
+            proactiveMonitoringEnabled = proactiveMonitoringEnabled,
+            safetyMode = safetyMode,
+            routeDeviationToleranceMeters = routeDeviationToleranceMeters,
+            activeSafetyMode = activeSafetyMode,
+            defaultSafetyMode = defaultSafetyMode,
+            autoModeSuggestionsEnabled = autoModeSuggestionsEnabled,
+            savedWorkplaceLatitude = savedWorkplaceLatitude,
+            savedWorkplaceLongitude = savedWorkplaceLongitude,
+            savedWorkplaceAddress = savedWorkplaceAddress,
+            savedHomeLatitude = savedHomeLatitude,
+            savedHomeLongitude = savedHomeLongitude,
+            savedHomeAddress = savedHomeAddress
         )
         _profileState.value = _profileState.value.copy(userProfile = updatedProfile)
+
+        com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(updatedProfile)
+        com.womensafety.system.manager.SafetyMonitoringManager.setProactiveEnabled(proactiveMonitoringEnabled)
+        com.womensafety.system.manager.SafetyMonitoringManager.setSafetyMode(safetyMode)
+        com.womensafety.system.manager.TravelModeManager.routeDeviationToleranceMeters = routeDeviationToleranceMeters
 
         viewModelScope.launch {
             val preferences = mapOf(
                 "locationTrackingEnabled" to locationTrackingEnabled,
                 "shakeDetectionEnabled" to shakeDetectionEnabled,
                 "shakeSensitivity" to shakeSensitivity,
-                "sosAutoCall" to sosAutoCall
+                "sosAutoCall" to sosAutoCall,
+                "proactiveMonitoringEnabled" to proactiveMonitoringEnabled,
+                "safetyMode" to safetyMode,
+                "routeDeviationToleranceMeters" to routeDeviationToleranceMeters,
+                "activeSafetyMode" to activeSafetyMode,
+                "defaultSafetyMode" to defaultSafetyMode,
+                "autoModeSuggestionsEnabled" to autoModeSuggestionsEnabled,
+                "savedWorkplaceLatitude" to savedWorkplaceLatitude,
+                "savedWorkplaceLongitude" to savedWorkplaceLongitude,
+                "savedWorkplaceAddress" to savedWorkplaceAddress,
+                "savedHomeLatitude" to savedHomeLatitude,
+                "savedHomeLongitude" to savedHomeLongitude,
+                "savedHomeAddress" to savedHomeAddress
             )
             val result = userRepository.updateSetupStatus(
                 setupCompleted = currentProfile.setupCompleted,
@@ -125,6 +172,40 @@ class UserProfileViewModel(
             if (result.isFailure) {
                 _profileState.value = _profileState.value.copy(
                     error = "Failed to update safety preferences."
+                )
+            }
+        }
+    }
+
+    fun updatePersonalInformation(
+        name: String,
+        homeAddress: String,
+        workAddress: String
+    ) {
+        val currentProfile = _profileState.value.userProfile ?: return
+        val updatedProfile = currentProfile.copy(
+            name = name,
+            savedHomeAddress = homeAddress,
+            savedWorkplaceAddress = workAddress
+        )
+        _profileState.value = _profileState.value.copy(userProfile = updatedProfile)
+
+        viewModelScope.launch {
+            val userId = authRepository.currentUserId ?: return@launch
+            val updates = mapOf(
+                "name" to name,
+                "savedHomeAddress" to homeAddress,
+                "savedWorkplaceAddress" to workAddress
+            )
+            val result = userRepository.updateUserProfile(userId, updates)
+            if (result.isSuccess) {
+                _profileState.value = _profileState.value.copy(
+                    successMessage = "Personal information updated successfully."
+                )
+                loadProfile()
+            } else {
+                _profileState.value = _profileState.value.copy(
+                    error = "Failed to update personal information."
                 )
             }
         }
@@ -249,5 +330,38 @@ class UserProfileViewModel(
 
     fun clearMessages() {
         _profileState.value = _profileState.value.copy(error = null, successMessage = null)
+    }
+
+    fun submitFeedback(feedbackMessage: String, onComplete: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            val uid = authRepository.currentUserId
+                ?: _profileState.value.userProfile?.authUserId
+                ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                ?: ""
+
+            if (uid.isBlank()) {
+                onComplete?.invoke(false, "User not authenticated. Please log in.")
+                return@launch
+            }
+
+            val name = _profileState.value.userProfile?.name?.ifBlank { null }
+                ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.displayName?.ifBlank { null }
+                ?: "User"
+
+            try {
+                val res = userRepository.submitFeedback(
+                    userId = uid,
+                    userName = name,
+                    feedbackMessage = feedbackMessage
+                )
+                if (res.isSuccess) {
+                    onComplete?.invoke(true, null)
+                } else {
+                    onComplete?.invoke(false, res.exceptionOrNull()?.localizedMessage)
+                }
+            } catch (e: Exception) {
+                onComplete?.invoke(false, e.localizedMessage)
+            }
+        }
     }
 }

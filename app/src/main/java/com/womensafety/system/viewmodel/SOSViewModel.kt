@@ -73,6 +73,32 @@ class SOSViewModel(
         }
     }
 
+    fun triggerDemoSOS(context: Context, onComplete: ((callMade: Boolean, smsSent: Int) -> Unit)? = null) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val res = SOSManager.triggerDemoSOS(context)
+                onComplete?.invoke(res.first, res.second)
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Failed demo execution"
+                onComplete?.invoke(false, 0)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun retrySmsDispatch(context: Context) {
+        val event = activeSOSEvent.value ?: return
+        viewModelScope.launch {
+            try {
+                SOSManager.redispatchSMS(context, event)
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Failed to redispatch SMS"
+            }
+        }
+    }
+
     fun markAsSafe(context: Context, eventId: String, onResolved: (() -> Unit)? = null) {
         viewModelScope.launch {
             _isLoading.value = true

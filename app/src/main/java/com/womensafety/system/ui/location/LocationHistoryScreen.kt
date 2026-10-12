@@ -1,12 +1,12 @@
 package com.womensafety.system.ui.location
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -20,17 +20,24 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.ui.components.EmptyStateCard
 import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
+import com.womensafety.system.utils.MapUtils
 import com.womensafety.system.viewmodel.LocationViewModel
 
+/**
+ * Displays recorded GPS breadcrumbs with compact OpenStreetMap previews.
+ * Uses OSMDroid (100% Free & Open-Source, no Google Maps API keys).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationHistoryScreen(
-    viewModel: LocationViewModel,
+    viewModel: LocationViewModel = viewModel(),
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -114,76 +121,69 @@ fun LocationHistoryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
+                .padding(horizontal = 16.dp)
+        ) {
+            // Filter Pills
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = !sosOnlyFilter,
+                    onClick = { sosOnlyFilter = false },
+                    label = { Text("All Records (${history.size})") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = GradientAmber,
+                        selectedLabelColor = BackgroundDark
                     )
                 )
-                .padding(horizontal = 20.dp)
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
 
-            // Filter Chip Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "${filteredLocations.size} Points Recorded",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = GradientGold
-                )
-
+                val sosCount = history.count { it.isSOSLocation }
                 FilterChip(
                     selected = sosOnlyFilter,
-                    onClick = { sosOnlyFilter = !sosOnlyFilter },
-                    label = { Text("SOS Only") },
-                    leadingIcon = if (sosOnlyFilter) {
-                        { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    } else null,
+                    onClick = { sosOnlyFilter = true },
+                    label = { Text("SOS Incidents ($sosCount)") },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = StatusDenied.copy(alpha = 0.2f),
-                        selectedLabelColor = StatusDenied
+                        selectedContainerColor = StatusDenied,
+                        selectedLabelColor = OnSurfaceDark
                     )
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = GradientAmber)
+            when {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = GradientAmber)
+                    }
                 }
-            } else if (filteredLocations.isEmpty()) {
-                EmptyStateCard(
-                    icon = Icons.Filled.LocationOff,
-                    title = "No Location History",
-                    description = if (sosOnlyFilter) "No SOS-flagged location coordinates found."
-                    else "Location history points will appear here once tracking is active."
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
-                ) {
-                    items(filteredLocations, key = { it.id }) { loc ->
-                        LocationHistoryItem(
-                            location = loc,
-                            onOpenMap = {
-                                val mapIntent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("geo:${loc.latitude},${loc.longitude}?q=${loc.latitude},${loc.longitude}(Location)")
-                                ).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                context.startActivity(mapIntent)
-                            }
+                filteredLocations.isEmpty() -> {
+                        EmptyStateCard(
+                            icon = Icons.Filled.LocationOff,
+                            title = if (sosOnlyFilter) "No SOS Locations" else "No Location History",
+                            description = if (sosOnlyFilter) "No emergency incidents have been recorded." else "Background location logs will appear here as you move."
                         )
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(filteredLocations, key = { it.id }) { loc ->
+                            LocationHistoryItemCard(
+                                location = loc,
+                                onOpenMap = {
+                                    MapUtils.openExternalMap(
+                                        context = context,
+                                        latitude = loc.latitude,
+                                        longitude = loc.longitude,
+                                        label = if (loc.isSOSLocation) "SOS Incident" else "Saved Location"
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -192,31 +192,37 @@ fun LocationHistoryScreen(
 }
 
 @Composable
-private fun LocationHistoryItem(
+private fun LocationHistoryItemCard(
     location: UserLocation,
     onOpenMap: () -> Unit
 ) {
+    var isMapExpanded by remember { mutableStateOf(false) }
+
     GlassCard(
         accentGradient = if (location.isSOSLocation) {
-            Brush.horizontalGradient(
-                colors = listOf(StatusDenied.copy(alpha = 0.15f), StatusDenied.copy(alpha = 0.05f))
-            )
-        } else null
+            Brush.horizontalGradient(listOf(StatusDenied.copy(alpha = 0.35f), StatusDenied.copy(alpha = 0.1f)))
+        } else {
+            Brush.horizontalGradient(listOf(GradientAmber.copy(alpha = 0.15f), GradientGold.copy(alpha = 0.05f)))
+        }
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
-                        .background(
-                            if (location.isSOSLocation) StatusDenied.copy(alpha = 0.15f)
-                            else GradientAmber.copy(alpha = 0.15f)
-                        ),
+                        .background(if (location.isSOSLocation) StatusDenied.copy(alpha = 0.25f) else GradientAmber.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        if (location.isSOSLocation) Icons.Filled.Warning else Icons.Filled.LocationOn,
+                        imageVector = if (location.isSOSLocation) Icons.Filled.Warning else Icons.Filled.Place,
                         contentDescription = null,
                         tint = if (location.isSOSLocation) StatusDenied else GradientAmber,
                         modifier = Modifier.size(18.dp)
@@ -227,13 +233,13 @@ private fun LocationHistoryItem(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        DateUtils.formatDateTime(location.timestamp),
+                        text = DateUtils.formatDateTime(location.timestamp),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = OnSurfaceDark
                     )
                     Text(
-                        "Lat: ${String.format("%.4f", location.latitude)}, Lng: ${String.format("%.4f", location.longitude)} (±${location.accuracy.toInt()}m)",
+                        text = "Lat: ${String.format("%.4f", location.latitude)}, Lng: ${String.format("%.4f", location.longitude)} (±${location.accuracy.toInt()}m)",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = OnSurfaceVariantDark
                     )
@@ -245,7 +251,7 @@ private fun LocationHistoryItem(
                         shape = MaterialTheme.shapes.small
                     ) {
                         Text(
-                            "SOS",
+                            text = "SOS",
                             color = StatusDenied,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
@@ -256,23 +262,67 @@ private fun LocationHistoryItem(
             }
 
             if (!location.address.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    location.address!!,
+                    text = location.address ?: "",
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark.copy(alpha = 0.8f)
+                    color = OnSurfaceVariantDark.copy(alpha = 0.9f)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // Compact OpenStreetMap preview when toggled or SOS
+            if (isMapExpanded || location.isSOSLocation) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    SafetyMapTracker(
+                        userLatitude = location.latitude,
+                        userLongitude = location.longitude,
+                        zoomLevel = 16.0,
+                        enableZoomControls = false,
+                        markerTitle = if (location.isSOSLocation) "SOS Incident" else "Recorded Location"
+                    )
+                }
+            }
 
-            TextButton(
-                onClick = onOpenMap,
-                contentPadding = PaddingValues(0.dp)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(16.dp), tint = GradientGold)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("View on Google Maps", style = MaterialTheme.typography.labelMedium, color = GradientGold, fontWeight = FontWeight.Bold)
+                TextButton(
+                    onClick = { isMapExpanded = !isMapExpanded },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isMapExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = GradientGold
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (isMapExpanded) "Hide Map" else "Preview Map",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GradientGold,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                TextButton(
+                    onClick = onOpenMap,
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Filled.Navigation, contentDescription = null, modifier = Modifier.size(14.dp), tint = OnSurfaceDark)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("External Nav", style = MaterialTheme.typography.labelMedium, color = OnSurfaceDark)
+                }
             }
         }
     }

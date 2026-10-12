@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -10,12 +12,22 @@ android {
     namespace = "com.womensafety.system"
     compileSdk = 35
 
+    val localProps = Properties().apply {
+        val file = rootProject.file("local.properties")
+        if (file.exists()) load(file.inputStream())
+    }
+    val twoFactorApiKey = localProps.getProperty("TWOFACTOR_API_KEY") ?: "7e825d24-XXXX-XXXX-XXXX-0200cd936042"
+    val twoFactorSenderId = localProps.getProperty("TWOFACTOR_SENDER_ID") ?: "WSAFETY"
+
     defaultConfig {
         applicationId = "com.womensafety.system"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
+
+        buildConfigField("String", "TWOFACTOR_API_KEY", "\"$twoFactorApiKey\"")
+        buildConfigField("String", "TWOFACTOR_SENDER_ID", "\"$twoFactorSenderId\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -42,6 +54,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -73,14 +86,13 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
 
-    // Location & Maps
+    // Location & OpenStreetMap (OSMDroid - 100% Free & Open Source)
     implementation(libs.play.services.location)
-    implementation(libs.play.services.maps)
-    implementation(libs.maps.compose)
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
 
     // Firebase BOM
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
-    implementation(libs.firebase.messaging)
+    implementation(libs.firebase.functions)
 }

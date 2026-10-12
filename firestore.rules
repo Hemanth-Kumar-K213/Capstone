@@ -19,9 +19,12 @@ service cloud.firestore {
 
     match /users/{userId} {
 
-      // A user can read only their own profile.
+      // A user can read only their own profile, or a connected trusted contact can read if a relationship exists.
       allow read: if isSignedIn()
-                  && request.auth.uid == userId;
+                  && (
+                    request.auth.uid == userId
+                    || exists(/databases/$(database)/documents/relationships/$(userId + '_' + request.auth.uid))
+                  );
 
       // User creates only their own USER profile.
       allow create: if isSignedIn()
@@ -48,9 +51,12 @@ service cloud.firestore {
 
     match /trustedContacts/{tcId} {
 
-      // Trusted contact can access only their own profile.
+      // Trusted contact can access only their own profile, or connected user can read if relationship exists.
       allow read: if isSignedIn()
-                  && request.auth.uid == tcId;
+                  && (
+                    request.auth.uid == tcId
+                    || exists(/databases/$(database)/documents/relationships/$(request.auth.uid + '_' + tcId))
+                  );
 
       // Trusted contact creates only their own profile.
       allow create: if isSignedIn()
@@ -86,17 +92,8 @@ service cloud.firestore {
 
     match /weeklyUids/{weeklyUid} {
 
-      // Authenticated users can retrieve a specific UID document.
-      //
-      // The UID document should contain:
-      // {
-      //   uid: "202608181234",
-      //   userId: "firebase-auth-uid",
-      //   expiresAt: ...
-      // }
-      //
-      allow get: if isSignedIn()
-                 && resource.data.uid == weeklyUid;
+      // Retrieve a specific UID document if exact UID is known.
+      allow get: if true;
 
       // No collection-wide listing.
       // No client writes.
@@ -184,8 +181,8 @@ service cloud.firestore {
 
     match /devUidMappings/{uid} {
 
-      // Any authenticated user can look up a specific UID.
-      allow get: if isSignedIn();
+      // Any user or website with the specific UID can look up the mapping.
+      allow get: if true;
 
       // No collection-wide listing.
       allow list: if false;
@@ -224,6 +221,36 @@ service cloud.firestore {
 
 
     // ============================================================
+    // CHILD LOCATIONS (Dedicated for Website & App Tracking by UID)
+    // child_locations/{uid} & uid_locations/{uid}
+    // Updated every 10 seconds.
+    // ============================================================
+
+    match /child_locations/{uid} {
+      // Authenticated mobile app user can update their location
+      allow write: if isSignedIn();
+
+      // Anyone with the child's rotating UID (website or app) can track their live location
+      allow read: if true;
+
+      match /history/{historyId} {
+        allow write: if isSignedIn();
+        allow read: if true;
+      }
+    }
+
+    match /uid_locations/{uid} {
+      allow write: if isSignedIn();
+      allow read: if true;
+
+      match /history/{historyId} {
+        allow write: if isSignedIn();
+        allow read: if true;
+      }
+    }
+
+
+    // ============================================================
     // SOS EVENTS
     // sosEvents/{eventId}
     // ============================================================
@@ -242,6 +269,79 @@ service cloud.firestore {
       // No deletion
       allow delete: if false;
     }
+
+
+    // ============================================================
+    // RISK EVENTS
+    // riskEvents/{eventId}
+    // ============================================================
+
+    match /riskEvents/{eventId} {
+      // User can create their own Risk event
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User who created the Risk event can update it
+      allow update: if isSignedIn()
+                    && resource.data.userId == request.auth.uid;
+
+      // User can read their own Risk events
+      allow read: if isSignedIn()
+                  && resource.data.userId == request.auth.uid;
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // JOURNEYS
+    // journeys/{journeyId}
+    // ============================================================
+
+    match /journeys/{journeyId} {
+      // User can create their own journey log
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User can update/read their own journey log
+      allow update, read: if isSignedIn()
+                          && resource.data.userId == request.auth.uid;
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // OTPS (2FACTOR SMS VERIFICATION)
+    // otps/{phoneNumber}
+    // ============================================================
+
+    match /otps/{phoneNumber} {
+      // Only Cloud Functions via Firebase Admin SDK can create/update/read OTP records.
+      // All client reads and writes are denied to prevent credential leakage or spoofing.
+      allow read, write: if false;
+    }
+
+
+    // ============================================================
+    // USER FEEDBACK
+    // feedbacks/{feedbackId} and feedback/{feedbackId}
+    // ============================================================
+
+    match /feedbacks/{feedbackId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn();
+      allow update, delete: if false;
+    }
+
 
 
     // ============================================================

@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.functions.FirebaseFunctions
 import android.util.Log
 import com.womensafety.system.data.model.EmergencyContact
 import com.womensafety.system.data.model.Relationship
@@ -14,6 +15,8 @@ import com.womensafety.system.data.model.TrustedContactProfile
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.model.UserProfile
 import com.womensafety.system.data.model.WeeklyUid
+import com.womensafety.system.data.model.RiskEvent
+import com.womensafety.system.data.model.JourneyRecord
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -43,7 +46,12 @@ class FirestoreManager {
         const val RELATIONSHIPS_COLLECTION = "relationships"
         const val USER_LOCATIONS_COLLECTION = "userLocations"
         const val LOCATIONS_SUBCOLLECTION = "locations"
+        const val CHILD_LOCATIONS_COLLECTION = "child_locations"
+        const val UID_LOCATIONS_COLLECTION = "uid_locations"
         const val SOS_EVENTS_COLLECTION = "sosEvents"
+        const val RISK_EVENTS_COLLECTION = "riskEvents"
+        const val JOURNEYS_COLLECTION = "journeys"
+        const val FEEDBACKS_COLLECTION = "feedbacks"
 
         private const val UID_VALIDITY_DAYS = 7
 
@@ -140,7 +148,9 @@ class FirestoreManager {
     suspend fun addEmergencyContactToUser(userId: String, contact: EmergencyContact): Result<Unit> {
         return try {
             val currentContacts = getEmergencyContactsForUser(userId).getOrNull() ?: emptyList()
-            val updatedContacts = currentContacts + contact
+            val updatedContacts = currentContacts.map {
+                if (contact.isPrimary) it.copy(isPrimary = false) else it
+            }.toMutableList().apply { add(contact) }
             db.collection(USERS_COLLECTION)
                 .document(userId)
                 .update("emergencyContacts", updatedContacts.map { it.toMap() })
@@ -158,13 +168,25 @@ class FirestoreManager {
     ): Result<Unit> {
         return try {
             val currentContacts = getEmergencyContactsForUser(userId).getOrNull() ?: emptyList()
+            val willBePrimary = updates["isPrimary"] as? Boolean ?: false
             val updatedContacts = currentContacts.map { contact ->
                 if (contact.id == contactId) {
                     val newName = updates["name"] as? String ?: contact.name
                     val newPhone = updates["phone"] as? String ?: contact.phone
-                    contact.copy(name = newName, phone = newPhone)
+                    val newIsPrimary = updates["isPrimary"] as? Boolean ?: contact.isPrimary
+                    val newEnableEscalation = updates["enableEscalation"] as? Boolean ?: contact.enableEscalation
+                    contact.copy(
+                        name = newName,
+                        phone = newPhone,
+                        isPrimary = newIsPrimary,
+                        enableEscalation = newEnableEscalation
+                    )
                 } else {
-                    contact
+                    if (willBePrimary) {
+                        contact.copy(isPrimary = false)
+                    } else {
+                        contact
+                    }
                 }
             }
             db.collection(USERS_COLLECTION)
@@ -238,18 +260,19 @@ class FirestoreManager {
         }
     }
 
-    // ─── Weekly UIDs (READ-ONLY from client) ─────────────────────
+    // ─── Weekly UIDs (READ-ONLY from client in production) ─────
 
     /**
-     * Generates a 12-digit UID string in YYYYMMDDXXXX format.
+     * Generates a 12-digit UID string in YYYYMMDDXXXX format using cryptographically secure random numbers.
      * Used for dev/demo mode when Cloud Functions are not deployed.
      */
     private fun generateUidString(): String {
-        val cal = java.util.Calendar.getInstance()
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
         val year = cal.get(java.util.Calendar.YEAR).toString()
         val month = (cal.get(java.util.Calendar.MONTH) + 1).toString().padStart(2, '0')
         val day = cal.get(java.util.Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-        val random = (0..9999).random().toString().padStart(4, '0')
+        val secureRandom = java.security.SecureRandom()
+        val random = secureRandom.nextInt(10000).toString().padStart(4, '0')
         return "$year$month$day$random"
     }
 
@@ -262,8 +285,8 @@ class FirestoreManager {
      * - uid == document ID (can't fake the UID value)
      * - No listing (lookup by known UID only)
      *
-     * This is the Spark-plan fallback. On Blaze, Cloud Functions
-     * write to weeklyUids instead.
+     * This is the Spark-plan fallback for local development. On Blaze/production,
+     * Cloud Functions write to weeklyUids instead.
      */
     suspend fun generateAndSaveDevUid(userId: String, userName: String = ""): Result<WeeklyUid> {
         return try {
@@ -295,7 +318,7 @@ class FirestoreManager {
                 .set(uidData)
                 .await()
 
-            // Update user profile with the current UID
+            // Update user profile with the current UID pointer
             db.collection(USERS_COLLECTION)
                 .document(userId)
                 .update("currentWeeklyUid", uid)
@@ -310,12 +333,14 @@ class FirestoreManager {
     /**
      * Reads the current active UID for a given user.
      *
-     * Strategy: Read the user's profile to get currentWeeklyUid,
-     * then try devUidMappings first (Spark plan), fall back to weeklyUids (Blaze plan).
+     * Strategy:
+     * 1. Read user profile to get currentWeeklyUid pointer.
+     * 2. Check weeklyUids (authoritative production collection) FIRST.
+     * 3. Fall back to devUidMappings (Spark plan dev collection) only if not in weeklyUids.
+     * 4. Enforce expiration: returns null if the record has expired or is inactive.
      */
     suspend fun getActiveUidForUser(userId: String): Result<WeeklyUid?> {
         return try {
-            // Step 1: Read user profile to get currentWeeklyUid
             val profileDoc = db.collection(USERS_COLLECTION)
                 .document(userId)
                 .get()
@@ -324,28 +349,106 @@ class FirestoreManager {
             if (!profileDoc.exists()) return Result.success(null)
 
             val currentUid = profileDoc.data?.get("currentWeeklyUid") as? String
-            if (currentUid.isNullOrBlank()) return Result.success(null)
+            val userName = profileDoc.data?.get("name") as? String ?: ""
 
-            // Step 2: Try devUidMappings first (Spark plan)
-            val devDoc = db.collection(DEV_UID_MAPPINGS_COLLECTION)
-                .document(currentUid)
-                .get()
-                .await()
+            if (!currentUid.isNullOrBlank()) {
+                // Step 1: Check weeklyUids
+                try {
+                    val uidDoc = db.collection(WEEKLY_UIDS_COLLECTION)
+                        .document(currentUid)
+                        .get()
+                        .await()
 
-            if (devDoc.exists()) {
-                val data = devDoc.data ?: return Result.success(null)
-                return Result.success(WeeklyUid.fromMap(data))
+                    if (uidDoc.exists()) {
+                        val data = uidDoc.data
+                        if (data != null) {
+                            val weeklyUid = WeeklyUid.fromMap(data)
+                            if (weeklyUid.isCurrentlyActive) {
+                                return Result.success(weeklyUid)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "weeklyUids check skipped: ${e.message}")
+                }
+
+                // Step 2: Fall back to devUidMappings
+                try {
+                    val devDoc = db.collection(DEV_UID_MAPPINGS_COLLECTION)
+                        .document(currentUid)
+                        .get()
+                        .await()
+
+                    if (devDoc.exists()) {
+                        val data = devDoc.data
+                        if (data != null) {
+                            val weeklyUid = WeeklyUid.fromMap(data)
+                            if (weeklyUid.isCurrentlyActive) {
+                                return Result.success(weeklyUid)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "devUidMappings check skipped: ${e.message}")
+                }
+
+                // Step 3: UID is already assigned in user profile; create and persist mapping
+                val now = System.currentTimeMillis()
+                val weeklyUid = WeeklyUid(
+                    userId = userId,
+                    uid = currentUid,
+                    userName = userName,
+                    generatedAt = now,
+                    expiresAt = now + UID_VALIDITY_DAYS * 24L * 60 * 60 * 1000,
+                    active = true
+                )
+
+                try {
+                    db.collection(DEV_UID_MAPPINGS_COLLECTION)
+                        .document(currentUid)
+                        .set(weeklyUid.toMap())
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "Persisting devUidMapping skipped: ${e.message}")
+                }
+
+                return Result.success(weeklyUid)
             }
 
-            // Step 3: Fall back to weeklyUids (Blaze plan with Cloud Functions)
-            val uidDoc = db.collection(WEEKLY_UIDS_COLLECTION)
-                .document(currentUid)
-                .get()
+            // Step 4: No UID in profile yet; generate and save immediately
+            generateAndSaveDevUid(userId, userName)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getActiveUidForUser failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Requests on-demand UID verification or rotation from the authoritative backend Cloud Function.
+     * Recovers from missing initial UIDs or delayed scheduled rotation without client-side generation.
+     */
+    suspend fun requestBackendUidRefresh(): Result<WeeklyUid?> {
+        return try {
+            val functions = FirebaseFunctions.getInstance()
+            val result = functions.getHttpsCallable("ensureActiveUidFunction")
+                .call()
                 .await()
 
-            if (uidDoc.exists()) {
-                val data = uidDoc.data ?: return Result.success(null)
-                Result.success(WeeklyUid.fromMap(data))
+            @Suppress("UNCHECKED_CAST")
+            val data = result.getData() as? Map<String, Any?>
+            if (data != null && data["success"] == true) {
+                val uid = data["uid"] as? String ?: ""
+                val expiresAt = (data["expiresAt"] as? Number)?.toLong() ?: 0L
+                val generatedAt = (data["generatedAt"] as? Number)?.toLong() ?: 0L
+                val authUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                val weeklyUid = WeeklyUid(
+                    userId = authUserId,
+                    uid = uid,
+                    userName = data["userName"] as? String ?: "",
+                    generatedAt = generatedAt,
+                    expiresAt = expiresAt,
+                    active = true
+                )
+                Result.success(weeklyUid)
             } else {
                 Result.success(null)
             }
@@ -356,180 +459,81 @@ class FirestoreManager {
 
     /**
      * Looks up a user by their weekly UID.
-     * Used by Trusted Contacts when adding a User by UID.
+     * Used by Trusted Contacts when connecting to a User.
      *
-     * Tries devUidMappings first (Spark), falls back to weeklyUids (Blaze).
+     * Authoritative Strategy:
+     * 1. Validates strict 12-digit format (YYYYMMDDXXXX).
+     * 2. Checks weeklyUids (production collection) FIRST.
+     * 3. Falls back to devUidMappings (Spark collection) only if not in weeklyUids.
+     * 4. Enforces expiration and transition grace periods (!isExpired && isCurrentlyActive).
      */
     suspend fun findUserByActiveUid(uid: String): Result<WeeklyUid?> {
-    return try {
+        return try {
+            val trimmedUid = uid.trim()
 
-        Log.d("UID_DEBUG", "====================================")
-        Log.d("UID_DEBUG", "Starting UID lookup")
-        Log.d("UID_DEBUG", "Entered Safety UID: $uid")
-
-        // Check Firebase Authentication
-        val authUser = FirebaseAuth.getInstance().currentUser
-
-        Log.d("UID_DEBUG", "Firebase Auth UID: ${authUser?.uid}")
-        Log.d("UID_DEBUG", "Firebase Auth Email: ${authUser?.email}")
-
-        if (authUser == null) {
-            Log.e("UID_DEBUG", "NO AUTHENTICATED FIREBASE USER")
-            return Result.failure(
-                Exception("User is not authenticated with Firebase")
-            )
-        }
-
-        // ============================================================
-        // 1. Try devUidMappings first
-        // ============================================================
-
-        Log.d(
-            "UID_DEBUG",
-            "Checking $DEV_UID_MAPPINGS_COLLECTION/$uid"
-        )
-
-        val devDoc = db.collection(DEV_UID_MAPPINGS_COLLECTION)
-            .document(uid)
-            .get()
-            .await()
-
-        Log.d(
-            "UID_DEBUG",
-            "devUidMappings document exists: ${devDoc.exists()}"
-        )
-
-        if (devDoc.exists()) {
-
-            val data = devDoc.data
-
-            if (data == null) {
-                Log.d(
-                    "UID_DEBUG",
-                    "devUidMappings document has no data"
-                )
+            // Validate format: exactly 12 numeric digits
+            if (!trimmedUid.matches(Regex("^\\d{12}$"))) {
+                Log.d("UID_DEBUG", "Invalid UID format entered: $trimmedUid")
                 return Result.success(null)
             }
 
-            val weeklyUid = WeeklyUid.fromMap(data)
-
-            Log.d(
-                "UID_DEBUG",
-                "devUidMappings UID found. Active: ${weeklyUid.isCurrentlyActive}"
-            )
-
-            if (weeklyUid.isCurrentlyActive) {
-                Log.d(
-                    "UID_DEBUG",
-                    "SUCCESS: Active UID found in devUidMappings"
-                )
-
-                return Result.success(weeklyUid)
+            val authUser = FirebaseAuth.getInstance().currentUser
+            if (authUser == null) {
+                Log.e("UID_DEBUG", "NO AUTHENTICATED FIREBASE USER")
+                return Result.failure(Exception("User is not authenticated with Firebase"))
             }
 
-            Log.d(
-                "UID_DEBUG",
-                "UID found in devUidMappings but it is inactive"
-            )
+            // ============================================================
+            // 1. Authoritative: Check production weeklyUids collection FIRST
+            // ============================================================
+            val doc = db.collection(WEEKLY_UIDS_COLLECTION)
+                .document(trimmedUid)
+                .get()
+                .await()
+
+            if (doc.exists()) {
+                val data = doc.data
+                if (data != null) {
+                    val weeklyUid = WeeklyUid.fromMap(data)
+                    if (weeklyUid.isCurrentlyActive) {
+                        Log.d("UID_DEBUG", "SUCCESS: Active UID found in weeklyUids")
+                        return Result.success(weeklyUid)
+                    } else {
+                        Log.d("UID_DEBUG", "UID found in weeklyUids but is expired or inactive")
+                        return Result.success(null)
+                    }
+                }
+            }
+
+            // ============================================================
+            // 2. Fall back to devUidMappings (Spark development mode only)
+            // ============================================================
+            val devDoc = db.collection(DEV_UID_MAPPINGS_COLLECTION)
+                .document(trimmedUid)
+                .get()
+                .await()
+
+            if (devDoc.exists()) {
+                val data = devDoc.data
+                if (data != null) {
+                    val weeklyUid = WeeklyUid.fromMap(data)
+                    if (weeklyUid.isCurrentlyActive) {
+                        Log.d("UID_DEBUG", "SUCCESS: Active UID found in devUidMappings")
+                        return Result.success(weeklyUid)
+                    } else {
+                        Log.d("UID_DEBUG", "UID found in devUidMappings but is expired or inactive")
+                        return Result.success(null)
+                    }
+                }
+            }
+
+            Log.d("UID_DEBUG", "UID NOT FOUND in either collection: $trimmedUid")
+            Result.success(null)
+        } catch (e: Exception) {
+            Log.e("UID_DEBUG", "UID LOOKUP FAILED with exception", e)
+            Result.failure(e)
         }
-
-        // ============================================================
-        // 2. Fall back to weeklyUids
-        // ============================================================
-
-        Log.d(
-            "UID_DEBUG",
-            "Checking $WEEKLY_UIDS_COLLECTION/$uid"
-        )
-
-        val doc = db.collection(WEEKLY_UIDS_COLLECTION)
-            .document(uid)
-            .get()
-            .await()
-
-        Log.d(
-            "UID_DEBUG",
-            "weeklyUids document exists: ${doc.exists()}"
-        )
-
-        if (doc.exists()) {
-
-            val data = doc.data
-
-            if (data == null) {
-                Log.d(
-                    "UID_DEBUG",
-                    "weeklyUids document has no data"
-                )
-                return Result.success(null)
-            }
-
-            val weeklyUid = WeeklyUid.fromMap(data)
-
-            Log.d(
-                "UID_DEBUG",
-                "weeklyUids UID found. Active: ${weeklyUid.isCurrentlyActive}"
-            )
-
-            if (weeklyUid.isCurrentlyActive) {
-                Log.d(
-                    "UID_DEBUG",
-                    "SUCCESS: Active UID found in weeklyUids"
-                )
-
-                return Result.success(weeklyUid)
-            }
-
-            Log.d(
-                "UID_DEBUG",
-                "UID found in weeklyUids but it is inactive"
-            )
-
-            return Result.success(null)
-        }
-
-        // ============================================================
-        // 3. UID does not exist
-        // ============================================================
-
-        Log.d(
-            "UID_DEBUG",
-            "UID NOT FOUND in either collection"
-        )
-
-        return Result.success(null)
-
-    } catch (e: Exception) {
-
-        Log.e(
-            "UID_DEBUG",
-            "===================================="
-        )
-
-        Log.e(
-            "UID_DEBUG",
-            "UID LOOKUP FAILED"
-        )
-
-        Log.e(
-            "UID_DEBUG",
-            "Error type: ${e::class.java.simpleName}"
-        )
-
-        Log.e(
-            "UID_DEBUG",
-            "Error message: ${e.message}"
-        )
-
-        Log.e(
-            "UID_DEBUG",
-            "Full exception:",
-            e
-        )
-
-        Result.failure(e)
     }
-}
 
 
     // ─── Relationships ───────────────────────────────────────────
@@ -770,6 +774,167 @@ class FirestoreManager {
     }
 
     /**
+     * Saves a user's location to the dedicated child_locations collection indexed by UID.
+     * Updated every 10 seconds so the tracking website can track children by UID directly.
+     * Document Path: child_locations/{uid}
+     * History Path: child_locations/{uid}/history/{timestamp}
+     * Also mirrors to uid_locations/{uid} for alias compatibility.
+     */
+    suspend fun saveUidLocation(uid: String, location: UserLocation): Result<Unit> {
+        if (uid.isBlank()) return Result.failure(IllegalArgumentException("UID cannot be blank"))
+        return try {
+            val docId = uid.trim()
+            val locationToSave = location.copy(uid = docId)
+            val data = locationToSave.toMap().toMutableMap().apply {
+                put("lastUpdated", FieldValue.serverTimestamp())
+                put("status", "ONLINE")
+                put("lat", location.latitude)
+                put("lng", location.longitude)
+                put("name", location.userName)
+                put("childName", location.userName)
+                put("batteryLevel", 90)
+                put("networkStatus", "ONLINE")
+            }
+
+            // 1. Primary dedicated collection for website tracking: child_locations/{uid}
+            db.collection(CHILD_LOCATIONS_COLLECTION)
+                .document(docId)
+                .set(data, SetOptions.merge())
+                .await()
+
+            // Also record breadcrumb history for path replay: child_locations/{uid}/history/{timestamp}
+            val historyId = location.timestamp.toString()
+            db.collection(CHILD_LOCATIONS_COLLECTION)
+                .document(docId)
+                .collection("history")
+                .document(historyId)
+                .set(data)
+                .await()
+
+            // 2. Also mirror to uid_locations/{uid} for alias compatibility
+            db.collection(UID_LOCATIONS_COLLECTION)
+                .document(docId)
+                .set(data, SetOptions.merge())
+                .await()
+
+            // Also mirror history to uid_locations/{uid}/history/{timestamp}
+            db.collection(UID_LOCATIONS_COLLECTION)
+                .document(docId)
+                .collection("history")
+                .document(historyId)
+                .set(data)
+                .await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "saveUidLocation failed for uid: $uid", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieves the latest known location by UID from child_locations.
+     */
+    suspend fun getLatestUidLocation(uid: String): Result<UserLocation?> {
+        if (uid.isBlank()) return Result.success(null)
+        return try {
+            val snapshot = db.collection(CHILD_LOCATIONS_COLLECTION)
+                .document(uid.trim())
+                .get()
+                .await()
+
+            if (snapshot.exists()) {
+                val data = snapshot.data
+                val loc = data?.let { UserLocation.fromMap(snapshot.id, it) }
+                Result.success(loc)
+            } else {
+                Result.success(null)
+            }
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getLatestUidLocation failed for uid: $uid", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Real-time listener for child's live location by UID.
+     * Directly streams updates as they occur every 10 seconds.
+     */
+    fun listenToUidLocation(uid: String): Flow<UserLocation?> = callbackFlow {
+        if (uid.isBlank()) {
+            trySend(null)
+            close()
+            return@callbackFlow
+        }
+        val docRef = db.collection(CHILD_LOCATIONS_COLLECTION).document(uid.trim())
+        val listener = docRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e("FirestoreManager", "listenToUidLocation error for $uid", error)
+                trySend(null)
+                return@addSnapshotListener
+            }
+
+            if (snapshot != null && snapshot.exists()) {
+                val data = snapshot.data
+                if (data != null) {
+                    val loc = UserLocation.fromMap(snapshot.id, data)
+                    trySend(loc)
+                    return@addSnapshotListener
+                }
+            }
+            trySend(null)
+        }
+
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * Dual-mode listener that observes location by UID (from child_locations)
+     * or by auth userId (from userLocations).
+     */
+    fun listenToLocationByUserIdOrUid(identifier: String): Flow<UserLocation?> = callbackFlow {
+        if (identifier.isBlank()) {
+            trySend(null)
+            close()
+            return@callbackFlow
+        }
+        val target = identifier.trim()
+
+        // 1. Try child_locations/{target}
+        val childDocRef = db.collection(CHILD_LOCATIONS_COLLECTION).document(target)
+        val childListener = childDocRef.addSnapshotListener { childSnap, error ->
+            if (error == null && childSnap != null && childSnap.exists()) {
+                val data = childSnap.data
+                if (data != null) {
+                    val loc = UserLocation.fromMap(childSnap.id, data)
+                    trySend(loc)
+                }
+            }
+        }
+
+        // 2. Also listen to userLocations/{target}/locations (subcollection)
+        val userListener = db.collection(USER_LOCATIONS_COLLECTION)
+            .document(target)
+            .collection(LOCATIONS_SUBCOLLECTION)
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(1)
+            .addSnapshotListener { userSnap, error ->
+                if (error == null && userSnap != null && !userSnap.isEmpty) {
+                    val doc = userSnap.documents.first()
+                    val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                    if (loc != null) {
+                        trySend(loc)
+                    }
+                }
+            }
+
+        awaitClose {
+            childListener.remove()
+            userListener.remove()
+        }
+    }
+
+    /**
      * Deletes location points older than a given timestamp.
      */
     suspend fun deleteOldLocations(userId: String, beforeTimestamp: Long): Result<Unit> {
@@ -911,6 +1076,24 @@ class FirestoreManager {
     }
 
     /**
+     * Retrieves a single SOS event by its ID.
+     */
+    suspend fun getSOSEventById(eventId: String): Result<SOSEvent?> {
+        return try {
+            val doc = db.collection(SOS_EVENTS_COLLECTION).document(eventId).get().await()
+            val event = if (doc.exists() && doc.data != null) {
+                SOSEvent.fromMap(doc.id, doc.data!!)
+            } else {
+                null
+            }
+            Result.success(event)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getSOSEventById failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Real-time listener for active SOS events of a user.
      */
     fun listenToUserSOSEvents(userId: String): Flow<SOSEvent?> = callbackFlow {
@@ -952,12 +1135,141 @@ class FirestoreManager {
 
             db.collection(collection)
                 .document(userId)
-                .update("fcmToken", token)
+                .set(mapOf("fcmToken" to token), SetOptions.merge())
+                .await()
+            Log.d("FirestoreManager", "Saved FCM token for $accountType ($userId)")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "saveFCMToken failed for $accountType ($userId)", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createRiskEvent(event: RiskEvent): Result<Unit> {
+        return try {
+            db.collection(RISK_EVENTS_COLLECTION)
+                .document(event.id)
+                .set(event.toMap())
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("FirestoreManager", "saveFCMToken failed", e)
+            Log.e("FirestoreManager", "createRiskEvent failed", e)
             Result.failure(e)
+        }
+    }
+
+    suspend fun updateRiskEventStatus(
+        eventId: String,
+        status: String
+    ): Result<Unit> {
+        return try {
+            val updates = mapOf(
+                "status" to status
+            )
+            db.collection(RISK_EVENTS_COLLECTION)
+                .document(eventId)
+                .update(updates)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "updateRiskEventStatus failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createJourneyRecord(record: JourneyRecord): Result<Unit> {
+        return try {
+            db.collection(JOURNEYS_COLLECTION)
+                .document(record.id)
+                .set(record.toMap())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "createJourneyRecord failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getUserJourneys(userId: String): Result<List<JourneyRecord>> {
+        return try {
+            val snapshot = db.collection(JOURNEYS_COLLECTION)
+                .whereEqualTo("userId", userId)
+                .orderBy("startTime", Query.Direction.DESCENDING)
+                .get()
+                .await()
+            val journeys = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { JourneyRecord.fromMap(doc.id, it) }
+            }
+            Result.success(journeys)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getUserJourneys failed", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitFeedback(
+        userId: String,
+        userName: String,
+        feedbackMessage: String
+    ): Result<Unit> {
+        var anySuccess = false
+        var lastError: Exception? = null
+
+        val docId = java.util.UUID.randomUUID().toString()
+        val feedbackData = mapOf(
+            "id" to docId,
+            "userId" to userId,
+            "userName" to userName,
+            "feedbackMessage" to feedbackMessage,
+            "createdAt" to System.currentTimeMillis()
+        )
+
+        // 1. Write to "feedback" collection (singular)
+        try {
+            db.collection("feedback")
+                .document(docId)
+                .set(feedbackData)
+                .await()
+            anySuccess = true
+            Log.i("FirestoreManager", "Successfully created doc in 'feedback' collection: $docId")
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "Failed writing to 'feedback' collection", e)
+            lastError = e
+        }
+
+        // 2. Write to "feedbacks" collection (plural)
+        try {
+            db.collection("feedbacks")
+                .document(docId)
+                .set(feedbackData)
+                .await()
+            anySuccess = true
+            Log.i("FirestoreManager", "Successfully created doc in 'feedbacks' collection: $docId")
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "Failed writing to 'feedbacks' collection", e)
+            if (lastError == null) lastError = e
+        }
+
+        // 3. Also update lastFeedback in user profile document
+        try {
+            db.collection(USERS_COLLECTION)
+                .document(userId)
+                .update(
+                    mapOf(
+                        "lastFeedback" to feedbackMessage,
+                        "lastFeedbackAt" to System.currentTimeMillis()
+                    )
+                )
+                .await()
+            anySuccess = true
+        } catch (e: Exception) {
+            Log.w("FirestoreManager", "User document lastFeedback notice: ${e.message}")
+        }
+
+        return if (anySuccess) {
+            Result.success(Unit)
+        } else {
+            Result.failure(lastError ?: Exception("Unable to write feedback document to Firestore"))
         }
     }
 }

@@ -44,7 +44,7 @@ class UserRepository(
 
     suspend fun updateSetupStatus(
         setupCompleted: Boolean,
-        preferences: Map<String, Any> = emptyMap()
+        preferences: Map<String, Any?> = emptyMap()
     ): Result<Unit> {
         val userId = authManager.currentUserId
             ?: return Result.failure(Exception("User not authenticated"))
@@ -62,14 +62,21 @@ class UserRepository(
     suspend fun updateEmergencyContact(
         contactId: String,
         name: String,
-        phone: String
+        phone: String,
+        isPrimary: Boolean,
+        enableEscalation: Boolean
     ): Result<Unit> {
         val userId = authManager.currentUserId
             ?: return Result.failure(Exception("User not authenticated"))
         return firestoreManager.updateEmergencyContactInUser(
             userId,
             contactId,
-            mapOf("name" to name, "phone" to phone)
+            mapOf(
+                "name" to name,
+                "phone" to phone,
+                "isPrimary" to isPrimary,
+                "enableEscalation" to enableEscalation
+            )
         )
     }
 
@@ -83,6 +90,10 @@ class UserRepository(
         val userId = authManager.currentUserId
             ?: return Result.failure(Exception("User not authenticated"))
         return firestoreManager.getEmergencyContactsForUser(userId)
+    }
+
+    suspend fun submitFeedback(userId: String, userName: String, feedbackMessage: String): Result<Unit> {
+        return firestoreManager.submitFeedback(userId, userName, feedbackMessage)
     }
 }
 

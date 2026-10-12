@@ -9,7 +9,9 @@ data class EmergencyContact(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String = "",
     val phone: String = "",
-    val addedAt: Long = System.currentTimeMillis()
+    val addedAt: Long = System.currentTimeMillis(),
+    val isPrimary: Boolean = false,
+    val enableEscalation: Boolean = true
 ) {
     constructor() : this(id = java.util.UUID.randomUUID().toString())
 
@@ -17,7 +19,9 @@ data class EmergencyContact(
         "id" to id,
         "name" to name,
         "phone" to phone,
-        "addedAt" to addedAt
+        "addedAt" to addedAt,
+        "isPrimary" to isPrimary,
+        "enableEscalation" to enableEscalation
     )
 
     companion object {
@@ -26,7 +30,9 @@ data class EmergencyContact(
                 id = map["id"] as? String ?: java.util.UUID.randomUUID().toString(),
                 name = map["name"] as? String ?: "",
                 phone = map["phone"] as? String ?: "",
-                addedAt = (map["addedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                addedAt = (map["addedAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                isPrimary = map["isPrimary"] as? Boolean ?: false,
+                enableEscalation = map["enableEscalation"] as? Boolean ?: true
             )
         }
     }

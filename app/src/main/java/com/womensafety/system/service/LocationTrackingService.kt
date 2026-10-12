@@ -23,6 +23,9 @@ import com.womensafety.system.data.model.LocationServiceState
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.repository.LocationRepository
 import com.womensafety.system.data.repository.UserRepository
+import com.womensafety.system.data.repository.UidRepository
+import com.womensafety.system.manager.SafetyMonitoringManager
+import com.womensafety.system.manager.TravelModeManager
 import com.womensafety.system.utils.NotificationChannelManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +53,7 @@ class LocationTrackingService : Service() {
 
         const val EXTRA_INTERVAL_MS = "extra_interval_ms"
 
-        const val DEFAULT_NORMAL_INTERVAL_MS = 30_000L // 30 seconds
+        const val DEFAULT_NORMAL_INTERVAL_MS = 10_000L // 10 seconds for real-time live tracking
         const val SOS_INTERVAL_MS = 5_000L              // 5 seconds
 
         private val _currentLocation = MutableStateFlow<UserLocation?>(null)
@@ -65,51 +68,116 @@ class LocationTrackingService : Service() {
         var isSosMode = false
             private set
 
-        fun startTracking(context: Context, intervalMs: Long = DEFAULT_NORMAL_INTERVAL_MS) {
-            val intent = Intent(context, LocationTrackingService::class.java).apply {
-                action = ACTION_START_TRACKING
-                putExtra(EXTRA_INTERVAL_MS, intervalMs)
+        var cachedWeeklyUid: String = ""
+            private set
+
+        var cachedUserName: String = "User"
+            private set
+
+        fun setTargetUid(uid: String, name: String = "") {
+            if (uid.isNotBlank()) {
+                cachedWeeklyUid = uid.trim()
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            if (name.isNotBlank()) {
+                cachedUserName = name.trim()
+            }
+        }
+
+        fun startTracking(context: Context, intervalMs: Long = DEFAULT_NORMAL_INTERVAL_MS) {
+            try {
+                val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                if (!hasFine && !hasCoarse) {
+                    Log.w(TAG, "Location permission not granted, skipping startTracking until granted")
+                    return
+                }
+
+                val intent = Intent(context, LocationTrackingService::class.java).apply {
+                    action = ACTION_START_TRACKING
+                    putExtra(EXTRA_INTERVAL_MS, intervalMs)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed startTracking", e)
             }
         }
 
         fun pauseTracking(context: Context) {
-            val intent = Intent(context, LocationTrackingService::class.java).apply {
-                action = ACTION_PAUSE_TRACKING
+            try {
+                val intent = Intent(context, LocationTrackingService::class.java).apply {
+                    action = ACTION_PAUSE_TRACKING
+                }
+                context.startService(intent)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed pauseTracking", e)
             }
-            context.startService(intent)
         }
 
         fun resumeTracking(context: Context) {
-            val intent = Intent(context, LocationTrackingService::class.java).apply {
-                action = ACTION_RESUME_TRACKING
+            try {
+                val intent = Intent(context, LocationTrackingService::class.java).apply {
+                    action = ACTION_RESUME_TRACKING
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed resumeTracking", e)
             }
-            context.startService(intent)
         }
 
         fun stopTracking(context: Context) {
-            val intent = Intent(context, LocationTrackingService::class.java).apply {
-                action = ACTION_STOP_TRACKING
+            try {
+                val intent = Intent(context, LocationTrackingService::class.java).apply {
+                    action = ACTION_STOP_TRACKING
+                }
+                context.startService(intent)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed stopTracking", e)
             }
-            context.startService(intent)
         }
 
         fun enableSOSMode(context: Context) {
-            val intent = Intent(context, LocationTrackingService::class.java).apply {
-                action = ACTION_SOS_MODE
+            try {
+                val intent = Intent(context, LocationTrackingService::class.java).apply {
+                    action = ACTION_SOS_MODE
+                }
+                if (isRunning) {
+                    context.startService(intent)
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed enableSOSMode", e)
             }
-            context.startService(intent)
         }
 
         fun disableSOSMode(context: Context) {
-            val intent = Intent(context, LocationTrackingService::class.java).apply {
-                action = ACTION_NORMAL_MODE
+            try {
+                val intent = Intent(context, LocationTrackingService::class.java).apply {
+                    action = ACTION_NORMAL_MODE
+                }
+                if (isRunning) {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed disableSOSMode", e)
             }
-            context.startService(intent)
         }
     }
 
@@ -120,10 +188,10 @@ class LocationTrackingService : Service() {
 
     private val locationRepository = LocationRepository()
     private val userRepository = UserRepository()
+    private val uidRepository = UidRepository()
     private val authManager = FirebaseAuthManager()
 
     private var currentIntervalMs = DEFAULT_NORMAL_INTERVAL_MS
-    private var cachedUserName: String = "User"
 
     override fun onCreate() {
         super.onCreate()
@@ -142,8 +210,21 @@ class LocationTrackingService : Service() {
             val currentUserId = authManager.currentUserId ?: return@launch
             val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
             if (userProfile != null) {
-                cachedUserName = userProfile.name
+                setTargetUid(userProfile.currentWeeklyUid, userProfile.name)
             }
+            if (cachedWeeklyUid.isBlank()) {
+                val activeUid = uidRepository.getCurrentUid(currentUserId).getOrNull()
+                if (activeUid != null && activeUid.uid.isNotBlank()) {
+                    setTargetUid(activeUid.uid, activeUid.userName)
+                }
+            }
+            if (cachedWeeklyUid.isBlank()) {
+                val devUid = uidRepository.generateDevUid(currentUserId, cachedUserName).getOrNull()
+                if (devUid != null && devUid.uid.isNotBlank()) {
+                    setTargetUid(devUid.uid, devUid.userName)
+                }
+            }
+            Log.d(TAG, "Location tracking initialized for UID: $cachedWeeklyUid, User: $cachedUserName")
         }
     }
 
@@ -198,13 +279,27 @@ class LocationTrackingService : Service() {
 
     private fun startTrackingService() {
         _serviceState.value = LocationServiceState.STARTING
-        startForeground(NOTIFICATION_ID, buildNotification())
-        isRunning = true
-
-        acquireWakeLock()
-        requestLocationUpdates()
-        _serviceState.value = LocationServiceState.TRACKING
-        Log.d(TAG, "Location tracking service started with interval: ${currentIntervalMs}ms")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification())
+            }
+            isRunning = true
+            acquireWakeLock()
+            requestLocationUpdates()
+            _serviceState.value = LocationServiceState.TRACKING
+            Log.d(TAG, "Location tracking service started with interval: ${currentIntervalMs}ms")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Cannot startForeground in LocationTrackingService: ${e.message}", e)
+            isRunning = false
+            _serviceState.value = LocationServiceState.ERROR
+            stopSelf()
+        }
     }
 
     private fun pauseTrackingService() {
@@ -234,12 +329,28 @@ class LocationTrackingService : Service() {
     @SuppressLint("MissingPermission")
     private fun requestLocationUpdates() {
         try {
+            // 1. Immediately request cached/last known location to acquire instant fix!
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    Log.d(TAG, "Instant lastLocation fix acquired: ${loc.latitude}, ${loc.longitude}")
+                    handleNewLocation(loc)
+                }
+            }
+
+            // 2. Also request fresh one-shot current location immediately!
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).addOnSuccessListener { loc ->
+                if (loc != null) {
+                    Log.d(TAG, "Instant getCurrentLocation fix acquired: ${loc.latitude}, ${loc.longitude}")
+                    handleNewLocation(loc)
+                }
+            }
+
             val locationRequest = LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY,
                 currentIntervalMs
             ).apply {
-                setMinUpdateIntervalMillis(currentIntervalMs / 2)
-                setMinUpdateDistanceMeters(if (isSosMode) 0f else 10f)
+                setMinUpdateIntervalMillis(5_000L) // 5s fastest interval
+                setMinUpdateDistanceMeters(0f)     // Emit every 10s even when stationary
                 setWaitForAccurateLocation(isSosMode)
             }.build()
 
@@ -263,13 +374,34 @@ class LocationTrackingService : Service() {
         val currentUserId = authManager.currentUserId ?: return
 
         serviceScope.launch {
+            // Ensure cachedWeeklyUid is populated
+            if (cachedWeeklyUid.isBlank()) {
+                val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
+                if (userProfile != null && userProfile.currentWeeklyUid.isNotBlank()) {
+                    setTargetUid(userProfile.currentWeeklyUid, userProfile.name)
+                } else {
+                    val activeUid = uidRepository.getCurrentUid(currentUserId).getOrNull()
+                    if (activeUid != null && activeUid.uid.isNotBlank()) {
+                        setTargetUid(activeUid.uid, activeUid.userName)
+                    } else {
+                        val devUid = uidRepository.generateDevUid(currentUserId, cachedUserName).getOrNull()
+                        if (devUid != null && devUid.uid.isNotBlank()) {
+                            setTargetUid(devUid.uid, devUid.userName)
+                        }
+                    }
+                }
+            }
+
             val address = reverseGeocode(location.latitude, location.longitude)
             val userLocation = UserLocation(
                 userId = currentUserId,
+                uid = cachedWeeklyUid,
                 userName = cachedUserName,
                 latitude = location.latitude,
                 longitude = location.longitude,
                 accuracy = location.accuracy,
+                bearing = if (location.hasBearing()) location.bearing else null,
+                altitude = if (location.hasAltitude()) location.altitude else null,
                 timestamp = System.currentTimeMillis(),
                 speed = if (location.hasSpeed()) location.speed else null,
                 address = address,
@@ -279,9 +411,25 @@ class LocationTrackingService : Service() {
             // 1. Update StateFlow for immediate in-app UI
             _currentLocation.value = userLocation
 
-            // 2. Persist to Firestore subcollection
+            // 2. Persist to standard Firestore subcollection (userLocations)
             locationRepository.saveLocation(currentUserId, userLocation)
             Log.d(TAG, "Location saved to Firestore: ${location.latitude}, ${location.longitude}")
+
+            // 3. Persist every 10 seconds to dedicated child_locations collection by UID
+            if (cachedWeeklyUid.isNotBlank()) {
+                val uidResult = locationRepository.saveUidLocation(cachedWeeklyUid, userLocation)
+                if (uidResult.isSuccess) {
+                    Log.d(TAG, "Uploaded 10s location to child_locations for UID: $cachedWeeklyUid")
+                } else {
+                    Log.w(TAG, "Failed uploading location for UID: $cachedWeeklyUid", uidResult.exceptionOrNull())
+                }
+            } else {
+                Log.w(TAG, "UID is still empty for user $currentUserId; skipping child_locations upload this cycle")
+            }
+
+            // 4. Notify SafetyMonitoringManager & TravelModeManager
+            SafetyMonitoringManager.onLocationUpdated(userLocation)
+            TravelModeManager.onLocationUpdated(userLocation)
         }
     }
 
@@ -290,11 +438,15 @@ class LocationTrackingService : Service() {
             val geocoder = Geocoder(applicationContext, Locale.getDefault())
             @Suppress("DEPRECATION")
             val addresses: List<Address>? = geocoder.getFromLocation(lat, lng, 1)
-            addresses?.firstOrNull()?.let { addr ->
+            val addr = addresses?.firstOrNull()
+            if (addr != null) {
                 val street = addr.thoroughfare ?: addr.featureName ?: ""
                 val locality = addr.locality ?: addr.subAdminArea ?: ""
                 val admin = addr.adminArea ?: ""
-                listOf(street, locality, admin).filter { it.isNotBlank() }.joinToString(", ")
+                val subLocality = addr.subLocality ?: ""
+                listOf(street, subLocality, locality, admin).filter { it.isNotBlank() }.joinToString(", ").ifBlank { null }
+            } else {
+                null
             }
         } catch (e: Exception) {
             Log.w(TAG, "Reverse geocoding failed: ${e.message}")
@@ -354,7 +506,7 @@ class LocationTrackingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = if (isSosMode) "🚨 EMERGENCY • High-Frequency Tracking" else "Women Safety • Location Active"
+        val title = if (isSosMode) "🚨 EMERGENCY • High-Frequency Tracking" else "Trinetra • Location Active"
         val subtitle = when {
             isSosMode -> "Updating location every 5 seconds during active SOS"
             isPaused -> "Location tracking paused"

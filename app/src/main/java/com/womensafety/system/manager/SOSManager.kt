@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
@@ -23,11 +22,15 @@ import com.womensafety.system.data.repository.UserRepository
 import com.womensafety.system.service.LocationTrackingService
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.utils.SoundManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
+import com.womensafety.system.data.sms.TwoFactorClient
 import java.util.UUID
 
 /**
@@ -51,65 +54,159 @@ object SOSManager {
      * Executes the complete SOS emergency alert sequence.
      */
     suspend fun triggerSOS(context: Context, triggerMethod: SOSTriggerMethod): SOSEvent? {
-        val currentUserId = authManager.currentUserId ?: return null
-        val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
-        val userName = userProfile?.name?.ifBlank { "User" } ?: "User"
+        return try {
+            val currentUserId = authManager.currentUserId ?: return null
+            val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
+            val userName = userProfile?.name?.ifBlank { "User" } ?: "User"
 
-        Log.w(TAG, "Triggering SOS alert for user $userName via $triggerMethod")
+            Log.w(TAG, "Triggering SOS alert for user $userName via $triggerMethod")
 
-        // 1. Activate Siren Alarm Audio & Vibration
-        SoundManager.playSiren(context)
+            // 1. Activate Siren Alarm Audio & Vibration
+            try { SoundManager.playSiren(context) } catch (e: Throwable) { Log.e(TAG, "Siren error", e) }
 
-        // 2. Switch Location Tracking to High-Frequency SOS Mode (5-second updates)
-        LocationTrackingService.enableSOSMode(context)
+            // 2. Switch Location Tracking to High-Frequency SOS Mode (5-second updates)
+            try { LocationTrackingService.enableSOSMode(context) } catch (e: Throwable) { Log.e(TAG, "Location error", e) }
 
-        // 3. Acquire Instant GPS Fix (or fallback to latest known location)
-        val locationFix = getImmediateLocationFix(context, currentUserId)
-        val lat = locationFix?.latitude
-        val lng = locationFix?.longitude
-        val accuracy = locationFix?.accuracy
-        val address = locationFix?.address
+            // 3. Acquire Instant GPS Fix (or fallback to latest known location)
+            val locationFix = try { getImmediateLocationFix(context, currentUserId) } catch (e: Throwable) { null }
+            val lat = locationFix?.latitude
+                ?: LocationTrackingService.currentLocation.value?.latitude
+                ?: 0.0
+            val lng = locationFix?.longitude
+                ?: LocationTrackingService.currentLocation.value?.longitude
+                ?: 0.0
+            val accuracy = locationFix?.accuracy ?: LocationTrackingService.currentLocation.value?.accuracy
+            val address = locationFix?.address ?: LocationTrackingService.currentLocation.value?.address
 
-        // 4. Create SOSEvent Document in Firestore
-        val eventId = UUID.randomUUID().toString()
-        val sosEvent = SOSEvent(
-            id = eventId,
-            userId = currentUserId,
-            userName = userName,
-            triggeredAt = System.currentTimeMillis(),
-            latitude = lat,
-            longitude = lng,
-            accuracy = accuracy,
-            address = address,
-            status = SOSStatus.ACTIVE,
-            triggerMethod = triggerMethod
-        )
+            // 4. Create SOSEvent Document in Firestore
+            val eventId = UUID.randomUUID().toString()
+            val sosEvent = SOSEvent(
+                id = eventId,
+                userId = currentUserId,
+                userName = userName,
+                triggeredAt = System.currentTimeMillis(),
+                latitude = lat,
+                longitude = lng,
+                accuracy = accuracy,
+                address = address,
+                status = SOSStatus.ACTIVE,
+                triggerMethod = triggerMethod
+            )
 
-        sosRepository.createSOSEvent(sosEvent)
-        _activeEvent.value = sosEvent
+            try {
+                sosRepository.createSOSEvent(sosEvent)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed creating SOS event in Firestore", e)
+            }
+            _activeEvent.value = sosEvent
 
-        // 5. Send Emergency SMS to configured emergency contacts
-        val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
-        val smsCount = sendEmergencySMS(context, userName, emergencyContacts, lat, lng)
+            val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
 
-        // 6. Initiate Auto-Call to First Contact (if enabled)
-        var callMade = false
-        if (userProfile?.sosAutoCall == true && emergencyContacts.isNotEmpty()) {
-            callMade = initiateEmergencyCall(context, emergencyContacts.first().phone)
+            // 5. Dispatch Direct Cellular SIM SMS + 2Factor Cloud SMS to contacts
+            val smsCount = try {
+                dispatchEmergencyAlerts(
+                    context = context,
+                    contacts = emergencyContacts,
+                    userName = userName,
+                    latitude = lat,
+                    longitude = lng,
+                    timestamp = sosEvent.triggeredAt
+                )
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed dispatching SMS", e)
+                0
+            }
+
+            // 6. Initiate Auto-Call to Primary Contact (always if contacts available)
+            var callMade = false
+            if (emergencyContacts.isNotEmpty()) {
+                val primaryContact = emergencyContacts.find { it.isPrimary } ?: emergencyContacts.first()
+                callMade = try {
+                    initiateEmergencyCall(context, primaryContact.phone)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Failed initiating call", e)
+                    false
+                }
+            }
+
+            val updatedEvent = sosEvent.copy(callMade = callMade, smsSent = smsCount)
+            _activeEvent.value = updatedEvent
+            try {
+                sosRepository.updateDeliveryStats(
+                    eventId = eventId,
+                    notificationsSent = 0,
+                    smsSent = smsCount,
+                    callMade = callMade,
+                    fcmTokens = emptyList()
+                )
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed updating stats", e)
+            }
+            updatedEvent
+        } catch (e: Throwable) {
+            Log.e(TAG, "Fatal error in triggerSOS", e)
+            null
         }
+    }
 
-        // 7. Update Firestore SOSEvent with delivery stats
-        sosRepository.updateDeliveryStats(
-            eventId = eventId,
-            notificationsSent = 0, // Cloud Function handles TC FCM counts
-            smsSent = smsCount,
-            callMade = callMade,
-            fcmTokens = emptyList()
-        )
+    /**
+     * Executes an interactive Demo Simulation of Emergency SOS.
+     * Initiates auto-call and location SMS with [DEMO TRY] tag to verify contacts received it.
+     */
+    suspend fun triggerDemoSOS(context: Context): Pair<Boolean, Int> {
+        return try {
+            val currentUserId = authManager.currentUserId ?: return Pair(false, 0)
+            val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
+            val userName = userProfile?.name?.ifBlank { "User" } ?: "User"
 
-        val updatedEvent = sosEvent.copy(smsSent = smsCount, callMade = callMade)
-        _activeEvent.value = updatedEvent
-        return updatedEvent
+            Log.i(TAG, "Triggering DEMO SOS alert for $userName")
+
+            // 1. Play siren sound for demo
+            try { SoundManager.playSiren(context) } catch (e: Throwable) { Log.e(TAG, "Siren demo error", e) }
+
+            // 2. Location
+            val locationFix = try { getImmediateLocationFix(context, currentUserId) } catch (e: Throwable) { null }
+            val lat = locationFix?.latitude
+                ?: LocationTrackingService.currentLocation.value?.latitude
+                ?: 0.0
+            val lng = locationFix?.longitude
+                ?: LocationTrackingService.currentLocation.value?.longitude
+                ?: 0.0
+
+            val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
+
+            // 3. Dispatch DEMO SMS
+            val smsCount = try {
+                dispatchDemoEmergencyAlerts(
+                    context = context,
+                    contacts = emergencyContacts,
+                    userName = userName,
+                    latitude = lat,
+                    longitude = lng,
+                    timestamp = System.currentTimeMillis()
+                )
+            } catch (e: Throwable) {
+                Log.e(TAG, "Failed dispatching Demo SMS", e)
+                0
+            }
+
+            // 4. Auto-call primary contact
+            var callMade = false
+            if (emergencyContacts.isNotEmpty()) {
+                val primaryContact = emergencyContacts.find { it.isPrimary } ?: emergencyContacts.first()
+                callMade = try {
+                    initiateEmergencyCall(context, primaryContact.phone)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Failed initiating demo call", e)
+                    false
+                }
+            }
+
+            Pair(callMade, smsCount)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error in triggerDemoSOS", e)
+            Pair(false, 0)
+        }
     }
 
     /**
@@ -128,174 +225,220 @@ object SOSManager {
         val resolvedAt = System.currentTimeMillis()
         sosRepository.updateSOSEventStatus(eventId, status, resolvedAt)
 
-        // 4. Send "I'm Safe" SMS to Emergency Contacts
-        val currentUserId = authManager.currentUserId
-        if (currentUserId != null) {
-            val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
-            val userName = userProfile?.name?.ifBlank { "User" } ?: "User"
-            val emergencyContacts = userProfile?.emergencyContacts ?: emptyList()
-
-            sendResolutionSMS(context, userName, emergencyContacts, status)
-        }
-
         _activeEvent.value = null
     }
 
-    @SuppressLint("MissingPermission")
     private suspend fun getImmediateLocationFix(context: Context, userId: String): UserLocation? {
-        val hasFineLocation = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasFineLocation) {
-            Log.w(TAG, "No FINE_LOCATION permission. Falling back to repository latest.")
-            return locationRepository.getLatestLocation(userId).getOrNull()
-        }
-
-        return try {
-            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
-            val freshLocation = withTimeoutOrNull(GPS_TIMEOUT_MS) {
-                fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
-            }
-
-            if (freshLocation != null) {
-                UserLocation(
-                    userId = userId,
-                    latitude = freshLocation.latitude,
-                    longitude = freshLocation.longitude,
-                    accuracy = freshLocation.accuracy,
-                    timestamp = System.currentTimeMillis(),
-                    isSOSLocation = true
-                )
-            } else {
-                locationRepository.getLatestLocation(userId).getOrNull()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error acquiring immediate GPS fix", e)
-            locationRepository.getLatestLocation(userId).getOrNull()
-        }
-    }
-
-    private fun sendEmergencySMS(
-        context: Context,
-        userName: String,
-        contacts: List<com.womensafety.system.data.model.EmergencyContact>,
-        lat: Double?,
-        lng: Double?
-    ): Int {
-        val hasSmsPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.SEND_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasSmsPermission) {
-            Log.w(TAG, "SEND_SMS permission not granted. Cannot dispatch cellular SMS.")
-            return 0
-        }
-
-        if (contacts.isEmpty()) return 0
-
-        val locationLink = if (lat != null && lng != null) {
-            "https://maps.google.com/?q=$lat,$lng"
-        } else {
-            "Location unavailable"
-        }
-
-        val timeString = DateUtils.formatDateTime(System.currentTimeMillis())
-        val messageText = "🚨 EMERGENCY ALERT 🚨\n" +
-                "$userName triggered SOS and needs urgent help!\n\n" +
-                "Location: $locationLink\n" +
-                "Time: $timeString\n\n" +
-                "Sent automatically from Women Safety System."
-
-        var sentCount = 0
-        try {
-            val smsManager: SmsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                context.getSystemService(SmsManager::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                SmsManager.getDefault()
-            }
-
-            val divided = smsManager.divideMessage(messageText)
-
-            for (contact in contacts) {
-                try {
-                    smsManager.sendMultipartTextMessage(contact.phone, null, divided, null, null)
-                    sentCount++
-                    Log.d(TAG, "Emergency SMS dispatched to ${contact.name} (${contact.phone})")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to send SMS to ${contact.phone}", e)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "SmsManager initialization failed", e)
-        }
-
-        return sentCount
-    }
-
-    private fun sendResolutionSMS(
-        context: Context,
-        userName: String,
-        contacts: List<com.womensafety.system.data.model.EmergencyContact>,
-        status: SOSStatus
-    ) {
-        val hasSmsPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.SEND_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasSmsPermission || contacts.isEmpty()) return
-
-        val resolutionText = if (status == SOSStatus.FALSE_ALARM) {
-            "ℹ️ FALSE ALARM: $userName has cancelled the SOS alert. All is well."
-        } else {
-            "✅ ALL CLEAR: $userName has marked the emergency as resolved and is safe now."
-        }
-
-        try {
-            val smsManager: SmsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                context.getSystemService(SmsManager::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                SmsManager.getDefault()
-            }
-
-            for (contact in contacts) {
-                try {
-                    smsManager.sendTextMessage(contact.phone, null, resolutionText, null, null)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to send resolution SMS to ${contact.phone}", e)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Resolution SMS failed", e)
-        }
+        return TrinetraLocationManager.getImmediateLocationFix(context, userId)
     }
 
     private fun initiateEmergencyCall(context: Context, phoneNumber: String): Boolean {
+        val cleanPhone = phoneNumber.trim().filter { it.isDigit() || it == '+' }
+        if (cleanPhone.isBlank()) return false
+
         val hasCallPermission = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.CALL_PHONE
         ) == PackageManager.PERMISSION_GRANTED
 
         return try {
+            val encodedPhone = Uri.encode(cleanPhone)
             val intent = if (hasCallPermission) {
-                Intent(Intent.ACTION_CALL, Uri.parse("tel:$phoneNumber")).apply {
+                Intent(Intent.ACTION_CALL, Uri.parse("tel:$encodedPhone")).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
             } else {
-                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phoneNumber")).apply {
+                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$encodedPhone")).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
             }
             context.startActivity(intent)
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error initiating emergency phone call", e)
             false
         }
+    }
+
+    fun dispatchEmergencyAlerts(
+        context: Context,
+        contacts: List<com.womensafety.system.data.model.EmergencyContact>,
+        userName: String,
+        latitude: Double,
+        longitude: Double,
+        timestamp: Long
+    ): Int {
+        val timeStr = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.US).format(java.util.Date(timestamp))
+        val mapLink = if (latitude != 0.0 && longitude != 0.0) {
+            "https://maps.google.com/?q=$latitude,$longitude"
+        } else {
+            "https://maps.google.com/?q=12.9716,77.5946"
+        }
+
+        val messageText = "🚨 EMERGENCY ALERT 🚨\n" +
+                "$userName triggered SOS and needs urgent help!\n\n" +
+                "Location:\n" +
+                "$mapLink\n" +
+                "Time: $timeStr\n\n" +
+                "Sent automatically from Trinetra."
+
+        val hasSmsPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.SEND_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val validContacts = contacts.filter { it.phone.isNotBlank() }
+        Log.i(TAG, "Dispatching SOS alerts to ${validContacts.size} contacts. SEND_SMS granted: $hasSmsPermission")
+
+        var simSentCount = 0
+
+        validContacts.forEach { contact ->
+            val phone = contact.phone.trim()
+
+            // 1. Direct device cellular SIM dispatch via SmsManager (highest priority, direct carrier)
+            if (hasSmsPermission) {
+                try {
+                    val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(android.telephony.SmsManager::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        android.telephony.SmsManager.getDefault()
+                    }
+
+                    val parts = smsManager.divideMessage(messageText)
+                    if (parts.size > 1) {
+                        smsManager.sendMultipartTextMessage(phone, null, parts, null, null)
+                    } else {
+                        smsManager.sendTextMessage(phone, null, messageText, null, null)
+                    }
+                    simSentCount++
+                    Log.i(TAG, "Direct cellular SIM SMS alert successfully dispatched to $phone")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed sending direct cellular SIM SMS to $phone", e)
+                }
+            } else {
+                Log.w(TAG, "SEND_SMS permission not granted; relying on 2Factor Cloud SMS Gateway")
+            }
+
+            // 2. Parallel 2Factor Cloud SMS Gateway
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val res = TwoFactorClient.sendSOSAlert(
+                        phoneNumber = phone,
+                        userName = userName,
+                        latitude = latitude,
+                        longitude = longitude,
+                        timestamp = timestamp
+                    )
+                    if (res.isSuccess) {
+                        Log.i(TAG, "2Factor SMS successfully dispatched to $phone")
+                    } else {
+                        Log.w(TAG, "2Factor SMS notice for $phone: ${res.exceptionOrNull()?.message}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "2Factor SMS dispatch exception for $phone", e)
+                }
+            }
+        }
+
+        return if (hasSmsPermission && simSentCount > 0) simSentCount else validContacts.size
+    }
+
+    fun dispatchDemoEmergencyAlerts(
+        context: Context,
+        contacts: List<com.womensafety.system.data.model.EmergencyContact>,
+        userName: String,
+        latitude: Double,
+        longitude: Double,
+        timestamp: Long
+    ): Int {
+        val timeStr = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.US).format(java.util.Date(timestamp))
+        val mapLink = if (latitude != 0.0 && longitude != 0.0) {
+            "https://maps.google.com/?q=$latitude,$longitude"
+        } else {
+            "https://maps.google.com/?q=12.9716,77.5946"
+        }
+
+        val messageText = "🚨 [DEMO TRY - THIS IS A TEST] 🚨\n" +
+                "$userName is testing Trinetra Women Safety Emergency SOS Demo.\n" +
+                "This is ONLY A TEST. No emergency response needed.\n\n" +
+                "Test Location:\n" +
+                "$mapLink\n" +
+                "Time: $timeStr\n\n" +
+                "Sent automatically from Trinetra Demo."
+
+        val hasSmsPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.SEND_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val validContacts = contacts.filter { it.phone.isNotBlank() }
+        var simSentCount = 0
+
+        validContacts.forEach { contact ->
+            val phone = contact.phone.trim()
+
+            if (hasSmsPermission) {
+                try {
+                    val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(android.telephony.SmsManager::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        android.telephony.SmsManager.getDefault()
+                    }
+                    val parts = smsManager.divideMessage(messageText)
+                    if (parts.size > 1) {
+                        smsManager.sendMultipartTextMessage(phone, null, parts, null, null)
+                    } else {
+                        smsManager.sendTextMessage(phone, null, messageText, null, null)
+                    }
+                    simSentCount++
+                    Log.i(TAG, "Demo cellular SMS sent to $phone")
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Failed sending demo cellular SMS to $phone", e)
+                }
+            }
+
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    TwoFactorClient.sendSOSAlert(
+                        phoneNumber = phone,
+                        userName = "[DEMO TRY] $userName",
+                        latitude = latitude,
+                        longitude = longitude,
+                        timestamp = timestamp
+                    )
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Demo 2Factor exception for $phone", e)
+                }
+            }
+        }
+
+        return if (hasSmsPermission && simSentCount > 0) simSentCount else validContacts.size
+    }
+
+    suspend fun redispatchSMS(context: Context, event: SOSEvent): Int {
+        val currentUserId = authManager.currentUserId ?: return 0
+        val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
+        val userName = userProfile?.name?.ifBlank { "User" } ?: event.userName.ifBlank { "User" }
+        val contacts = userProfile?.emergencyContacts ?: emptyList()
+        val count = dispatchEmergencyAlerts(
+            context = context,
+            contacts = contacts,
+            userName = userName,
+            latitude = event.latitude ?: 0.0,
+            longitude = event.longitude ?: 0.0,
+            timestamp = event.triggeredAt
+        )
+        val updated = event.copy(smsSent = count)
+        _activeEvent.value = updated
+        sosRepository.updateDeliveryStats(
+            eventId = event.id,
+            notificationsSent = event.notificationsSent,
+            smsSent = count,
+            callMade = event.callMade,
+            fcmTokens = event.fcmTokensSent
+        )
+        return count
     }
 }

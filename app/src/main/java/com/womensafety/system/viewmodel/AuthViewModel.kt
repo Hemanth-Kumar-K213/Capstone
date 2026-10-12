@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthProvider
+import com.google.firebase.functions.FirebaseFunctions
 import com.womensafety.system.data.repository.AuthRepository
 import com.womensafety.system.data.repository.DuplicateCheckResult
 import com.womensafety.system.data.repository.UidRepository
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 /**
  * Manages the User signup flow (6 steps) and login.
@@ -152,55 +154,79 @@ class AuthViewModel(
         return true
     }
 
-    // ─── Step 2: Phone OTP ───────────────────────────────────────
+    // ─── Step 2: Phone OTP (Twilio SMS Integration) ──────────────
 
-    fun sendPhoneOtp(activity: Activity) {
+    fun sendPhoneOtp(activity: Activity? = null) {
         val state = _signupState.value
-        val normalizedPhone = Validators.normalizePhone(state.phone)
-        _signupState.value = state.copy(isLoading = true, error = null)
+        requestPhoneOTP(state.phone, state.name)
+    }
 
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                // Auto-verification (e.g., on some devices)
+    companion object {
+        private var signupSessionId: String? = null
+        private var signupSessionPhone: String? = null
+        private var signupSessionExpiry: Long = 0L
+        private var signupLastSent: Long = 0L
+    }
+
+    fun requestPhoneOTP(phoneNumber: String, userName: String) {
+        val normalizedPhone = Validators.normalizePhone(phoneNumber)
+        val now = System.currentTimeMillis()
+
+        if (signupSessionPhone == normalizedPhone && (now - signupLastSent) < 60000) {
+            val remainingSecs = ((60000 - (now - signupLastSent)) / 1000).toInt()
+            _signupState.value = _signupState.value.copy(
+                error = "Please wait $remainingSecs second(s) before requesting another OTP."
+            )
+            return
+        }
+
+        _signupState.value = _signupState.value.copy(isLoading = true, error = null)
+
+        viewModelScope.launch {
+            try {
+                val result = com.womensafety.system.data.sms.TwoFactorClient.sendOTP(normalizedPhone, userName = userName)
+
+                if (result.isSuccess) {
+                    val sessionId = result.getOrNull()
+                    signupSessionId = sessionId
+                    signupSessionPhone = normalizedPhone
+                    signupSessionExpiry = System.currentTimeMillis() + 10 * 60 * 1000
+                    signupLastSent = System.currentTimeMillis()
+
+                    _signupState.value = _signupState.value.copy(
+                        isLoading = false,
+                        verificationId = sessionId ?: "2FACTOR_OTP",
+                        resendCooldown = 60,
+                        error = null
+                    )
+                } else {
+                    val errMsg = result.exceptionOrNull()?.message ?: "Failed to dispatch SMS OTP via 2Factor."
+                    _signupState.value = _signupState.value.copy(
+                        isLoading = false,
+                        error = errMsg
+                    )
+                }
+            } catch (e: Exception) {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    phoneVerified = true,
-                    autoVerified = true,
-                    currentStep = 3
-                )
-            }
-
-            override fun onVerificationFailed(e: FirebaseException) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Phone verification failed."
-                )
-            }
-
-            override fun onCodeSent(
-                verificationId: String,
-                token: PhoneAuthProvider.ForceResendingToken
-            ) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    verificationId = verificationId,
-                    resendToken = token,
-                    resendCooldown = 60
+                    error = e.message ?: "Failed to dispatch verification OTP via 2Factor SMS."
                 )
             }
         }
+    }
 
-        authRepository.sendPhoneOtp(
-            normalizedPhone,
-            activity,
-            callbacks,
-            state.resendToken
+    fun onPhoneOTPVerified() {
+        _signupState.value = _signupState.value.copy(
+            phoneVerified = true,
+            currentStep = 3,
+            error = null
         )
     }
 
     fun updateOtpCode(code: String) {
-        if (code.length <= 6) {
-            _signupState.value = _signupState.value.copy(otpCode = code, error = null)
+        val digitsOnly = code.filter { it.isDigit() }
+        if (digitsOnly.length <= 6) {
+            _signupState.value = _signupState.value.copy(otpCode = digitsOnly, error = null)
         }
     }
 
@@ -210,9 +236,17 @@ class AuthViewModel(
             _signupState.value = state.copy(error = "Please enter a valid 6-digit OTP.")
             return
         }
-        val verificationId = state.verificationId
-        if (verificationId == null) {
-            _signupState.value = state.copy(error = "Verification ID missing. Please resend OTP.")
+
+        val normalizedPhone = Validators.normalizePhone(state.phone)
+        val sessionId = signupSessionId
+
+        if (sessionId == null || signupSessionPhone != normalizedPhone) {
+            _signupState.value = state.copy(error = "No active OTP request found. Please request an OTP first.")
+            return
+        }
+
+        if (System.currentTimeMillis() > signupSessionExpiry) {
+            _signupState.value = state.copy(error = "OTP expired. Please request a new code.")
             return
         }
 
@@ -220,26 +254,29 @@ class AuthViewModel(
 
         viewModelScope.launch {
             try {
-                val credential = authRepository.getPhoneCredential(verificationId, state.otpCode)
-                val result = authRepository.signInWithPhoneCredential(credential)
-                if (result.isSuccess) {
-                    // Sign out from phone auth — we'll create email/password auth in Step 5
-                    authRepository.signOut()
+                val verifyResult = com.womensafety.system.data.sms.TwoFactorClient.verifyOTP(
+                    sessionId,
+                    state.otpCode.trim()
+                )
+
+                if (verifyResult.isSuccess && verifyResult.getOrNull() == true) {
+                    signupSessionId = null
                     _signupState.value = _signupState.value.copy(
                         isLoading = false,
                         phoneVerified = true,
-                        currentStep = 3
+                        currentStep = 3,
+                        error = null
                     )
                 } else {
                     _signupState.value = _signupState.value.copy(
                         isLoading = false,
-                        error = result.exceptionOrNull()?.message ?: "OTP verification failed."
+                        error = "Invalid OTP code. Please check and try again."
                     )
                 }
             } catch (e: Exception) {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "OTP verification failed."
+                    error = e.message ?: "OTP verification failed. Please try again."
                 )
             }
         }

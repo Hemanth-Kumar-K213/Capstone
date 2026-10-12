@@ -10,8 +10,7 @@ package com.womensafety.system.data.model
  * The Android client reads this to know which weeklyUids/{uid} document to fetch.
  *
  * [trustedContactIds] tracks which TC auth UIDs have relationships with this user.
- * Used to iterate and fetch individual relationship documents (since Firestore rules
- * deny collection-wide list queries on relationships).
+ * Used to iterate and fetch individual relationship documents.
  */
 data class UserProfile(
     val authUserId: String = "",
@@ -30,7 +29,19 @@ data class UserProfile(
     val shakeDetectionEnabled: Boolean = false,
     val shakeSensitivity: String = "MEDIUM",
     val sosAutoCall: Boolean = false,
-    val fcmToken: String? = null
+    val proactiveMonitoringEnabled: Boolean = false,
+    val safetyMode: String = "NORMAL",
+    val routeDeviationToleranceMeters: Int = 300,
+    val fcmToken: String? = null,
+    val activeSafetyMode: String = "REGULAR",
+    val defaultSafetyMode: String = "REGULAR",
+    val autoModeSuggestionsEnabled: Boolean = true,
+    val savedWorkplaceLatitude: Double? = null,
+    val savedWorkplaceLongitude: Double? = null,
+    val savedWorkplaceAddress: String? = null,
+    val savedHomeLatitude: Double? = null,
+    val savedHomeLongitude: Double? = null,
+    val savedHomeAddress: String? = null
 ) {
     /** No-arg constructor required by Firestore deserialization. */
     constructor() : this(authUserId = "")
@@ -52,7 +63,19 @@ data class UserProfile(
         "shakeDetectionEnabled" to shakeDetectionEnabled,
         "shakeSensitivity" to shakeSensitivity,
         "sosAutoCall" to sosAutoCall,
-        "fcmToken" to fcmToken
+        "proactiveMonitoringEnabled" to proactiveMonitoringEnabled,
+        "safetyMode" to safetyMode,
+        "routeDeviationToleranceMeters" to routeDeviationToleranceMeters,
+        "fcmToken" to fcmToken,
+        "activeSafetyMode" to activeSafetyMode,
+        "defaultSafetyMode" to defaultSafetyMode,
+        "autoModeSuggestionsEnabled" to autoModeSuggestionsEnabled,
+        "savedWorkplaceLatitude" to savedWorkplaceLatitude,
+        "savedWorkplaceLongitude" to savedWorkplaceLongitude,
+        "savedWorkplaceAddress" to savedWorkplaceAddress,
+        "savedHomeLatitude" to savedHomeLatitude,
+        "savedHomeLongitude" to savedHomeLongitude,
+        "savedHomeAddress" to savedHomeAddress
     )
 
     companion object {
@@ -76,7 +99,19 @@ data class UserProfile(
                 shakeDetectionEnabled = map["shakeDetectionEnabled"] as? Boolean ?: false,
                 shakeSensitivity = map["shakeSensitivity"] as? String ?: "MEDIUM",
                 sosAutoCall = map["sosAutoCall"] as? Boolean ?: false,
-                fcmToken = map["fcmToken"] as? String
+                proactiveMonitoringEnabled = map["proactiveMonitoringEnabled"] as? Boolean ?: false,
+                safetyMode = map["safetyMode"] as? String ?: "NORMAL",
+                routeDeviationToleranceMeters = (map["routeDeviationToleranceMeters"] as? Number)?.toInt() ?: 300,
+                fcmToken = map["fcmToken"] as? String,
+                activeSafetyMode = map["activeSafetyMode"] as? String ?: "REGULAR",
+                defaultSafetyMode = map["defaultSafetyMode"] as? String ?: "REGULAR",
+                autoModeSuggestionsEnabled = map["autoModeSuggestionsEnabled"] as? Boolean ?: true,
+                savedWorkplaceLatitude = (map["savedWorkplaceLatitude"] as? Number)?.toDouble(),
+                savedWorkplaceLongitude = (map["savedWorkplaceLongitude"] as? Number)?.toDouble(),
+                savedWorkplaceAddress = map["savedWorkplaceAddress"] as? String,
+                savedHomeLatitude = (map["savedHomeLatitude"] as? Number)?.toDouble(),
+                savedHomeLongitude = (map["savedHomeLongitude"] as? Number)?.toDouble(),
+                savedHomeAddress = map["savedHomeAddress"] as? String
             )
         }
     }

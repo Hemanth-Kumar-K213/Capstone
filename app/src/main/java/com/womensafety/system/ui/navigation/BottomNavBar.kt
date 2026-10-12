@@ -23,16 +23,15 @@ data class BottomNavItem(
 fun UserBottomNavBar(navController: NavHostController) {
     val items = listOf(
         BottomNavItem("Home", Icons.Filled.Home, UserHome),
-        BottomNavItem("Safety", Icons.Filled.Shield, UserSafety),
-        BottomNavItem("Contacts", Icons.Filled.Contacts, UserContacts),
-        BottomNavItem("Profile", Icons.Filled.Person, UserProfile)
+        BottomNavItem("Features", Icons.Filled.Shield, UserSafety),
+        BottomNavItem("Your info", Icons.Filled.Person, UserProfile)
     )
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        containerColor = SurfaceDark,
+        containerColor = BackgroundDark,
         contentColor = OnSurfaceDark
     ) {
         items.forEach { item ->
@@ -52,11 +51,11 @@ fun UserBottomNavBar(navController: NavHostController) {
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = GradientGold,
-                    selectedTextColor = GradientGold,
-                    unselectedIconColor = OnSurfaceVariantDark.copy(alpha = 0.5f),
-                    unselectedTextColor = OnSurfaceVariantDark.copy(alpha = 0.5f),
-                    indicatorColor = GradientAmber.copy(alpha = 0.12f)
+                    selectedIconColor = SafetyTextPrimary,
+                    selectedTextColor = SafetyPrimaryBlue,
+                    unselectedIconColor = SafetyTextMuted,
+                    unselectedTextColor = SafetyTextMuted,
+                    indicatorColor = SafetyIndicatorBlue
                 )
             )
         }

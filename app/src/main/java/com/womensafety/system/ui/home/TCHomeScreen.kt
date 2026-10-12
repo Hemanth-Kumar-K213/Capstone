@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -35,25 +36,21 @@ fun TCHomeScreen(
     LaunchedEffect(Unit) { viewModel.loadHomeData() }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = SafetyDarkBackground,
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onNavigateToAddUser,
                 icon = { Icon(Icons.Filled.Add, "Add User") },
-                text = { Text("ADD USER") },
-                containerColor = GradientRose,
-                contentColor = OnPrimary
+                text = { Text("Add User") },
+                containerColor = SafetyPrimaryBlue,
+                contentColor = SafetyOnPrimaryBlue
             )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.6f), BackgroundDark)
-                    )
-                )
+                .background(SafetyDarkBackground)
                 .padding(padding)
                 .padding(horizontal = 24.dp)
         ) {
@@ -66,15 +63,15 @@ fun TCHomeScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Welcome back,",
+                        "Guardian Dashboard",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceVariantDark
+                        color = SafetyTextSecondary
                     )
                     Text(
                         state.profile?.name ?: "Contact",
-                        style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 1.sp),
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = GradientRose
+                        color = SafetyTextPrimary
                     )
                 }
                 Image(
@@ -87,20 +84,24 @@ fun TCHomeScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                "CONNECTED USERS",
-                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 3.sp),
+                "Connected Users",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = OnSurfaceVariantDark
+                color = SafetyTextSecondary
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             if (state.isLoading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = GradientRose)
+                    CircularProgressIndicator(color = SafetyPrimaryBlue)
                 }
             } else if (state.connectedUsers.isEmpty()) {
-                GlassCard {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = SafetyCardBackground),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -111,27 +112,27 @@ fun TCHomeScreen(
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(CircleShape)
-                                .background(GradientPurple.copy(alpha = 0.15f)),
+                                .background(SafetyPrimaryBlue.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Filled.Person,
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
-                                tint = OnSurfaceVariantDark.copy(alpha = 0.5f)
+                                tint = SafetyPrimaryBlue
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             "No connected users yet.",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = OnSurfaceVariantDark
+                            color = SafetyTextPrimary
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Tap ADD USER to connect with someone.",
+                            "Tap Add User below to connect with someone.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark.copy(alpha = 0.5f)
+                            color = SafetyTextSecondary
                         )
                     }
                 }

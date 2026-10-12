@@ -122,7 +122,7 @@ fun UserSignupStep2Screen(
                 // Send OTP
                 PrimaryButton(
                     text = "SEND OTP",
-                    onClick = { activity?.let { viewModel.sendPhoneOtp(it) } },
+                    onClick = { viewModel.sendPhoneOtp() },
                     isLoading = state.isLoading
                 )
             } else {
@@ -135,7 +135,7 @@ fun UserSignupStep2Screen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 PrimaryButton(
-                    text = "VERIFY",
+                    text = "VERIFY OTP",
                     onClick = { viewModel.verifyOtp() },
                     isLoading = state.isLoading
                 )
@@ -150,7 +150,7 @@ fun UserSignupStep2Screen(
                     )
                 } else {
                     TextButton(
-                        onClick = { activity?.let { viewModel.sendPhoneOtp(it) } }
+                        onClick = { viewModel.sendPhoneOtp() }
                     ) {
                         Text("Resend OTP")
                     }

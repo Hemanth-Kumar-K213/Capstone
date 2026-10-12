@@ -38,14 +38,14 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryLight,
-    onPrimary = PrimaryDark,
-    primaryContainer = PrimaryContainer,
-    onPrimaryContainer = OnPrimaryContainer,
-    secondary = SecondaryLight,
-    onSecondary = OnSecondary,
-    secondaryContainer = SecondaryContainer,
-    onSecondaryContainer = OnSecondaryContainer,
+    primary = SafetyPrimaryBlue,
+    onPrimary = SafetyOnPrimaryBlue,
+    primaryContainer = SafetyIndicatorBlue,
+    onPrimaryContainer = SafetyTextPrimary,
+    secondary = SafetyPrimaryBlue,
+    onSecondary = SafetyOnPrimaryBlue,
+    secondaryContainer = SafetyCardBackgroundElevated,
+    onSecondaryContainer = SafetyTextPrimary,
     tertiary = Tertiary,
     onTertiary = OnTertiary,
     tertiaryContainer = TertiaryContainer,

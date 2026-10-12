@@ -1,12 +1,11 @@
 package com.womensafety.system.viewmodel
 
 import android.app.Activity
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.FirebaseException
-import com.google.firebase.auth.PhoneAuthCredential
-import com.google.firebase.auth.PhoneAuthProvider
 import com.womensafety.system.data.repository.AuthRepository
+import com.womensafety.system.data.sms.TwoFactorClient
 import com.womensafety.system.utils.Validators
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,12 +13,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel for Trusted Contact signup and login via phone OTP.
- * Accesses Firebase ONLY through AuthRepository.
+ * ViewModel for Trusted Contact signup and login via 2Factor phone OTP.
+ * Eliminates Firebase Phone Auth BILLING_NOT_ENABLED errors by routing
+ * OTP verification through 2Factor SMS and establishing authenticated Firebase sessions.
  */
 class TrustedContactAuthViewModel(
     private val authRepository: AuthRepository = AuthRepository()
 ) : ViewModel() {
+
+    private val TAG = "TrustedContactAuthVM"
 
     // ─── Signup State ────────────────────────────────────────────
 
@@ -27,7 +29,6 @@ class TrustedContactAuthViewModel(
         val name: String = "",
         val phone: String = "",
         val verificationId: String? = null,
-        val resendToken: PhoneAuthProvider.ForceResendingToken? = null,
         val otpCode: String = "",
         val otpSent: Boolean = false,
         val isLoading: Boolean = false,
@@ -44,7 +45,6 @@ class TrustedContactAuthViewModel(
     data class TCLoginState(
         val phone: String = "",
         val verificationId: String? = null,
-        val resendToken: PhoneAuthProvider.ForceResendingToken? = null,
         val otpCode: String = "",
         val otpSent: Boolean = false,
         val isLoading: Boolean = false,
@@ -67,12 +67,13 @@ class TrustedContactAuthViewModel(
     }
 
     fun updateSignupOtp(code: String) {
-        if (code.length <= 6) {
-            _signupState.value = _signupState.value.copy(otpCode = code, error = null)
+        val digits = code.filter { it.isDigit() }
+        if (digits.length <= 6) {
+            _signupState.value = _signupState.value.copy(otpCode = digits, error = null)
         }
     }
 
-    fun sendSignupOtp(activity: Activity) {
+    fun sendSignupOtp(activity: Activity? = null) {
         val state = _signupState.value
 
         if (!Validators.isValidName(state.name)) {
@@ -88,38 +89,36 @@ class TrustedContactAuthViewModel(
 
         _signupState.value = state.copy(isLoading = true, error = null)
 
-        // NOTE: Phone duplicate checking is handled by Firebase Phone Auth flow.
-        // If the phone is already registered, signInWithCredential will sign in
-        // to the existing account rather than creating a new one.
         viewModelScope.launch {
+            try {
+                Log.d(TAG, "Dispatching 2Factor SMS OTP for TC signup to $normalized...")
+                val result = TwoFactorClient.sendOTP(normalized, userName = state.name)
 
-            val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-                override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                    completeSignup(credential)
-                }
-
-                override fun onVerificationFailed(e: FirebaseException) {
+                if (result.isSuccess) {
+                    val sessionId = result.getOrNull()
+                    Log.i(TAG, "2Factor OTP sent successfully! Session: $sessionId")
                     _signupState.value = _signupState.value.copy(
                         isLoading = false,
-                        error = e.message ?: "Phone verification failed."
-                    )
-                }
-
-                override fun onCodeSent(
-                    verificationId: String,
-                    token: PhoneAuthProvider.ForceResendingToken
-                ) {
-                    _signupState.value = _signupState.value.copy(
-                        isLoading = false,
-                        verificationId = verificationId,
-                        resendToken = token,
+                        verificationId = sessionId ?: "2FACTOR_TC_SIGNUP",
                         otpSent = true,
-                        resendCooldown = 60
+                        resendCooldown = 60,
+                        error = null
+                    )
+                } else {
+                    val errMsg = result.exceptionOrNull()?.message ?: "Failed to dispatch verification OTP via SMS."
+                    Log.e(TAG, "2Factor OTP dispatch failed: $errMsg")
+                    _signupState.value = _signupState.value.copy(
+                        isLoading = false,
+                        error = errMsg
                     )
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception during 2Factor sendSignupOtp", e)
+                _signupState.value = _signupState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to send verification OTP via SMS."
+                )
             }
-
-            authRepository.sendPhoneOtp(normalized, activity, callbacks, state.resendToken)
         }
     }
 
@@ -130,45 +129,74 @@ class TrustedContactAuthViewModel(
             return
         }
 
-        val verificationId = state.verificationId ?: return
-        val credential = authRepository.getPhoneCredential(verificationId, state.otpCode)
-        completeSignup(credential)
-    }
+        val verificationId = state.verificationId
+        if (verificationId.isNullOrBlank()) {
+            _signupState.value = state.copy(error = "No active OTP session found. Please request OTP again.")
+            return
+        }
 
-    private fun completeSignup(credential: PhoneAuthCredential) {
-        _signupState.value = _signupState.value.copy(isLoading = true, error = null)
+        val normalized = Validators.normalizePhone(state.phone)
+        _signupState.value = state.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
-            val signInResult = authRepository.signInWithPhoneCredential(credential)
-            if (signInResult.isFailure) {
+            try {
+                Log.d(TAG, "Verifying 2Factor OTP for session $verificationId...")
+                val verifyResult = TwoFactorClient.verifyOTP(verificationId, state.otpCode.trim())
+
+                if (verifyResult.isSuccess && verifyResult.getOrNull() == true) {
+                    Log.i(TAG, "2Factor OTP verified successfully! Completing Firebase Auth setup...")
+                    completeSignupWith2Factor(state.name, normalized)
+                } else {
+                    val err = verifyResult.exceptionOrNull()?.message ?: "Invalid OTP code. Please check and try again."
+                    _signupState.value = _signupState.value.copy(
+                        isLoading = false,
+                        error = err
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception during verifySignupOtp", e)
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = signInResult.exceptionOrNull()?.message ?: "OTP verification failed."
+                    error = e.message ?: "OTP verification failed. Please try again."
                 )
-                return@launch
             }
+        }
+    }
 
-            val uid = signInResult.getOrNull()!!
-            val state = _signupState.value
-            val normalized = Validators.normalizePhone(state.phone)
+    private suspend fun completeSignupWith2Factor(name: String, normalizedPhone: String) {
+        val cleanPhone = normalizedPhone.replace("+", "")
+        val tcEmail = "tc_${cleanPhone}@womensafety.internal"
+        val tcPassword = "TC_${cleanPhone}_Trinetra2026!"
 
+        var authResult = authRepository.loginWithEmailAndPassword(tcEmail, tcPassword)
+        if (authResult.isFailure) {
+            authResult = authRepository.createUserWithEmailAndPassword(tcEmail, tcPassword)
+        }
+
+        if (authResult.isSuccess) {
+            val uid = authResult.getOrNull()!!
             val profileResult = authRepository.createTrustedContactProfile(
                 authUserId = uid,
-                name = state.name,
-                phone = normalized
+                name = name,
+                phone = normalizedPhone
             )
-
             if (profileResult.isSuccess) {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    accountCreated = true
+                    accountCreated = true,
+                    error = null
                 )
             } else {
                 _signupState.value = _signupState.value.copy(
                     isLoading = false,
-                    error = profileResult.exceptionOrNull()?.message ?: "Failed to create account."
+                    error = profileResult.exceptionOrNull()?.message ?: "Failed to save profile in database."
                 )
             }
+        } else {
+            _signupState.value = _signupState.value.copy(
+                isLoading = false,
+                error = authResult.exceptionOrNull()?.message ?: "Authentication setup failed."
+            )
         }
     }
 
@@ -179,12 +207,13 @@ class TrustedContactAuthViewModel(
     }
 
     fun updateLoginOtp(code: String) {
-        if (code.length <= 6) {
-            _loginState.value = _loginState.value.copy(otpCode = code, error = null)
+        val digits = code.filter { it.isDigit() }
+        if (digits.length <= 6) {
+            _loginState.value = _loginState.value.copy(otpCode = digits, error = null)
         }
     }
 
-    fun sendLoginOtp(activity: Activity) {
+    fun sendLoginOtp(activity: Activity? = null) {
         val state = _loginState.value
         val normalized = Validators.normalizePhone(state.phone)
 
@@ -195,33 +224,37 @@ class TrustedContactAuthViewModel(
 
         _loginState.value = state.copy(isLoading = true, error = null)
 
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                completeLogin(credential)
-            }
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "Dispatching 2Factor SMS OTP for TC login to $normalized...")
+                val result = TwoFactorClient.sendOTP(normalized, userName = "Trusted Contact")
 
-            override fun onVerificationFailed(e: FirebaseException) {
+                if (result.isSuccess) {
+                    val sessionId = result.getOrNull()
+                    Log.i(TAG, "2Factor login OTP sent successfully! Session: $sessionId")
+                    _loginState.value = _loginState.value.copy(
+                        isLoading = false,
+                        verificationId = sessionId ?: "2FACTOR_TC_LOGIN",
+                        otpSent = true,
+                        resendCooldown = 60,
+                        error = null
+                    )
+                } else {
+                    val errMsg = result.exceptionOrNull()?.message ?: "Failed to dispatch verification OTP via SMS."
+                    Log.e(TAG, "2Factor login OTP failed: $errMsg")
+                    _loginState.value = _loginState.value.copy(
+                        isLoading = false,
+                        error = errMsg
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception during sendLoginOtp", e)
                 _loginState.value = _loginState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Phone verification failed."
-                )
-            }
-
-            override fun onCodeSent(
-                verificationId: String,
-                token: PhoneAuthProvider.ForceResendingToken
-            ) {
-                _loginState.value = _loginState.value.copy(
-                    isLoading = false,
-                    verificationId = verificationId,
-                    resendToken = token,
-                    otpSent = true,
-                    resendCooldown = 60
+                    error = e.message ?: "Failed to dispatch verification OTP."
                 )
             }
         }
-
-        authRepository.sendPhoneOtp(normalized, activity, callbacks, state.resendToken)
     }
 
     fun verifyLoginOtp() {
@@ -231,27 +264,70 @@ class TrustedContactAuthViewModel(
             return
         }
 
-        val verificationId = state.verificationId ?: return
-        val credential = authRepository.getPhoneCredential(verificationId, state.otpCode)
-        completeLogin(credential)
-    }
+        val verificationId = state.verificationId
+        if (verificationId.isNullOrBlank()) {
+            _loginState.value = state.copy(error = "No active OTP session found. Please request OTP again.")
+            return
+        }
 
-    private fun completeLogin(credential: PhoneAuthCredential) {
-        _loginState.value = _loginState.value.copy(isLoading = true, error = null)
+        val normalized = Validators.normalizePhone(state.phone)
+        _loginState.value = state.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
-            val result = authRepository.signInWithPhoneCredential(credential)
-            if (result.isSuccess) {
+            try {
+                Log.d(TAG, "Verifying 2Factor login OTP for session $verificationId...")
+                val verifyResult = TwoFactorClient.verifyOTP(verificationId, state.otpCode.trim())
+
+                if (verifyResult.isSuccess && verifyResult.getOrNull() == true) {
+                    Log.i(TAG, "2Factor login OTP verified! Establishing authenticated session...")
+                    completeLoginWith2Factor(normalized)
+                } else {
+                    val err = verifyResult.exceptionOrNull()?.message ?: "Invalid OTP code. Please check and try again."
+                    _loginState.value = _loginState.value.copy(
+                        isLoading = false,
+                        error = err
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception during verifyLoginOtp", e)
                 _loginState.value = _loginState.value.copy(
                     isLoading = false,
-                    isLoggedIn = true
-                )
-            } else {
-                _loginState.value = _loginState.value.copy(
-                    isLoading = false,
-                    error = "Authentication failed. Please try again."
+                    error = e.message ?: "OTP verification failed. Please try again."
                 )
             }
+        }
+    }
+
+    private suspend fun completeLoginWith2Factor(normalizedPhone: String) {
+        val cleanPhone = normalizedPhone.replace("+", "")
+        val tcEmail = "tc_${cleanPhone}@womensafety.internal"
+        val tcPassword = "TC_${cleanPhone}_Trinetra2026!"
+
+        var signInResult = authRepository.loginWithEmailAndPassword(tcEmail, tcPassword)
+        if (signInResult.isFailure) {
+            signInResult = authRepository.createUserWithEmailAndPassword(tcEmail, tcPassword)
+        }
+
+        if (signInResult.isSuccess) {
+            val uid = signInResult.getOrNull()!!
+            val profile = authRepository.getCurrentAccountType()
+            if (profile.getOrNull() == null) {
+                authRepository.createTrustedContactProfile(
+                    authUserId = uid,
+                    name = "Trusted Contact",
+                    phone = normalizedPhone
+                )
+            }
+            _loginState.value = _loginState.value.copy(
+                isLoading = false,
+                isLoggedIn = true,
+                error = null
+            )
+        } else {
+            _loginState.value = _loginState.value.copy(
+                isLoading = false,
+                error = "Login authentication failed: ${signInResult.exceptionOrNull()?.message}"
+            )
         }
     }
 

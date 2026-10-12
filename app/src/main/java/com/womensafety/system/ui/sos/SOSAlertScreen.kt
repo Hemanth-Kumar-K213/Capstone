@@ -1,6 +1,11 @@
 package com.womensafety.system.ui.sos
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -42,6 +47,19 @@ fun SOSAlertScreen(
     val isLoading by viewModel.isLoading.collectAsState()
 
     var isSirenMuted by remember { mutableStateOf(false) }
+
+    val hasSmsPermission = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.SEND_SMS
+    ) == PackageManager.PERMISSION_GRANTED
+
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.retrySmsDispatch(context)
+        }
+    }
 
     // Intercept back button to prevent accidental app dismiss during emergency
     BackHandler {
@@ -132,14 +150,96 @@ fun SOSAlertScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = StatusApproved, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        "Sent SMS to ${activeEvent?.smsSent ?: 0} Emergency Contacts",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceDark
-                    )
+                val smsCount = activeEvent?.smsSent ?: 0
+                if (smsCount > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = StatusApproved,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "Cellular SMS: Sent to $smsCount Emergency Contact(s)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OnSurfaceDark
+                        )
+                    }
+                } else if (!hasSmsPermission) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Warning,
+                                contentDescription = null,
+                                tint = GradientAmber,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                "SMS Permission Required for Carrier Alert",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GradientAmber
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Grant SMS permission so your SIM card can automatically send emergency text alerts.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariantDark
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { smsPermissionLauncher.launch(Manifest.permission.SEND_SMS) },
+                            shape = MaterialTheme.shapes.small,
+                            colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
+                            modifier = Modifier.fillMaxWidth().height(36.dp)
+                        ) {
+                            Icon(Icons.Filled.Security, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("GRANT SMS PERMISSION NOW", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = GradientAmber,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "Cellular SMS: No emergency contacts configured in profile",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OnSurfaceVariantDark
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Quick Broadcast via Messaging App
+                OutlinedButton(
+                    onClick = {
+                        val lat = activeEvent?.latitude ?: 12.9716
+                        val lng = activeEvent?.longitude ?: 77.5946
+                        val timeStr = java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.US).format(java.util.Date(activeEvent?.triggeredAt ?: System.currentTimeMillis()))
+                        val msg = "🚨 EMERGENCY ALERT 🚨\n${activeEvent?.userName ?: "User"} triggered SOS and needs urgent help!\n\nLocation:\nhttps://maps.google.com/?q=$lat,$lng\nTime: $timeStr\n\nSent automatically from Trinetra."
+                        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+                            data = android.net.Uri.parse("smsto:")
+                            putExtra("sms_body", msg)
+                        }
+                        context.startActivity(sendIntent)
+                    },
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth().height(34.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GradientGold)
+                ) {
+                    Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(14.dp), tint = GradientGold)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("BROADCAST VIA SMS APP (PRE-FILLED)", color = GradientGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -148,7 +248,7 @@ fun SOSAlertScreen(
                     Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = StatusApproved, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        "Notifying Approved Trusted Contacts via FCM",
+                        "Notifying Emergency Contacts via 2Factor Cloud Alert",
                         style = MaterialTheme.typography.bodyMedium,
                         color = OnSurfaceDark
                     )

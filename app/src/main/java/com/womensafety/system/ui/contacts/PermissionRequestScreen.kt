@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.data.model.PermissionState
 import com.womensafety.system.ui.components.ErrorMessage
 import com.womensafety.system.ui.components.SuccessMessage
@@ -150,10 +151,22 @@ fun PermissionRequestScreen(
                                             fontWeight = FontWeight.SemiBold,
                                             color = OnSurfaceDark
                                         )
+                                        if (rel.trustedContactPhone.isNotBlank()) {
+                                            Text(
+                                                "Phone: ${rel.trustedContactPhone}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = OnSurfaceVariantDark
+                                            )
+                                        }
                                         Text(
-                                            "wants to connect as your Trusted Contact.",
+                                            "Requested: ${DateUtils.formatDateTime(rel.requestedAt)}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = OnSurfaceVariantDark
+                                        )
+                                        Text(
+                                            "Status: PENDING",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = StatusPending
                                         )
                                     }
                                 }
