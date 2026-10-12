@@ -24,6 +24,9 @@ app/build/
 !TestBleHeartRateApp/app-debug.apk
 !watch-test-app-debug.apk
 
+# Dedicated website workspace
+website-deploy/
+
 # OS files
 .DS_Store
 Thumbs.db
