@@ -5,7 +5,7 @@ import DashboardPage from './pages/DashboardPage';
 
 const App: React.FC = () => {
   return (
-    <Router basename="/Capstone/">
+    <Router basename="/">
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
