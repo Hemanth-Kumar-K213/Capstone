@@ -21,6 +21,7 @@ app/build/
 # Keep pre-built testing APK in apk/ directory tracked
 *.apk
 !apk/WomenSafety-debug.apk
+!TestBleHeartRateApp/app-debug.apk
 
 # OS files
 .DS_Store
