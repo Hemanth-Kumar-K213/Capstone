@@ -22,6 +22,7 @@ app/build/
 *.apk
 !apk/WomenSafety-debug.apk
 !TestBleHeartRateApp/app-debug.apk
+!watch-test-app-debug.apk
 
 # OS files
 .DS_Store
