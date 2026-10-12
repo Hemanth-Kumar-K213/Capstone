@@ -16,6 +16,7 @@ object NotificationChannelManager {
     const val CHANNEL_LOCATION_TRACKING = "location_tracking"
     const val CHANNEL_SHAKE_DETECTION = "shake_detection"
     const val CHANNEL_SOS_ALERTS = "sos_alerts"
+    const val CHANNEL_SAFETY_CONFIRMATION = "safety_confirmation"
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -63,8 +64,21 @@ object NotificationChannelManager {
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
+            // 4. Safety Confirmation Channel ("Are You Safe?" Prompts)
+            val safetyChannel = NotificationChannel(
+                CHANNEL_SAFETY_CONFIRMATION,
+                "Safety Check Prompts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Urgent safety confirmation prompts requiring user acknowledgement"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 400, 200, 400)
+                setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+
             notificationManager.createNotificationChannels(
-                listOf(locationChannel, shakeChannel, sosChannel)
+                listOf(locationChannel, shakeChannel, sosChannel, safetyChannel)
             )
         }
     }

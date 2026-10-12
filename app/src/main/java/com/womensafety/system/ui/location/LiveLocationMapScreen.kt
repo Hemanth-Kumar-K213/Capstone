@@ -53,57 +53,81 @@ fun LiveLocationMapScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val currentAuthUserId = viewModel.currentUserId
+    val isSelf = currentAuthUserId != null && currentAuthUserId == userId
 
     val liveLocation by viewModel.observeLocationByUserIdOrUid(userId).collectAsState(initial = null)
     val localServiceLocation by LocationTrackingService.currentLocation.collectAsState()
     var immediateFix by remember { mutableStateOf<UserLocation?>(null) }
-    var isGpsOff by remember { mutableStateOf(!TrinetraLocationManager.isGpsEnabled(context)) }
+    var initialFetchLocation by remember { mutableStateOf<UserLocation?>(null) }
+    var isGpsOff by remember { mutableStateOf(if (isSelf) !TrinetraLocationManager.isGpsEnabled(context) else false) }
 
-    // Launcher for runtime location permissions
+    // Launcher for runtime location permissions (only needed when viewing own device location)
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (fineGranted || coarseGranted) {
-            LocationTrackingService.startTracking(context)
-            coroutineScope.launch {
-                val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
-                if (fix != null) immediateFix = fix
-            }
-        }
-    }
-
-    // Check permissions and acquire instant location fix on mount
-    LaunchedEffect(Unit) {
-        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasFine && !hasCoarse) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
-        } else {
-            if (!LocationTrackingService.isRunning) {
+        if (isSelf) {
+            val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+            val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+            if (fineGranted || coarseGranted) {
                 LocationTrackingService.startTracking(context)
-            }
-            val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
-            if (fix != null) {
-                immediateFix = fix
+                coroutineScope.launch {
+                    val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
+                    if (fix != null) immediateFix = fix
+                }
             }
         }
     }
 
-    // Refresh GPS status periodically
-    LaunchedEffect(Unit) {
-        isGpsOff = !TrinetraLocationManager.isGpsEnabled(context)
+    // Check permissions and acquire instant location fix on mount ONLY if viewing own location
+    LaunchedEffect(userId, isSelf) {
+        if (isSelf) {
+            val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasFine && !hasCoarse) {
+                permissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            } else {
+                if (!LocationTrackingService.isRunning) {
+                    LocationTrackingService.startTracking(context)
+                }
+                val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
+                if (fix != null) {
+                    immediateFix = fix
+                }
+            }
+            isGpsOff = !TrinetraLocationManager.isGpsEnabled(context)
+        } else {
+            // For trusted contact viewing user: fetch latest stored user location immediately
+            coroutineScope.launch {
+                val loc = viewModel.getLatestLocation(userId)
+                if (loc != null) {
+                    initialFetchLocation = loc
+                }
+            }
+        }
     }
 
-    // Determine the most accurate available coordinate fix
-    val effectiveLocation = liveLocation ?: localServiceLocation ?: immediateFix
+    // Refresh GPS status periodically ONLY if viewing own location
+    if (isSelf) {
+        LaunchedEffect(Unit) {
+            isGpsOff = !TrinetraLocationManager.isGpsEnabled(context)
+        }
+    }
+
+    // Determine the most accurate available coordinate fix:
+    // When trusted contact views user, STRICTLY use user's live location from Firestore.
+    // NEVER fall back to trusted contact's local phone location!
+    val effectiveLocation = if (isSelf) {
+        liveLocation ?: localServiceLocation ?: immediateFix
+    } else {
+        liveLocation ?: initialFetchLocation
+    }
     val hasFix = effectiveLocation != null && (effectiveLocation.latitude != 0.0 || effectiveLocation.longitude != 0.0)
 
     val lat = if (hasFix) effectiveLocation!!.latitude else 12.9716
@@ -115,16 +139,30 @@ fun LiveLocationMapScreen(
                 title = {
                     Column {
                         Text(
-                            text = effectiveLocation?.userName?.ifBlank { "Live Radar Map" } ?: "Live Radar Map",
+                            text = effectiveLocation?.userName?.ifBlank { if (isSelf) "Live Radar Map" else "User Live Location" }
+                                ?: if (isSelf) "Live Radar Map" else "User Live Location",
                             color = OnSurfaceDark,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
-                        Text(
-                            text = if (hasFix) "10s GPS Sync Active" else "Acquiring GPS fix...",
-                            color = if (hasFix) Color(0xFF10B981) else GradientAmber,
-                            fontSize = 11.sp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (hasFix) Color(0xFF10B981) else GradientAmber)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (hasFix) {
+                                    if (isSelf) "10s GPS Sync Active" else "Live GPS Active (±${effectiveLocation?.accuracy?.toInt() ?: 0}m)"
+                                } else {
+                                    if (isSelf) "Acquiring GPS fix..." else "Waiting for user's live GPS fix..."
+                                },
+                                color = if (hasFix) Color(0xFF10B981) else GradientAmber,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -150,16 +188,17 @@ fun LiveLocationMapScreen(
             SafetyMapTracker(
                 userLatitude = lat,
                 userLongitude = lng,
-                markerTitle = "${effectiveLocation?.userName?.ifBlank { "User" } ?: "Child"} (Live)",
+                markerTitle = "${effectiveLocation?.userName?.ifBlank { "User" } ?: "User"} (Live)",
                 uid = effectiveLocation?.uid?.ifBlank { userId } ?: userId,
                 bearing = effectiveLocation?.bearing,
                 accuracy = effectiveLocation?.accuracy ?: 0f,
                 isLive = true,
+                showLiveBadge = false,
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Warning Banner if Device Location / GPS is toggled OFF
-            if (isGpsOff) {
+            // Warning Banner if Device Location / GPS is toggled OFF (only for self-tracking)
+            if (isSelf && isGpsOff) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -190,15 +229,15 @@ fun LiveLocationMapScreen(
                     }
                 }
             } else if (!hasFix) {
-                // Top Status Pill while acquiring satellite coordinate lock
+                // Top Status Pill while waiting for satellite coordinate lock
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF1E1B2E).copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFF1E1B2E).copy(alpha = 0.94f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber.copy(alpha = 0.5f)),
-                    shadowElevation = 6.dp
+                    shadowElevation = 8.dp
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -211,7 +250,8 @@ fun LiveLocationMapScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Acquiring GPS fix (updates every 10s)...",
+                            text = if (isSelf) "Acquiring GPS fix (updates every 10s)..."
+                                else "Waiting for live GPS updates from ${effectiveLocation?.userName?.ifBlank { "user" } ?: "user"}...",
                             fontSize = 12.sp,
                             color = GradientAmber,
                             fontWeight = FontWeight.Medium
@@ -252,13 +292,18 @@ fun LiveLocationMapScreen(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = effectiveLocation?.userName?.ifBlank { "Live Tracker" } ?: "Live Tracker",
+                                    text = effectiveLocation?.userName?.ifBlank { if (isSelf) "My Location" else "User Location" }
+                                        ?: if (isSelf) "My Location" else "User Location",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = OnSurfaceDark
                                 )
                                 Text(
-                                    text = "UID: ${effectiveLocation?.uid?.ifBlank { userId } ?: userId} • Every 10s",
+                                    text = if (effectiveLocation?.uid?.isNotBlank() == true && effectiveLocation.uid.length == 12) {
+                                        "Safety UID: ${effectiveLocation.uid} • Live Radar"
+                                    } else {
+                                        "Real-time GPS • Auto-sync every 10s"
+                                    },
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                     color = GradientGold
                                 )
@@ -288,7 +333,8 @@ fun LiveLocationMapScreen(
                             text = if (hasFix) {
                                 "Coordinates: ${String.format("%.5f", lat)}, ${String.format("%.5f", lng)} (±${effectiveLocation?.accuracy?.toInt() ?: 0}m)"
                             } else {
-                                "Acquiring GPS coordinates from satellite/network providers..."
+                                if (isSelf) "Acquiring GPS coordinates from satellite/network providers..."
+                                else "Coordinates will appear once GPS signal is acquired from user."
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = OnSurfaceVariantDark
@@ -303,13 +349,17 @@ fun LiveLocationMapScreen(
                                         context = context,
                                         latitude = lat,
                                         longitude = lng,
-                                        label = effectiveLocation?.userName?.ifBlank { "User Location" } ?: "User Location"
+                                        label = effectiveLocation?.userName?.ifBlank { if (isSelf) "My Location" else "User Location" } ?: "User Location"
                                     )
                                 },
+                                enabled = hasFix,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = GradientAmber,
+                                    disabledContainerColor = GradientAmber.copy(alpha = 0.35f)
+                                ),
                                 shape = MaterialTheme.shapes.medium
                             ) {
                                 Icon(Icons.Filled.Navigation, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -321,18 +371,23 @@ fun LiveLocationMapScreen(
 
                             OutlinedButton(
                                 onClick = {
-                                    val shareText = "Live location of ${effectiveLocation?.userName ?: "Child"}: https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng"
+                                    val name = effectiveLocation?.userName?.ifBlank { if (isSelf) "Me" else "User" } ?: "User"
+                                    val shareText = "Live location of $name: https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng"
                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
                                         putExtra(Intent.EXTRA_TEXT, shareText)
                                     }
                                     context.startActivity(Intent.createChooser(shareIntent, "Share Location"))
                                 },
+                                enabled = hasFix,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(48.dp),
                                 shape = MaterialTheme.shapes.medium,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurfaceDark)
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = OnSurfaceDark,
+                                    disabledContentColor = OnSurfaceVariantDark.copy(alpha = 0.35f)
+                                )
                             ) {
                                 Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))

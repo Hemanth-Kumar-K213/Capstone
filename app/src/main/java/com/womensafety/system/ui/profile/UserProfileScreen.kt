@@ -37,6 +37,7 @@ fun UserProfileScreen(
     onNavigateToContacts: () -> Unit,
     onNavigateToEmergencyContacts: () -> Unit,
     onNavigateToSetupWizard: () -> Unit,
+    onNavigateToHeartRate: () -> Unit = {},
     onLogout: () -> Unit
 ) {
     val state by viewModel.profileState.collectAsState()
@@ -668,6 +669,15 @@ fun UserProfileScreen(
                     title = "Safety preferences",
                     icon = Icons.Outlined.Tune,
                     onClick = { showPreferencesDialog = true }
+                )
+
+                HorizontalDivider(color = SafetyCardDivider)
+
+                // Row 5: Heart Rate Monitoring
+                SafetyListRow(
+                    title = "Heart Rate Monitoring",
+                    icon = Icons.Outlined.FavoriteBorder,
+                    onClick = onNavigateToHeartRate
                 )
             }
 

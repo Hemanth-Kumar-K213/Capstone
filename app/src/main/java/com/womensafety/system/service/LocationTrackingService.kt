@@ -411,11 +411,14 @@ class LocationTrackingService : Service() {
             // 1. Update StateFlow for immediate in-app UI
             _currentLocation.value = userLocation
 
-            // 2. Persist to standard Firestore subcollection (userLocations)
+            // 2. Persist to standard Firestore collection (userLocations)
             locationRepository.saveLocation(currentUserId, userLocation)
             Log.d(TAG, "Location saved to Firestore: ${location.latitude}, ${location.longitude}")
 
-            // 3. Persist every 10 seconds to dedicated child_locations collection by UID
+            // 3. Persist to child_locations & uid_locations by auth userId so trusted contacts querying by userId find it immediately
+            locationRepository.saveUidLocation(currentUserId, userLocation)
+
+            // 4. Also persist to dedicated child_locations collection by rotating UID
             if (cachedWeeklyUid.isNotBlank()) {
                 val uidResult = locationRepository.saveUidLocation(cachedWeeklyUid, userLocation)
                 if (uidResult.isSuccess) {

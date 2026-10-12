@@ -16,7 +16,7 @@ android {
         val file = rootProject.file("local.properties")
         if (file.exists()) load(file.inputStream())
     }
-    val twoFactorApiKey = localProps.getProperty("TWOFACTOR_API_KEY") ?: "7e825d24-XXXX-XXXX-XXXX-0200cd936042"
+    val twoFactorApiKey = localProps.getProperty("TWOFACTOR_API_KEY") ?: "869bfc1e-c4c7-11f1-af74-0200cd936042"
     val twoFactorSenderId = localProps.getProperty("TWOFACTOR_SENDER_ID") ?: "WSAFETY"
 
     defaultConfig {
@@ -55,6 +55,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -95,4 +99,11 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.functions)
+
+    // Health Connect
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha11")
+
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

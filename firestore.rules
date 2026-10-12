@@ -209,7 +209,8 @@ service cloud.firestore {
     // ============================================================
 
     match /userLocations/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn();
 
       match /locations/{locationId} {
         // User can write their own locations

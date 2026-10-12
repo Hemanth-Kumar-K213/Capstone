@@ -412,12 +412,23 @@ fun AppNavGraph(
                     onNavigateToSetupWizard = {
                         navController.navigate(WelcomeSetupScreen)
                     },
+                    onNavigateToHeartRate = {
+                        navController.navigate(HeartRateMonitoringScreen)
+                    },
                     onLogout = {
                         authViewModel.signOut()
                         navController.navigate(RoleSelection) {
                             popUpTo(0) { inclusive = true }
                         }
                     }
+                )
+            }
+
+            composable<HeartRateMonitoringScreen> {
+                val hrViewModel: HeartRateMonitoringViewModel = viewModel()
+                com.womensafety.system.ui.health.HeartRateMonitoringScreen(
+                    viewModel = hrViewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
 

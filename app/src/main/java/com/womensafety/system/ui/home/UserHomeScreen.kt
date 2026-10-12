@@ -37,7 +37,18 @@ import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.Constants
 import com.womensafety.system.viewmodel.UserHomeViewModel
 import com.womensafety.system.viewmodel.SOSViewModel
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.womensafety.system.data.repository.LocationRepository
+import com.womensafety.system.data.repository.UserRepository
+import com.womensafety.system.manager.TrinetraLocationManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun UserHomeScreen(
@@ -55,20 +66,64 @@ fun UserHomeScreen(
 
     LaunchedEffect(Unit) { viewModel.loadHomeData() }
 
-    LaunchedEffect(state.userProfile?.locationTrackingEnabled, state.currentUid?.uid) {
-        val uid = state.currentUid?.uid
-        if (!uid.isNullOrBlank()) {
-            LocationTrackingService.setTargetUid(uid, state.currentUid?.userName ?: "")
+    // Launcher for runtime location permissions
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            LocationTrackingService.startTracking(context)
+            val authUserId = state.userProfile?.authUserId ?: ""
+            if (authUserId.isNotBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    val fix = TrinetraLocationManager.getImmediateLocationFix(context, authUserId)
+                    if (fix != null) {
+                        val locRepo = LocationRepository()
+                        locRepo.saveLocation(authUserId, fix)
+                        locRepo.saveUidLocation(authUserId, fix)
+                        val uUid = state.currentUid?.uid ?: state.userProfile?.currentWeeklyUid ?: ""
+                        if (uUid.isNotBlank()) {
+                            locRepo.saveUidLocation(uUid, fix)
+                        }
+                    }
+                    UserRepository().updateUserProfile(authUserId, mapOf("locationTrackingEnabled" to true))
+                }
+            }
         }
-        try {
-            val hasLocationPerm = androidx.core.content.ContextCompat.checkSelfPermission(
-                context, android.Manifest.permission.ACCESS_FINE_LOCATION
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (hasLocationPerm && state.userProfile != null && state.userProfile?.locationTrackingEnabled != false && !LocationTrackingService.isRunning) {
+    }
+
+    LaunchedEffect(state.userProfile?.authUserId, state.currentUid?.uid) {
+        val uid = state.currentUid?.uid?.ifBlank { state.userProfile?.currentWeeklyUid ?: "" } ?: ""
+        if (uid.isNotBlank()) {
+            LocationTrackingService.setTargetUid(uid, state.currentUid?.userName ?: state.userProfile?.name ?: "")
+        }
+        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasFine && !hasCoarse) {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
+        } else {
+            if (!LocationTrackingService.isRunning) {
                 LocationTrackingService.startTracking(context)
             }
-        } catch (e: Throwable) {
-            android.util.Log.w("UserHome", "Deferred location tracking: ${e.message}")
+            val authUserId = state.userProfile?.authUserId ?: ""
+            if (authUserId.isNotBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    val fix = TrinetraLocationManager.getImmediateLocationFix(context, authUserId)
+                    if (fix != null) {
+                        val locRepo = LocationRepository()
+                        locRepo.saveLocation(authUserId, fix)
+                        locRepo.saveUidLocation(authUserId, fix)
+                        if (uid.isNotBlank()) {
+                            locRepo.saveUidLocation(uid, fix)
+                        }
+                    }
+                    UserRepository().updateUserProfile(authUserId, mapOf("locationTrackingEnabled" to true))
+                }
+            }
         }
     }
 

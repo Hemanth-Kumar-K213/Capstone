@@ -3,6 +3,7 @@ package com.womensafety.system.data.firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.functions.FirebaseFunctions
@@ -689,6 +690,12 @@ class FirestoreManager {
                 .set(locationToSave.toMap())
                 .await()
 
+            // Also mirror directly on userLocations/{userId} document for instant root read
+            db.collection(USER_LOCATIONS_COLLECTION)
+                .document(userId)
+                .set(locationToSave.toMap(), SetOptions.merge())
+                .await()
+
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirestoreManager", "saveUserLocation failed", e)
@@ -700,22 +707,75 @@ class FirestoreManager {
      * Retrieves the latest known location point for a user.
      */
     suspend fun getLatestUserLocation(userId: String): Result<UserLocation?> {
+        val target = userId.trim()
+        if (target.isBlank()) return Result.success(null)
         return try {
-            val snapshot = db.collection(USER_LOCATIONS_COLLECTION)
-                .document(userId)
-                .collection(LOCATIONS_SUBCOLLECTION)
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .limit(1)
-                .get()
-                .await()
-
-            if (!snapshot.isEmpty) {
-                val doc = snapshot.documents.first()
-                val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
-                Result.success(loc)
-            } else {
-                Result.success(null)
+            // 1. Try child_locations/{target}
+            try {
+                val childSnap = db.collection(CHILD_LOCATIONS_COLLECTION).document(target).get().await()
+                if (childSnap.exists() && childSnap.data != null) {
+                    return Result.success(UserLocation.fromMap(childSnap.id, childSnap.data!!))
+                }
+            } catch (e: Exception) {
+                Log.w("FirestoreManager", "child_locations lookup: ${e.message}")
             }
+
+            // 2. Try uid_locations/{target}
+            try {
+                val uidSnap = db.collection(UID_LOCATIONS_COLLECTION).document(target).get().await()
+                if (uidSnap.exists() && uidSnap.data != null) {
+                    return Result.success(UserLocation.fromMap(uidSnap.id, uidSnap.data!!))
+                }
+            } catch (e: Exception) {
+                Log.w("FirestoreManager", "uid_locations lookup: ${e.message}")
+            }
+
+            // 3. Try userLocations/{target}/locations subcollection
+            try {
+                val snapshot = db.collection(USER_LOCATIONS_COLLECTION)
+                    .document(target)
+                    .collection(LOCATIONS_SUBCOLLECTION)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .limit(1)
+                    .get()
+                    .await()
+
+                if (!snapshot.isEmpty) {
+                    val doc = snapshot.documents.first()
+                    val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                    if (loc != null) return Result.success(loc)
+                }
+            } catch (e: Exception) {
+                Log.w("FirestoreManager", "subcollection lookup: ${e.message}")
+            }
+
+            // 4. Try currentWeeklyUid from users/{target}
+            try {
+                val userDoc = db.collection(USERS_COLLECTION).document(target).get().await()
+                if (userDoc.exists()) {
+                    val weeklyUid = userDoc.getString("currentWeeklyUid")?.trim() ?: ""
+                    if (weeklyUid.isNotBlank() && weeklyUid != target) {
+                        val weeklySnap = db.collection(CHILD_LOCATIONS_COLLECTION).document(weeklyUid).get().await()
+                        if (weeklySnap.exists() && weeklySnap.data != null) {
+                            return Result.success(UserLocation.fromMap(weeklySnap.id, weeklySnap.data!!))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("FirestoreManager", "weekly lookup: ${e.message}")
+            }
+
+            // 5. Try userLocations/{target} root doc
+            try {
+                val rootSnap = db.collection(USER_LOCATIONS_COLLECTION).document(target).get().await()
+                if (rootSnap.exists() && rootSnap.data != null) {
+                    return Result.success(UserLocation.fromMap(rootSnap.id, rootSnap.data!!))
+                }
+            } catch (e: Exception) {
+                Log.w("FirestoreManager", "root doc lookup: ${e.message}")
+            }
+
+            Result.success(null)
         } catch (e: Exception) {
             Log.e("FirestoreManager", "getLatestUserLocation failed", e)
             Result.failure(e)
@@ -912,7 +972,31 @@ class FirestoreManager {
             }
         }
 
-        // 2. Also listen to userLocations/{target}/locations (subcollection)
+        // 2. Also try uid_locations/{target}
+        val uidDocRef = db.collection(UID_LOCATIONS_COLLECTION).document(target)
+        val uidListener = uidDocRef.addSnapshotListener { uidSnap, error ->
+            if (error == null && uidSnap != null && uidSnap.exists()) {
+                val data = uidSnap.data
+                if (data != null) {
+                    val loc = UserLocation.fromMap(uidSnap.id, data)
+                    trySend(loc)
+                }
+            }
+        }
+
+        // 3. Also listen to userLocations/{target} (root document for instant updates)
+        val userRootListener = db.collection(USER_LOCATIONS_COLLECTION).document(target)
+            .addSnapshotListener { rootSnap, error ->
+                if (error == null && rootSnap != null && rootSnap.exists()) {
+                    val data = rootSnap.data
+                    if (data != null) {
+                        val loc = UserLocation.fromMap(rootSnap.id, data)
+                        trySend(loc)
+                    }
+                }
+            }
+
+        // 4. Also listen to userLocations/{target}/locations (subcollection)
         val userListener = db.collection(USER_LOCATIONS_COLLECTION)
             .document(target)
             .collection(LOCATIONS_SUBCOLLECTION)
@@ -928,9 +1012,46 @@ class FirestoreManager {
                 }
             }
 
+        // 5. If target is auth UID, resolve currentWeeklyUid from users/{target}
+        var weeklyListener: ListenerRegistration? = null
+        var weeklyUidListener: ListenerRegistration? = null
+        if (target.length != 12 || target.any { !it.isDigit() }) {
+            db.collection(USERS_COLLECTION).document(target).get().addOnSuccessListener { userDoc ->
+                if (userDoc != null && userDoc.exists()) {
+                    val weeklyUid = userDoc.getString("currentWeeklyUid")?.trim() ?: ""
+                    if (weeklyUid.isNotBlank() && weeklyUid != target) {
+                        weeklyListener = db.collection(CHILD_LOCATIONS_COLLECTION).document(weeklyUid)
+                            .addSnapshotListener { snap, err ->
+                                if (err == null && snap != null && snap.exists()) {
+                                    val d = snap.data
+                                    if (d != null) {
+                                        val loc = UserLocation.fromMap(snap.id, d)
+                                        trySend(loc)
+                                    }
+                                }
+                            }
+                        weeklyUidListener = db.collection(UID_LOCATIONS_COLLECTION).document(weeklyUid)
+                            .addSnapshotListener { snap, err ->
+                                if (err == null && snap != null && snap.exists()) {
+                                    val d = snap.data
+                                    if (d != null) {
+                                        val loc = UserLocation.fromMap(snap.id, d)
+                                        trySend(loc)
+                                    }
+                                }
+                            }
+                    }
+                }
+            }
+        }
+
         awaitClose {
             childListener.remove()
+            uidListener.remove()
+            userRootListener.remove()
             userListener.remove()
+            weeklyListener?.remove()
+            weeklyUidListener?.remove()
         }
     }
 

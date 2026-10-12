@@ -67,6 +67,17 @@ class PermissionViewModel(
             _state.value = _state.value.copy(isLoading = true, actionSuccess = null)
             val result = relationshipRepository.approveRelationship(relationshipId)
             if (result.isSuccess) {
+                val userId = authRepository.currentUserId
+                if (userId != null) {
+                    try {
+                        com.womensafety.system.data.repository.UserRepository().updateUserProfile(
+                            userId,
+                            mapOf("locationTrackingEnabled" to true)
+                        )
+                    } catch (e: Exception) {
+                        Log.w("PermissionVM", "Failed enabling locationTrackingEnabled: ${e.message}")
+                    }
+                }
                 _state.value = _state.value.copy(actionSuccess = "Request approved.")
                 loadRelationships()
             } else {

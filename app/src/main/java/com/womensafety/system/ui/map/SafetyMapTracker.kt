@@ -171,7 +171,8 @@ fun SafetyMapTracker(
     bearing: Float? = null,
     accuracy: Float = 0f,
     isLive: Boolean = true,
-    enableZoomControls: Boolean = true
+    enableZoomControls: Boolean = true,
+    showLiveBadge: Boolean = false
 ) {
     val context = LocalContext.current
     val fallbackCenter = remember { GeoPoint(12.9716, 77.5946) }
@@ -337,12 +338,13 @@ fun SafetyMapTracker(
             }
         )
 
-        // Top-Start Lively Status Badge
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(16.dp)
-        ) {
+        // Top-Start Lively Status Badge (optional, disabled by default to keep UI clean)
+        if (showLiveBadge) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
+            ) {
             Surface(
                 color = androidx.compose.ui.graphics.Color(0xFF13111C).copy(alpha = 0.88f),
                 shape = RoundedCornerShape(20.dp),
@@ -394,6 +396,7 @@ fun SafetyMapTracker(
                 }
             }
         }
+    }
 
         // Floating Control Buttons (Recenter & Zoom)
         if (enableZoomControls) {

@@ -42,13 +42,15 @@ object SOSManager {
     private const val TAG = "SOSManager"
     private const val GPS_TIMEOUT_MS = 8000L
 
-    private val authManager = FirebaseAuthManager()
-    private val userRepository = UserRepository()
-    private val locationRepository = LocationRepository()
-    private val sosRepository = SOSRepository()
+    private val authManager by lazy { FirebaseAuthManager() }
+    private val userRepository by lazy { UserRepository() }
+    private val locationRepository by lazy { LocationRepository() }
+    private val sosRepository by lazy { SOSRepository() }
 
     private val _activeEvent = MutableStateFlow<SOSEvent?>(null)
     val activeEvent: StateFlow<SOSEvent?> = _activeEvent.asStateFlow()
+
+    var isTestMode: Boolean = false
 
     /**
      * Executes the complete SOS emergency alert sequence.
@@ -58,6 +60,22 @@ object SOSManager {
             val currentUserId = authManager.currentUserId ?: return null
             val userProfile = userRepository.getUserProfile(currentUserId).getOrNull()
             val userName = userProfile?.name?.ifBlank { "User" } ?: "User"
+
+            if (isTestMode) {
+                Log.w(TAG, "TEST MODE ACTIVE: SOS emergency triggered ($triggerMethod). Real SMS, siren, and external alerts strictly SUPPRESSED.")
+                val testEvent = SOSEvent(
+                    id = UUID.randomUUID().toString(),
+                    userId = currentUserId,
+                    userName = userName,
+                    triggeredAt = System.currentTimeMillis(),
+                    latitude = 0.0,
+                    longitude = 0.0,
+                    status = SOSStatus.ACTIVE,
+                    triggerMethod = triggerMethod
+                )
+                _activeEvent.value = testEvent
+                return testEvent
+            }
 
             Log.w(TAG, "Triggering SOS alert for user $userName via $triggerMethod")
 
