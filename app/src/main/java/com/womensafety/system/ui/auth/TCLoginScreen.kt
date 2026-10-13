@@ -8,11 +8,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +39,7 @@ fun TCLoginScreen(
     val state by viewModel.loginState.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
+    val isDark = LocalDarkTheme.current
 
     LaunchedEffect(state.isLoggedIn) {
         if (state.isLoggedIn) onLoginSuccess()
@@ -50,53 +53,74 @@ fun TCLoginScreen(
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurfaceDark)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
+        val bgGradient = if (isDark) {
+            Brush.verticalGradient(
+                colors = listOf(Color(0xFF2E1065).copy(alpha = 0.4f), BackgroundDark)
+            )
+        } else {
+            Brush.verticalGradient(
+                colors = listOf(Color(0xFFF5F3FF), BackgroundLight)
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
-                    )
-                )
+                .background(bgGradient)
                 .padding(padding)
+                .imePadding()
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
                 contentDescription = null,
-                modifier = Modifier.size(64.dp)
+                modifier = Modifier.size(72.dp)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "TRUSTED CONTACT LOGIN",
-                style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 2.sp),
+                "Trusted Contact Login",
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = GradientRose
+                color = MaterialTheme.colorScheme.onBackground
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                "Monitor and safeguard your connected family & friends",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
 
             ErrorMessage(state.error)
-            if (state.error != null) Spacer(modifier = Modifier.height(8.dp))
+            if (state.error != null) Spacer(modifier = Modifier.height(10.dp))
 
             AppTextField(
                 value = state.phone,
@@ -104,7 +128,15 @@ fun TCLoginScreen(
                 label = "Phone Number (e.g., +91XXXXXXXXXX)",
                 keyboardType = KeyboardType.Phone,
                 imeAction = ImeAction.Done,
-                enabled = !state.otpSent
+                enabled = !state.otpSent,
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Phone,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -116,17 +148,25 @@ fun TCLoginScreen(
                         .fillMaxWidth()
                         .height(52.dp),
                     enabled = !state.isLoading,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientRose)
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = Color.White
+                    )
                 ) {
                     if (state.isLoading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = OnPrimary,
-                            strokeWidth = 2.dp
+                            modifier = Modifier.size(22.dp),
+                            color = Color.White,
+                            strokeWidth = 2.5.dp
                         )
                     } else {
-                        Text("SEND OTP", fontWeight = FontWeight.Bold)
+                        Text(
+                            "SEND VERIFICATION OTP",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            letterSpacing = 0.5.sp
+                        )
                     }
                 }
             } else {
@@ -143,17 +183,25 @@ fun TCLoginScreen(
                         .fillMaxWidth()
                         .height(52.dp),
                     enabled = !state.isLoading,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientRose)
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = Color.White
+                    )
                 ) {
                     if (state.isLoading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = OnPrimary,
-                            strokeWidth = 2.dp
+                            modifier = Modifier.size(22.dp),
+                            color = Color.White,
+                            strokeWidth = 2.5.dp
                         )
                     } else {
-                        Text("VERIFY & LOGIN", fontWeight = FontWeight.Bold)
+                        Text(
+                            "VERIFY & LOGIN",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            letterSpacing = 0.5.sp
+                        )
                     }
                 }
 
@@ -163,34 +211,44 @@ fun TCLoginScreen(
                     Text(
                         "Resend available in ${state.resendCooldown}s",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
                     TextButton(
                         onClick = { viewModel.sendLoginOtp(activity) }
                     ) {
-                        Text("Resend OTP", color = GradientRose)
+                        Text(
+                            "Resend OTP",
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text(
-                "Don't have an account?",
-                style = MaterialTheme.typography.bodyMedium,
-                color = OnSurfaceVariantDark
-            )
-
-            TextButton(onClick = onNavigateToSignup) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(
-                    "SIGN UP",
-                    fontWeight = FontWeight.Bold,
-                    color = GradientRose
+                    "Don't have a contact account?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.width(6.dp))
+                TextButton(onClick = onNavigateToSignup) {
+                    Text(
+                        "SIGN UP",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

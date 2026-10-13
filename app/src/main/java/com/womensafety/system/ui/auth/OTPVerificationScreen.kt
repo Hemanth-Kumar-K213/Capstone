@@ -3,6 +3,8 @@ package com.womensafety.system.ui.auth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,22 +15,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.womensafety.system.ui.components.ErrorMessage
-import com.womensafety.system.ui.components.PrimaryButton
+import com.womensafety.system.ui.components.*
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.OTPViewModel
 import kotlinx.coroutines.delay
 
-/**
- * Production-ready Phone OTP Verification Composable.
- * Interfaces directly with Twilio SMS Cloud Functions for reliable 2FA verification.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OTPVerificationScreen(
@@ -39,8 +40,9 @@ fun OTPVerificationScreen(
     viewModel: OTPViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val isDark = LocalDarkTheme.current
     var otpCode by remember { mutableStateOf("") }
-    var timeRemaining by remember { mutableStateOf(600) } // 10 minutes (600 seconds)
+    var timeRemaining by remember { mutableIntStateOf(600) } // 10 minutes
     var timerActive by remember { mutableStateOf(true) }
 
     // Dispatch Twilio OTP on initial appearance
@@ -70,55 +72,76 @@ fun OTPVerificationScreen(
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Phone Verification", color = OnSurfaceDark) },
+                title = {
+                    Text(
+                        "Security Verification",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onBackground
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
+        val bgGradient = if (isDark) {
+            Brush.verticalGradient(
+                colors = listOf(Color(0xFF1E1B4B).copy(alpha = 0.4f), BackgroundDark)
+            )
+        } else {
+            Brush.verticalGradient(
+                colors = listOf(Color(0xFFEEF2FF), BackgroundLight)
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(bgGradient)
                 .padding(padding)
+                .imePadding()
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Lock Icon Badge
             Box(
                 modifier = Modifier
-                    .size(80.dp)
-                    .background(SurfaceVariantDark, shape = MaterialTheme.shapes.extraLarge),
+                    .size(76.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Lock,
-                    contentDescription = "Verification Lock",
-                    modifier = Modifier.size(40.dp),
-                    tint = GradientAmber
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Text(
                 text = "Verify Your Phone",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = OnSurfaceDark
+                color = MaterialTheme.colorScheme.onBackground
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -126,36 +149,34 @@ fun OTPVerificationScreen(
             Text(
                 text = "We sent a 6-digit security code via SMS to\n$phoneNumber",
                 style = MaterialTheme.typography.bodyMedium,
-                color = OnSurfaceVariantDark,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Error notification if verification fails
             ErrorMessage(state.error)
-            if (state.error != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-            }
+            if (state.error != null) Spacer(modifier = Modifier.height(10.dp))
 
             if (state.isVerified) {
-                // Success Badge Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = StatusApproved.copy(alpha = 0.15f))
+                AppCard(
+                    accentGradient = Brush.horizontalGradient(
+                        colors = listOf(StatusApproved.copy(alpha = 0.15f), StatusApproved.copy(alpha = 0.05f))
+                    )
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(18.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = StatusApproved
+                            tint = StatusApproved,
+                            modifier = Modifier.size(24.dp)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Text(
                             text = "Phone number verified successfully!",
                             style = MaterialTheme.typography.bodyMedium,
@@ -165,7 +186,6 @@ fun OTPVerificationScreen(
                     }
                 }
             } else {
-                // OTP Input Field
                 OutlinedTextField(
                     value = otpCode,
                     onValueChange = { input ->
@@ -176,15 +196,27 @@ fun OTPVerificationScreen(
                     },
                     label = { Text("Enter 6-Digit OTP") },
                     placeholder = { Text("000000") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = ImeAction.Done
+                    ),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium,
+                    shape = RoundedCornerShape(14.dp),
+                    textStyle = MaterialTheme.typography.headlineSmall.copy(
+                        textAlign = TextAlign.Center,
+                        letterSpacing = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = GradientAmber,
-                        unfocusedBorderColor = OutlineDark,
-                        focusedTextColor = OnSurfaceDark,
-                        unfocusedTextColor = OnSurfaceDark
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)
                     ),
                     supportingText = {
                         Row(
@@ -194,8 +226,9 @@ fun OTPVerificationScreen(
                             if (state.attempts > 0) {
                                 Text(
                                     text = "Attempts: ${state.attempts}/${state.maxAttempts}",
-                                    color = if (state.attempts >= 3) StatusDenied else OnSurfaceVariantDark,
-                                    fontSize = 12.sp
+                                    color = if (state.attempts >= 3) EmergencyRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
                             if (timeRemaining > 0) {
@@ -203,8 +236,9 @@ fun OTPVerificationScreen(
                                 val secs = timeRemaining % 60
                                 Text(
                                     text = "Expires in %02d:%02d".format(mins, secs),
-                                    color = GradientAmber,
-                                    fontSize = 12.sp
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
@@ -213,7 +247,6 @@ fun OTPVerificationScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Verify Button
                 PrimaryButton(
                     text = "VERIFY OTP",
                     onClick = {
@@ -225,12 +258,12 @@ fun OTPVerificationScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Resend OTP Action
                 if (timeRemaining > 0 && timerActive) {
                     Text(
-                        text = "Didn't receive SMS? You can resend after the timer.",
+                        text = "Didn't receive SMS? You can resend once the timer expires.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
                     )
                 } else {
                     TextButton(
@@ -242,8 +275,8 @@ fun OTPVerificationScreen(
                     ) {
                         Text(
                             text = "Resend OTP",
-                            color = GradientAmber,
-                            fontWeight = FontWeight.SemiBold
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }

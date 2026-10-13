@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -22,9 +23,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.womensafety.system.R
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.components.PrimaryButton
 import com.womensafety.system.ui.components.SecondaryButton
-import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.theme.*
 
 @Composable
@@ -32,121 +33,122 @@ fun WelcomeSetupScreen(
     onGetStarted: () -> Unit,
     onSkip: () -> Unit
 ) {
-    Column(
+    val isDark = LocalDarkTheme.current
+    val bgGradient = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF1E1B4B).copy(alpha = 0.5f), BackgroundDark)
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFEEF2FF), BackgroundLight)
+        )
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        GradientDeepPurple,
-                        BackgroundDark,
-                        BackgroundDark
-                    )
-                )
-            )
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(bgGradient)
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // App Logo
-        Image(
-            painter = painterResource(id = R.drawable.app_logo),
-            contentDescription = "Trinetra Logo",
+        Column(
             modifier = Modifier
-                .size(110.dp)
-        )
+                .fillMaxSize()
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(20.dp))
 
-        Spacer(modifier = Modifier.height(20.dp))
+            Image(
+                painter = painterResource(id = R.drawable.app_logo),
+                contentDescription = "Trinetra Logo",
+                modifier = Modifier.size(96.dp)
+            )
 
-        Text(
-            text = "Let's Set Up Your Trinetra",
-            style = MaterialTheme.typography.headlineMedium.copy(
-                fontSize = 26.sp,
-                lineHeight = 32.sp
-            ),
-            fontWeight = FontWeight.Bold,
-            color = GradientGold,
-            textAlign = TextAlign.Center
-        )
+            Spacer(modifier = Modifier.height(20.dp))
 
-        Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Welcome to Trinetra",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
 
-        Text(
-            text = "We'll help you configure location tracking, emergency contacts, and safety preferences in just a few quick steps.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = OnSurfaceVariantDark,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Text(
+                text = "We will help you configure emergency contacts, motion triggers, and GPS monitoring in just a few quick steps.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
 
-        // Value Cards
-        SetupFeatureCard(
-            icon = Icons.Filled.LocationOn,
-            iconColor = GradientAmber,
-            title = "Real-Time Location Tracking",
-            description = "Share your live location automatically when emergency SOS is triggered."
-        )
+            Spacer(modifier = Modifier.height(28.dp))
 
-        Spacer(modifier = Modifier.height(14.dp))
+            SetupFeatureCard(
+                icon = Icons.Filled.LocationOn,
+                iconColor = PrimaryIndigo,
+                title = "Real-Time GPS Location",
+                description = "Automatically broadcast live coordinates to your emergency circle during alerts."
+            )
 
-        SetupFeatureCard(
-            icon = Icons.Filled.ContactPhone,
-            iconColor = GradientRose,
-            title = "Emergency SMS & Calling",
-            description = "Instantly notify parents, friends, or trusted guardians even if they don't have the app."
-        )
+            Spacer(modifier = Modifier.height(14.dp))
 
-        Spacer(modifier = Modifier.height(14.dp))
+            SetupFeatureCard(
+                icon = Icons.Filled.ContactPhone,
+                iconColor = SecondaryViolet,
+                title = "Emergency SMS & Calling",
+                description = "Instantly notify trusted contacts via cellular SMS and auto-dial primary emergency numbers."
+            )
 
-        SetupFeatureCard(
-            icon = Icons.Filled.Vibration,
-            iconColor = GradientGold,
-            title = "Smart SOS & Shake Detection",
-            description = "Discreetly trigger emergency mode by shaking your phone when you are in danger."
-        )
+            Spacer(modifier = Modifier.height(14.dp))
 
-        Spacer(modifier = Modifier.height(36.dp))
+            SetupFeatureCard(
+                icon = Icons.Filled.Vibration,
+                iconColor = AccentBlue,
+                title = "Discreet Shake Detection",
+                description = "Activate emergency SOS covertly by shaking your smartphone in high-danger situations."
+            )
 
-        // Action Buttons
-        PrimaryButton(
-            text = "GET STARTED",
-            onClick = onGetStarted
-        )
+            Spacer(modifier = Modifier.height(36.dp))
 
-        Spacer(modifier = Modifier.height(12.dp))
+            PrimaryButton(
+                text = "GET STARTED",
+                onClick = onGetStarted
+            )
 
-        SecondaryButton(
-            text = "SKIP FOR NOW",
-            onClick = onSkip
-        )
+            Spacer(modifier = Modifier.height(12.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
+            SecondaryButton(
+                text = "SKIP FOR NOW",
+                onClick = onSkip
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 
 @Composable
 private fun SetupFeatureCard(
     icon: ImageVector,
-    iconColor: androidx.compose.ui.graphics.Color,
+    iconColor: Color,
     title: String,
     description: String
 ) {
-    GlassCard {
+    AppCard {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
-                    .background(iconColor.copy(alpha = 0.15f)),
+                    .background(iconColor.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -162,15 +164,16 @@ private fun SetupFeatureCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = OnSurfaceDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp
                 )
             }
         }

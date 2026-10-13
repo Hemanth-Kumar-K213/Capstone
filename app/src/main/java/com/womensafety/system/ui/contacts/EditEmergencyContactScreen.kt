@@ -3,6 +3,7 @@ package com.womensafety.system.ui.contacts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,10 +19,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.components.AppTextField
 import com.womensafety.system.ui.components.ErrorMessage
 import com.womensafety.system.ui.components.PrimaryButton
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.SecondaryButton
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.Validators
 import com.womensafety.system.viewmodel.EmergencyContactViewModel
@@ -48,18 +50,19 @@ fun EditEmergencyContactScreen(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            containerColor = SurfaceVariantDark,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
             title = {
                 Text(
                     "Delete Emergency Contact",
-                    color = OnSurfaceDark,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
                     "Are you sure you want to remove $name from your emergency contacts?",
-                    color = OnSurfaceVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
             confirmButton = {
@@ -69,12 +72,12 @@ fun EditEmergencyContactScreen(
                         viewModel.deleteContact(contactId, onSuccess = onBack)
                     }
                 ) {
-                    Text("Delete", color = StatusDenied, fontWeight = FontWeight.Bold)
+                    Text("Delete", color = EmergencyRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel", color = OnSurfaceVariantDark)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -85,9 +88,10 @@ fun EditEmergencyContactScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Edit Emergency Contact",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
+                        "Edit Contact",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -95,7 +99,7 @@ fun EditEmergencyContactScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -104,16 +108,16 @@ fun EditEmergencyContactScreen(
                         Icon(
                             Icons.Filled.Delete,
                             contentDescription = "Delete Contact",
-                            tint = StatusDenied
+                            tint = EmergencyRed
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BackgroundDark
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -122,18 +126,19 @@ fun EditEmergencyContactScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            GradientDeepPurple.copy(alpha = 0.5f),
-                            BackgroundDark
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
                         )
                     )
                 )
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             Text(
                 text = "EDIT CONTACT",
-                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                color = GradientGold,
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
 
@@ -142,87 +147,109 @@ fun EditEmergencyContactScreen(
             Text(
                 text = "Update the name or phone number for this emergency contact.",
                 style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceVariantDark
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             ErrorMessage(formError ?: state.error)
             if (formError != null || state.error != null) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            GlassCard {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    AppTextField(
-                        value = name,
-                        onValueChange = {
-                            name = it
-                            formError = null
-                        },
-                        label = "Full Name",
-                        leadingIcon = {
-                            Icon(Icons.Filled.Person, contentDescription = null, tint = GradientAmber)
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    AppTextField(
-                        value = phone,
-                        onValueChange = {
-                            phone = it
-                            formError = null
-                        },
-                        label = "Phone Number",
-                        keyboardType = KeyboardType.Phone,
-                        leadingIcon = {
-                            Icon(Icons.Filled.Phone, contentDescription = null, tint = GradientAmber)
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Switch(
-                            checked = isPrimary,
-                            onCheckedChange = { isPrimary = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = GradientAmber)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Primary Contact", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark, fontWeight = FontWeight.Bold)
-                            Text("Make this the default emergency call recipient", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
-                        }
+            AppCard(modifier = Modifier.fillMaxWidth()) {
+                AppTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        formError = null
+                    },
+                    label = "Full Name",
+                    leadingIcon = {
+                        Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     }
+                )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Switch(
-                            checked = enableEscalation,
-                            onCheckedChange = { enableEscalation = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = GradientAmber)
+                AppTextField(
+                    value = phone,
+                    onValueChange = {
+                        phone = it
+                        formError = null
+                    },
+                    label = "Phone Number",
+                    keyboardType = KeyboardType.Phone,
+                    leadingIcon = {
+                        Icon(Icons.Filled.Phone, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(
+                        checked = isPrimary,
+                        onCheckedChange = { isPrimary = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Enable Alert Escalation", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark, fontWeight = FontWeight.Bold)
-                            Text("Sends automated SMS with live coordinates", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
-                        }
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            "Primary Contact",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Default contact for emergency phone call",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(
+                        checked = enableEscalation,
+                        onCheckedChange = { enableEscalation = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            "Enable Alert Escalation",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Dispatches automated SMS with live GPS coordinates",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
             PrimaryButton(
-                text = "UPDATE CONTACT",
+                text = "Update Contact",
                 isLoading = state.isLoading,
                 onClick = {
                     val trimmedName = name.trim()
@@ -251,20 +278,10 @@ fun EditEmergencyContactScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            OutlinedButton(
-                onClick = { showDeleteConfirm = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = StatusDenied
-                )
-            ) {
-                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("DELETE CONTACT", fontWeight = FontWeight.Bold)
-            }
+            SecondaryButton(
+                text = "Delete Contact",
+                onClick = { showDeleteConfirm = true }
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }

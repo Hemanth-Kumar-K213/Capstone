@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -16,12 +17,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.womensafety.system.data.model.SOSStatus
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.PrimaryButton
+import com.womensafety.system.ui.components.SecondaryButton
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.viewmodel.SOSViewModel
@@ -43,8 +47,9 @@ fun SOSHistoryDetailScreen(
                 title = {
                     Text(
                         "Incident Details",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -52,7 +57,7 @@ fun SOSHistoryDetailScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -73,14 +78,20 @@ fun SOSHistoryDetailScreen(
                             }
                             context.startActivity(Intent.createChooser(shareIntent, "Export Incident Report"))
                         }) {
-                            Icon(Icons.Filled.Share, contentDescription = "Export", tint = GradientGold)
+                            Icon(
+                                Icons.Filled.Share,
+                                contentDescription = "Export",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -88,188 +99,187 @@ fun SOSHistoryDetailScreen(
                 .padding(paddingValues)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
                     )
                 )
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             if (event == null) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(48.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Incident not found.", color = OnSurfaceVariantDark)
+                    Text(
+                        "Incident not found.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
                 }
                 return@Column
             }
 
-            // Incident Header Card
-            GlassCard(
-                accentGradient = if (event.status == SOSStatus.ACTIVE) {
-                    Brush.horizontalGradient(
-                        colors = listOf(StatusDenied.copy(alpha = 0.2f), StatusDenied.copy(alpha = 0.05f))
-                    )
-                } else null
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "STATUS",
-                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                            color = GradientGold,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Surface(
-                            color = when (event.status) {
-                                SOSStatus.ACTIVE -> StatusDenied.copy(alpha = 0.2f)
-                                SOSStatus.RESOLVED -> StatusApproved.copy(alpha = 0.2f)
-                                else -> StatusPending.copy(alpha = 0.2f)
-                            },
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Text(
-                                event.status.name,
-                                color = when (event.status) {
-                                    SOSStatus.ACTIVE -> StatusDenied
-                                    SOSStatus.RESOLVED -> StatusApproved
-                                    else -> StatusPending
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        "Triggered on ${DateUtils.formatDateTime(event.triggeredAt)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = OnSurfaceDark
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        "Trigger Mechanism: ${event.triggerMethod.name}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceVariantDark
-                    )
-                }
+            val statusColor = when (event.status) {
+                SOSStatus.ACTIVE -> EmergencyRed
+                SOSStatus.RESOLVED -> StatusApproved
+                else -> StatusPending
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Timeline Card
-            GlassCard {
-                Column(modifier = Modifier.padding(20.dp)) {
+            // Incident Header Card
+            AppCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        "INCIDENT TIMELINE",
-                        style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                        color = GradientGold,
+                        "INCIDENT OVERVIEW",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                        color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    TimelineRow(
-                        title = "SOS Triggered",
-                        subtitle = "${DateUtils.formatDateTime(event.triggeredAt)} via ${event.triggerMethod.name}",
-                        icon = Icons.Filled.Warning,
-                        color = StatusDenied
-                    )
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
-
-                    TimelineRow(
-                        title = "Emergency SMS Dispatched",
-                        subtitle = "${event.smsSent} cellular SMS messages dispatched",
-                        icon = Icons.Filled.Sms,
-                        color = GradientAmber
-                    )
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
-
-                    TimelineRow(
-                        title = "Auto-Call Attempt",
-                        subtitle = if (event.callMade) "Initiated phone call to primary emergency contact" else "Auto-call not configured or disabled",
-                        icon = Icons.Filled.PhoneInTalk,
-                        color = if (event.callMade) StatusApproved else OnSurfaceVariantDark
-                    )
-
-                    if (event.resolvedAt != null) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
-
-                        TimelineRow(
-                            title = "Resolved / Closed",
-                            subtitle = "${DateUtils.formatDateTime(event.resolvedAt)} (${event.status.name})",
-                            icon = Icons.Filled.CheckCircle,
-                            color = StatusApproved
+                    Surface(
+                        color = statusColor.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            event.status.name,
+                            color = statusColor,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    "Triggered on ${DateUtils.formatDateTime(event.triggeredAt)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    "Trigger Mechanism: ${event.triggerMethod.name}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Timeline Card
+            AppCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "INCIDENT TIMELINE",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TimelineRow(
+                    title = "SOS Triggered",
+                    subtitle = "${DateUtils.formatDateTime(event.triggeredAt)} via ${event.triggerMethod.name}",
+                    icon = Icons.Filled.Warning,
+                    color = EmergencyRed
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                )
+
+                TimelineRow(
+                    title = "Emergency SMS Dispatched",
+                    subtitle = "${event.smsSent} cellular SMS messages dispatched",
+                    icon = Icons.Filled.Sms,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                )
+
+                TimelineRow(
+                    title = "Auto-Call Attempt",
+                    subtitle = if (event.callMade) "Initiated phone call to primary emergency contact" else "Auto-call not configured or disabled",
+                    icon = Icons.Filled.PhoneInTalk,
+                    color = if (event.callMade) StatusApproved else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (event.resolvedAt != null) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                    )
+
+                    TimelineRow(
+                        title = "Resolved / Closed",
+                        subtitle = "${DateUtils.formatDateTime(event.resolvedAt)} (${event.status.name})",
+                        icon = Icons.Filled.CheckCircle,
+                        color = StatusApproved
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Location Snapshot Card
             if (event.latitude != null && event.longitude != null) {
-                GlassCard {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "INCIDENT COORDINATES",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        "Lat: ${event.latitude}, Lng: ${event.longitude}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    if (!event.address.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "INCIDENT COORDINATES",
-                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                            color = GradientGold,
-                            fontWeight = FontWeight.Bold
+                            event.address!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Text(
-                            "Lat: ${event.latitude}, Lng: ${event.longitude}",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                            color = OnSurfaceDark
-                        )
-
-                        if (!event.address.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                event.address!!,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceVariantDark
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Button(
-                            onClick = {
-                                val mapIntent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("geo:${event.latitude},${event.longitude}?q=${event.latitude},${event.longitude}(SOS+Incident)")
-                                ).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                context.startActivity(mapIntent)
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("OPEN ON GOOGLE MAPS", fontWeight = FontWeight.Bold)
-                        }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    PrimaryButton(
+                        text = "Open on Google Maps",
+                        onClick = {
+                            val mapIntent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("geo:${event.latitude},${event.longitude}?q=${event.latitude},${event.longitude}(SOS+Incident)")
+                            ).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(mapIntent)
+                        },
+                        icon = Icons.Filled.Map
+                    )
                 }
             }
 
@@ -282,25 +292,35 @@ fun SOSHistoryDetailScreen(
 private fun TimelineRow(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     color: androidx.compose.ui.graphics.Color
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(38.dp)
                 .clip(CircleShape)
                 .background(color.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = OnSurfaceDark)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

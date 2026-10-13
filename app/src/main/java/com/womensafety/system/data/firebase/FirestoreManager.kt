@@ -21,6 +21,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Wraps all Cloud Firestore operations.
@@ -115,6 +116,21 @@ class FirestoreManager {
             db.collection(USERS_COLLECTION)
                 .document(userId)
                 .update("trustedContactIds", FieldValue.arrayUnion(tcId))
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Removes a trusted contact ID from the user's trustedContactIds array.
+     */
+    suspend fun removeTrustedContactIdFromUser(userId: String, tcId: String): Result<Unit> {
+        return try {
+            db.collection(USERS_COLLECTION)
+                .document(userId)
+                .update("trustedContactIds", FieldValue.arrayRemove(tcId))
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -252,6 +268,22 @@ class FirestoreManager {
             db.collection(TRUSTED_CONTACTS_COLLECTION)
                 .document(tcId)
                 .update("connectedUserIds", FieldValue.arrayUnion(userId))
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Removes a user ID from the TC's connectedUserIds array.
+     * Uses FieldValue.arrayRemove for atomic removal.
+     */
+    suspend fun removeConnectedUserIdFromTc(tcId: String, userId: String): Result<Unit> {
+        return try {
+            db.collection(TRUSTED_CONTACTS_COLLECTION)
+                .document(tcId)
+                .update("connectedUserIds", FieldValue.arrayRemove(userId))
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -485,48 +517,92 @@ class FirestoreManager {
             // ============================================================
             // 1. Authoritative: Check production weeklyUids collection FIRST
             // ============================================================
-            val doc = db.collection(WEEKLY_UIDS_COLLECTION)
-                .document(trimmedUid)
-                .get()
-                .await()
-
-            if (doc.exists()) {
-                val data = doc.data
-                if (data != null) {
-                    val weeklyUid = WeeklyUid.fromMap(data)
-                    if (weeklyUid.isCurrentlyActive) {
-                        Log.d("UID_DEBUG", "SUCCESS: Active UID found in weeklyUids")
-                        return Result.success(weeklyUid)
-                    } else {
-                        Log.d("UID_DEBUG", "UID found in weeklyUids but is expired or inactive")
-                        return Result.success(null)
+            try {
+                val doc = withTimeoutOrNull(3000L) {
+                    db.collection(WEEKLY_UIDS_COLLECTION)
+                        .document(trimmedUid)
+                        .get()
+                        .await()
+                }
+                if (doc != null && doc.exists()) {
+                    val data = doc.data
+                    if (data != null) {
+                        val weeklyUid = WeeklyUid.fromMap(data)
+                        if (weeklyUid.isCurrentlyActive || (weeklyUid.userId.isNotBlank() && weeklyUid.active)) {
+                            Log.d("UID_DEBUG", "SUCCESS: Active UID found in weeklyUids: ${weeklyUid.userId}")
+                            return Result.success(weeklyUid)
+                        } else {
+                            Log.d("UID_DEBUG", "UID found in weeklyUids but is expired or inactive")
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.w("UID_DEBUG", "weeklyUids check skipped/failed: ${e.message}")
             }
 
             // ============================================================
-            // 2. Fall back to devUidMappings (Spark development mode only)
+            // 2. Fall back to devUidMappings (Spark development mode)
             // ============================================================
-            val devDoc = db.collection(DEV_UID_MAPPINGS_COLLECTION)
-                .document(trimmedUid)
-                .get()
-                .await()
-
-            if (devDoc.exists()) {
-                val data = devDoc.data
-                if (data != null) {
-                    val weeklyUid = WeeklyUid.fromMap(data)
-                    if (weeklyUid.isCurrentlyActive) {
-                        Log.d("UID_DEBUG", "SUCCESS: Active UID found in devUidMappings")
-                        return Result.success(weeklyUid)
-                    } else {
-                        Log.d("UID_DEBUG", "UID found in devUidMappings but is expired or inactive")
-                        return Result.success(null)
+            try {
+                val devDoc = withTimeoutOrNull(3500L) {
+                    db.collection(DEV_UID_MAPPINGS_COLLECTION)
+                        .document(trimmedUid)
+                        .get()
+                        .await()
+                }
+                if (devDoc != null && devDoc.exists()) {
+                    val data = devDoc.data
+                    if (data != null) {
+                        val weeklyUid = WeeklyUid.fromMap(data)
+                        if (weeklyUid.isCurrentlyActive || (weeklyUid.userId.isNotBlank() && weeklyUid.active)) {
+                            Log.d("UID_DEBUG", "SUCCESS: Active UID found in devUidMappings: ${weeklyUid.userId}")
+                            return Result.success(weeklyUid)
+                        } else {
+                            Log.d("UID_DEBUG", "UID found in devUidMappings but expired/inactive: ${weeklyUid.expiresAt}")
+                            // Return the mapping if valid user id is attached
+                            if (weeklyUid.userId.isNotBlank()) {
+                                return Result.success(weeklyUid)
+                            }
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.w("UID_DEBUG", "devUidMappings check skipped/failed: ${e.message}")
             }
 
-            Log.d("UID_DEBUG", "UID NOT FOUND in either collection: $trimmedUid")
+            // ============================================================
+            // 3. Fall back to child_locations (Live location UID collection)
+            // ============================================================
+            try {
+                val locDoc = withTimeoutOrNull(3500L) {
+                    db.collection(CHILD_LOCATIONS_COLLECTION)
+                        .document(trimmedUid)
+                        .get()
+                        .await()
+                }
+                if (locDoc != null && locDoc.exists()) {
+                    val data = locDoc.data
+                    val userId = data?.get("userId") as? String ?: ""
+                    val userName = data?.get("name") as? String ?: data?.get("childName") as? String ?: ""
+                    if (userId.isNotBlank()) {
+                        val now = System.currentTimeMillis()
+                        val weeklyUid = WeeklyUid(
+                            userId = userId,
+                            uid = trimmedUid,
+                            userName = userName,
+                            generatedAt = now,
+                            expiresAt = now + UID_VALIDITY_DAYS * 24L * 60 * 60 * 1000,
+                            active = true
+                        )
+                        Log.d("UID_DEBUG", "SUCCESS: Active UID resolved from child_locations: $userId")
+                        return Result.success(weeklyUid)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("UID_DEBUG", "child_locations check skipped/failed: ${e.message}")
+            }
+
+            Log.d("UID_DEBUG", "UID NOT FOUND in any collection: $trimmedUid")
             Result.success(null)
         } catch (e: Exception) {
             Log.e("UID_DEBUG", "UID LOOKUP FAILED with exception", e)
@@ -572,6 +648,21 @@ class FirestoreManager {
             db.collection(RELATIONSHIPS_COLLECTION)
                 .document(relationshipId)
                 .set(fields, SetOptions.merge())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Deletes a relationship document.
+     */
+    suspend fun deleteRelationship(relationshipId: String): Result<Unit> {
+        return try {
+            db.collection(RELATIONSHIPS_COLLECTION)
+                .document(relationshipId)
+                .delete()
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -988,10 +1079,12 @@ class FirestoreManager {
                 "status" to status.name,
                 "resolvedAt" to resolvedAt
             )
-            db.collection(SOS_EVENTS_COLLECTION)
-                .document(eventId)
-                .update(updates)
-                .await()
+            withTimeoutOrNull(3000L) {
+                db.collection(SOS_EVENTS_COLLECTION)
+                    .document(eventId)
+                    .set(updates, SetOptions.merge())
+                    .await()
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirestoreManager", "updateSOSEventStatus failed", e)
@@ -1203,6 +1296,72 @@ class FirestoreManager {
         } catch (e: Exception) {
             Log.e("FirestoreManager", "getUserJourneys failed", e)
             Result.failure(e)
+        }
+    }
+
+    suspend fun submitFeedback(
+        userId: String,
+        userName: String,
+        feedbackMessage: String
+    ): Result<Unit> {
+        var anySuccess = false
+        var lastError: Exception? = null
+
+        val docId = java.util.UUID.randomUUID().toString()
+        val feedbackData = mapOf(
+            "id" to docId,
+            "userId" to userId,
+            "userName" to userName,
+            "feedbackMessage" to feedbackMessage,
+            "createdAt" to System.currentTimeMillis()
+        )
+
+        // 1. Write to "feedback" collection (singular)
+        try {
+            db.collection("feedback")
+                .document(docId)
+                .set(feedbackData)
+                .await()
+            anySuccess = true
+            Log.i("FirestoreManager", "Successfully created doc in 'feedback' collection: $docId")
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "Failed writing to 'feedback' collection", e)
+            lastError = e
+        }
+
+        // 2. Write to "feedbacks" collection (plural)
+        try {
+            db.collection("feedbacks")
+                .document(docId)
+                .set(feedbackData)
+                .await()
+            anySuccess = true
+            Log.i("FirestoreManager", "Successfully created doc in 'feedbacks' collection: $docId")
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "Failed writing to 'feedbacks' collection", e)
+            if (lastError == null) lastError = e
+        }
+
+        // 3. Also update lastFeedback in user profile document
+        try {
+            db.collection(USERS_COLLECTION)
+                .document(userId)
+                .update(
+                    mapOf(
+                        "lastFeedback" to feedbackMessage,
+                        "lastFeedbackAt" to System.currentTimeMillis()
+                    )
+                )
+                .await()
+            anySuccess = true
+        } catch (e: Exception) {
+            Log.w("FirestoreManager", "User document lastFeedback notice: ${e.message}")
+        }
+
+        return if (anySuccess) {
+            Result.success(Unit)
+        } else {
+            Result.failure(lastError ?: Exception("Unable to write feedback document to Firestore"))
         }
     }
 }

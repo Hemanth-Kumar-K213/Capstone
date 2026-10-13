@@ -1,9 +1,7 @@
 package com.womensafety.system.ui.setup
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,10 +25,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.components.PrimaryButton
 import com.womensafety.system.ui.components.SecondaryButton
 import com.womensafety.system.ui.components.StepIndicator
-import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.SetupWizardViewModel
 
@@ -51,6 +49,7 @@ fun PermissionsSetupScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val isDark = LocalDarkTheme.current
     var permissionTriggerCount by remember { mutableIntStateOf(0) }
 
     // Build permissions list tailored to current OS version
@@ -78,105 +77,114 @@ fun PermissionsSetupScreen(
             PermissionItemInfo(
                 id = "location",
                 permission = Manifest.permission.ACCESS_FINE_LOCATION,
-                title = "Location Access",
-                description = "Shares your precise real-time location with emergency contacts and trusted contacts during SOS alerts.",
+                title = "Location Tracking",
+                description = "Shares high-precision real-time GPS coordinates with trusted contacts during emergencies.",
                 icon = Icons.Filled.LocationOn
             ),
             PermissionItemInfo(
                 id = "sms",
                 permission = Manifest.permission.SEND_SMS,
-                title = "Send SMS",
-                description = "Dispatches emergency text alerts with your live location coordinates to all designated emergency contacts.",
+                title = "Emergency SMS",
+                description = "Dispatches SMS distress alerts containing live coordinates to designated emergency contacts.",
                 icon = Icons.Filled.Sms
             ),
             PermissionItemInfo(
                 id = "phone",
                 permission = Manifest.permission.CALL_PHONE,
-                title = "Phone Calling",
-                description = "Allows the system to automatically place an emergency phone call to your primary emergency contact.",
+                title = "Emergency Calling",
+                description = "Enables automatic phone dialer to reach your primary contact immediately during SOS events.",
                 icon = Icons.Filled.Phone
             )
         )
     }
 
-    Column(
+    val bgGradient = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF1E1B4B).copy(alpha = 0.5f), BackgroundDark)
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFEEF2FF), BackgroundLight)
+        )
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        GradientDeepPurple.copy(alpha = 0.8f),
-                        BackgroundDark,
-                        BackgroundDark
-                    )
-                )
-            )
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp)
+            .background(bgGradient)
     ) {
-        StepIndicator(currentStep = 1, totalSteps = 4)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Spacer(modifier = Modifier.height(12.dp))
 
-        Spacer(modifier = Modifier.height(20.dp))
+            StepIndicator(currentStep = 1, totalSteps = 4)
 
-        Text(
-            text = "SAFETY PERMISSIONS",
-            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-            color = GradientGold,
-            fontWeight = FontWeight.Bold
-        )
+            Spacer(modifier = Modifier.height(24.dp))
 
-        Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "SAFETY PERMISSIONS",
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
 
-        Text(
-            text = "Allow Crucial Permissions",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = OnSurfaceDark
-        )
+            Spacer(modifier = Modifier.height(4.dp))
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Grant System Permissions",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
 
-        Text(
-            text = "These permissions allow the app to protect you by sending instant alerts, location updates, and calls when you trigger an emergency.",
-            style = MaterialTheme.typography.bodySmall,
-            color = OnSurfaceVariantDark
-        )
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                text = "These permissions allow the safety engine to transmit coordinates, dispatch alerts, and execute emergency calling when danger occurs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-        // Cards for each permission
-        permissionItems.filter { it.isRequiredForDevice }.forEach { item ->
-            val isGranted = if (item.permission.isNotBlank()) {
-                ContextCompat.checkSelfPermission(context, item.permission) == PackageManager.PERMISSION_GRANTED
-            } else true
+            Spacer(modifier = Modifier.height(24.dp))
 
-            PermissionCard(
-                item = item,
-                isGranted = isGranted
+            // Cards for each permission
+            permissionItems.filter { it.isRequiredForDevice }.forEach { item ->
+                val isGranted = if (item.permission.isNotBlank()) {
+                    ContextCompat.checkSelfPermission(context, item.permission) == PackageManager.PERMISSION_GRANTED
+                } else true
+
+                PermissionCard(
+                    item = item,
+                    isGranted = isGranted
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Request button
+            PrimaryButton(
+                text = "GRANT PERMISSIONS",
+                onClick = {
+                    multiplePermissionsState.launchMultiplePermissionRequest()
+                }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Next button (allowed even if some denied)
+            SecondaryButton(
+                text = "CONTINUE TO CONTACTS",
+                onClick = onNext
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Request button
-        PrimaryButton(
-            text = "GRANT PERMISSIONS",
-            onClick = {
-                multiplePermissionsState.launchMultiplePermissionRequest()
-            }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Next button (allowed even if some denied)
-        SecondaryButton(
-            text = "CONTINUE TO CONTACTS",
-            onClick = onNext
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -185,7 +193,7 @@ private fun PermissionCard(
     item: PermissionItemInfo,
     isGranted: Boolean
 ) {
-    GlassCard {
+    AppCard {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -194,19 +202,19 @@ private fun PermissionCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(
                         if (isGranted) StatusApproved.copy(alpha = 0.15f)
-                        else GradientAmber.copy(alpha = 0.15f)
+                        else PrimaryIndigo.copy(alpha = 0.12f)
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = item.icon,
                     contentDescription = null,
-                    tint = if (isGranted) StatusApproved else GradientAmber,
-                    modifier = Modifier.size(22.dp)
+                    tint = if (isGranted) StatusApproved else PrimaryIndigo,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
@@ -218,11 +226,11 @@ private fun PermissionCard(
                         text = item.title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = OnSurfaceDark,
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
 
-                    StatusBadge(isGranted = isGranted)
+                    PermissionStatusBadge(isGranted = isGranted)
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -230,7 +238,7 @@ private fun PermissionCard(
                 Text(
                     text = item.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -238,9 +246,9 @@ private fun PermissionCard(
 }
 
 @Composable
-private fun StatusBadge(isGranted: Boolean) {
+private fun PermissionStatusBadge(isGranted: Boolean) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         color = if (isGranted) StatusApproved.copy(alpha = 0.15f) else StatusDenied.copy(alpha = 0.15f)
     ) {
         Row(
@@ -255,7 +263,7 @@ private fun StatusBadge(isGranted: Boolean) {
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = if (isGranted) "Granted" else "Denied",
+                text = if (isGranted) "Granted" else "Needed",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = if (isGranted) StatusApproved else StatusDenied

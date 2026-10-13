@@ -482,12 +482,14 @@ class AuthViewModel(
 
     fun loginWithEmailAndPassword() {
         val state = _loginState.value
+        val cleanEmail = state.email.trim()
+        val cleanPassword = state.password.trim()
 
-        if (!Validators.isValidEmail(state.email)) {
+        if (!Validators.isValidEmail(cleanEmail)) {
             _loginState.value = state.copy(error = "Please enter a valid email address.")
             return
         }
-        if (state.password.isBlank()) {
+        if (cleanPassword.isBlank()) {
             _loginState.value = state.copy(error = "Please enter your password.")
             return
         }
@@ -495,7 +497,7 @@ class AuthViewModel(
         _loginState.value = state.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
-            val result = authRepository.loginWithEmailAndPassword(state.email, state.password)
+            val result = authRepository.loginWithEmailAndPassword(cleanEmail, cleanPassword)
             if (result.isSuccess) {
                 val uid = result.getOrNull()
                 val profile = if (uid != null) userRepository.getUserProfile(uid).getOrNull() else null
@@ -513,9 +515,17 @@ class AuthViewModel(
                     isChecking = false
                 )
             } else {
+                val rawMsg = result.exceptionOrNull()?.localizedMessage ?: ""
+                val friendlyError = when {
+                    rawMsg.contains("password", ignoreCase = true) -> "Incorrect password. Please try again or use Forgot Password."
+                    rawMsg.contains("no user record", ignoreCase = true) || rawMsg.contains("user-not-found", ignoreCase = true) -> "No account found with this email. Please check your email or sign up."
+                    rawMsg.contains("network", ignoreCase = true) -> "Network error. Please check your internet connection."
+                    rawMsg.isNotBlank() -> rawMsg
+                    else -> "Authentication failed. Please check your email and password."
+                }
                 _loginState.value = _loginState.value.copy(
                     isLoading = false,
-                    error = "Authentication failed. Please check your email and password."
+                    error = friendlyError
                 )
             }
         }

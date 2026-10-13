@@ -344,7 +344,7 @@ fun SafetyMapTracker(
                 .padding(16.dp)
         ) {
             Surface(
-                color = androidx.compose.ui.graphics.Color(0xFF13111C).copy(alpha = 0.88f),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                 shape = RoundedCornerShape(20.dp),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
@@ -379,7 +379,7 @@ fun SafetyMapTracker(
                                 text = "• 10s SYNC",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = androidx.compose.ui.graphics.Color(0xFF94A3B8)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         if (!uid.isNullOrBlank()) {
@@ -387,7 +387,7 @@ fun SafetyMapTracker(
                                 text = "UID: $uid",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = androidx.compose.ui.graphics.Color(0xFFF1F5F9)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
@@ -416,8 +416,8 @@ fun SafetyMapTracker(
                     },
                     modifier = Modifier.size(46.dp),
                     shape = CircleShape,
-                    containerColor = androidx.compose.ui.graphics.Color(0xFF1E1B2E),
-                    contentColor = androidx.compose.ui.graphics.Color(0xFF10B981)
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(
                         Icons.Filled.MyLocation,
@@ -431,8 +431,8 @@ fun SafetyMapTracker(
                     onClick = { mapViewInstance?.controller?.zoomIn() },
                     modifier = Modifier.size(38.dp),
                     shape = CircleShape,
-                    containerColor = androidx.compose.ui.graphics.Color(0xFF1E1B2E),
-                    contentColor = androidx.compose.ui.graphics.Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Zoom In", modifier = Modifier.size(18.dp))
                 }
@@ -442,8 +442,8 @@ fun SafetyMapTracker(
                     onClick = { mapViewInstance?.controller?.zoomOut() },
                     modifier = Modifier.size(38.dp),
                     shape = CircleShape,
-                    containerColor = androidx.compose.ui.graphics.Color(0xFF1E1B2E),
-                    contentColor = androidx.compose.ui.graphics.Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ) {
                     Icon(Icons.Filled.Remove, contentDescription = "Zoom Out", modifier = Modifier.size(18.dp))
                 }

@@ -1,20 +1,26 @@
 package com.womensafety.system.ui.profile
 
 import android.app.Activity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.womensafety.system.ui.components.*
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.UserProfileViewModel
@@ -46,15 +52,29 @@ fun ChangePhoneScreen(
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Change Phone Number") },
+                title = {
+                    Text(
+                        "Change Phone Number",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         }
     ) { padding ->
@@ -62,84 +82,125 @@ fun ChangePhoneScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
+                    )
+                )
+                .imePadding()
+                .padding(horizontal = 20.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Phone,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(34.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "Change Phone Number",
-                style = MaterialTheme.typography.headlineSmall,
+                "Update Registered Phone",
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.onBackground
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                "Enter your new phone number and verify it with OTP.",
+                "Enter your new phone number and verify it with a one-time passcode.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             ErrorMessage(state.error)
             if (state.error != null) Spacer(modifier = Modifier.height(8.dp))
 
             if (state.success) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                    )
+                Surface(
+                    color = StatusApproved.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.CheckCircle, null, tint = MaterialTheme.colorScheme.tertiary)
+                        Icon(Icons.Filled.CheckCircle, null, tint = StatusApproved)
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Phone number updated successfully!")
+                        Text(
+                            "Phone number updated successfully!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = StatusApproved
+                        )
                     }
                 }
             } else {
-                AppTextField(
-                    value = state.newPhone,
-                    onValueChange = { viewModel.updateNewPhone(it) },
-                    label = "New Phone Number (e.g., +91XXXXXXXXXX)",
-                    keyboardType = KeyboardType.Phone,
-                    enabled = !state.otpSent
-                )
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    AppTextField(
+                        value = state.newPhone,
+                        onValueChange = { viewModel.updateNewPhone(it) },
+                        label = "New Phone Number (e.g., +91XXXXXXXXXX)",
+                        keyboardType = KeyboardType.Phone,
+                        enabled = !state.otpSent
+                    )
+
+                    if (state.otpSent) {
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            "ENTER VERIFICATION CODE",
+                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OtpInputField(
+                            otpCode = state.otpCode,
+                            onOtpChange = { viewModel.updateChangePhoneOtp(it) }
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
                 if (!state.otpSent) {
                     PrimaryButton(
-                        text = "SEND OTP",
+                        text = "Send OTP",
                         onClick = { activity?.let { viewModel.sendChangePhoneOtp(it) } },
                         isLoading = state.isLoading
                     )
                 } else {
-                    OtpInputField(
-                        otpCode = state.otpCode,
-                        onOtpChange = { viewModel.updateChangePhoneOtp(it) }
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
                     PrimaryButton(
-                        text = "VERIFY & UPDATE",
+                        text = "Verify & Update",
                         onClick = { viewModel.verifyAndChangePhone() },
                         isLoading = state.isLoading
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     if (state.resendCooldown > 0) {
                         Text(
-                            "Resend available in ${state.resendCooldown}s",
+                            "Resend code in ${state.resendCooldown}s",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -147,7 +208,7 @@ fun ChangePhoneScreen(
                         TextButton(
                             onClick = { activity?.let { viewModel.sendChangePhoneOtp(it) } }
                         ) {
-                            Text("Resend OTP")
+                            Text("Resend OTP", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

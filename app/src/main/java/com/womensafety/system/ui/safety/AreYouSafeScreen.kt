@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -23,7 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.EmergencyActionButton
+import com.womensafety.system.ui.components.PrimaryButton
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.SafetyMonitoringViewModel
 
@@ -69,9 +72,8 @@ fun AreYouSafeScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF5C2C00).copy(alpha = 0.7f), // Warm Amber Warning Glow
-                        Color(0xFF291400),
-                        BackgroundDark
+                        AmberWarning.copy(alpha = 0.2f),
+                        MaterialTheme.colorScheme.background
                     )
                 )
             )
@@ -79,7 +81,7 @@ fun AreYouSafeScreen(
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         // Pulse Icon badge
         Box(
@@ -91,119 +93,119 @@ fun AreYouSafeScreen(
                     .size(110.dp)
                     .scale(pulseScale)
                     .clip(CircleShape)
-                    .background(GradientAmber.copy(alpha = 0.2f))
+                    .background(AmberWarning.copy(alpha = 0.2f))
             )
             Box(
                 modifier = Modifier
                     .size(80.dp)
                     .clip(CircleShape)
-                    .background(GradientAmber.copy(alpha = 0.35f)),
+                    .background(AmberWarning.copy(alpha = 0.35f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Filled.Warning,
                     contentDescription = null,
-                    tint = GradientAmber,
+                    tint = AmberWarning,
                     modifier = Modifier.size(44.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Text(
             "ARE YOU SAFE?",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Black,
-            color = GradientAmber,
-            letterSpacing = 2.sp,
+            color = MaterialTheme.colorScheme.onBackground,
+            letterSpacing = 1.5.sp,
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
             "PROACTIVE MONITORING ALERT",
-            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.5.sp),
+            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.5.sp),
             fontWeight = FontWeight.Bold,
-            color = OnSurfaceVariantDark
+            color = AmberWarning
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         // Risk Stats Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(GradientAmber.copy(alpha = 0.15f), GradientAmber.copy(alpha = 0.03f))
+        AppCard(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "ANOMALIES DETECTED",
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
             )
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    "ANOMALIES DETECTED",
-                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                    color = GradientGold,
-                    fontWeight = FontWeight.Bold
+                    "Calculated Risk Score:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    color = (if (riskScore > 60) EmergencyRed else AmberWarning).copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(
-                        "Calculated Risk Score:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceDark
-                    )
                     Text(
                         "$riskScore / 100",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (riskScore > 60) StatusDenied else GradientAmber
+                        color = if (riskScore > 60) EmergencyRed else AmberWarning,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
+            }
 
-                if (anomalies.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = GlassBorder)
-                    Spacer(modifier = Modifier.height(8.dp))
+            if (anomalies.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    anomalies.forEach { anomaly ->
-                        Row(
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "• $anomaly",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceVariantDark
-                            )
-                        }
+                anomalies.forEach { anomaly ->
+                    Row(
+                        modifier = Modifier.padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "• $anomaly",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // Countdown Timer Text
         Text(
             "Auto-escalating to SOS in",
             style = MaterialTheme.typography.bodyMedium,
-            color = OnSurfaceVariantDark
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "$countdown seconds",
+            "$countdown s",
             style = MaterialTheme.typography.displayMedium,
             fontWeight = FontWeight.Black,
-            color = StatusDenied,
+            color = EmergencyRed,
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.weight(1f))
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
         // Button 1: "I'M SAFE"
         Button(
@@ -213,16 +215,16 @@ fun AreYouSafeScreen(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp),
+                .height(54.dp),
             colors = ButtonDefaults.buttonColors(containerColor = StatusApproved),
-            shape = MaterialTheme.shapes.medium
+            shape = RoundedCornerShape(14.dp)
         ) {
             Icon(Icons.Filled.Check, contentDescription = null, tint = OnPrimary)
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 "I'M SAFE",
                 fontWeight = FontWeight.Black,
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 color = OnPrimary
             )
         }
@@ -233,20 +235,19 @@ fun AreYouSafeScreen(
         Button(
             onClick = {
                 viewModel.triggerSOS(context)
-                // Navigation to alert screen will be handled by AppNavGraph seeing the active SOS event
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
-            shape = MaterialTheme.shapes.medium
+                .height(54.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = EmergencyRed),
+            shape = RoundedCornerShape(14.dp)
         ) {
             Icon(Icons.Filled.Warning, contentDescription = null, tint = OnPrimary)
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                "I NEED HELP",
+                "I NEED HELP (TRIGGER SOS)",
                 fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 color = OnPrimary
             )
         }

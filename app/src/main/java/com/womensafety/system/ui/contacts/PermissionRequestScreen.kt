@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
@@ -19,9 +20,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.data.model.PermissionState
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.EmptyStateCard
 import com.womensafety.system.ui.components.ErrorMessage
 import com.womensafety.system.ui.components.SuccessMessage
-import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.PermissionViewModel
 
@@ -40,13 +42,15 @@ fun PermissionRequestScreen(
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         "Permission Requests",
-                        color = OnSurfaceDark
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -54,12 +58,12 @@ fun PermissionRequestScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BackgroundDark
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -67,13 +71,16 @@ fun PermissionRequestScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.4f), BackgroundDark)
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
                     )
                 )
-                .padding(padding)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 20.dp)
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -84,120 +91,101 @@ fun PermissionRequestScreen(
             if (state.error != null) Spacer(modifier = Modifier.height(8.dp))
 
             if (state.isLoading) {
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = GradientAmber)
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, strokeWidth = 3.dp)
                 }
             } else if (pendingRequests.isEmpty()) {
-                GlassCard {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            "No pending requests.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = OnSurfaceVariantDark
-                        )
-                    }
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    EmptyStateCard(
+                        icon = Icons.Filled.Person,
+                        title = "No Pending Requests",
+                        description = "When someone requests to be your trusted guardian, their request will appear here for review."
+                    )
                 }
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
                     items(pendingRequests) { rel ->
-
-                        GlassCard(
-                            accentGradient = Brush.horizontalGradient(
-                                colors = listOf(
-                                    GradientAmber.copy(alpha = 0.08f),
-                                    GradientRose.copy(alpha = 0.04f)
-                                )
+                        AppCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "CONNECTION REQUEST",
+                                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
                             )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(20.dp)
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Person,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(26.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Text(
+                                        rel.trustedContactName.ifBlank { "Unknown Contact" },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (rel.trustedContactPhone.isNotBlank()) {
+                                        Text(
+                                            "Phone: ${rel.trustedContactPhone}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Text(
+                                        "Requested: ${DateUtils.formatDateTime(rel.requestedAt)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(
-                                    "TRUSTED CONTACT REQUEST",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        letterSpacing = 2.sp
-                                    ),
-                                    color = GradientAmber,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(CircleShape)
-                                            .background(GradientRose.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.Person,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(28.dp),
-                                            tint = GradientRose
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Column {
-                                        Text(
-                                            rel.trustedContactName.ifBlank { "Unknown Contact" },
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = OnSurfaceDark
-                                        )
-                                        if (rel.trustedContactPhone.isNotBlank()) {
-                                            Text(
-                                                "Phone: ${rel.trustedContactPhone}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = OnSurfaceVariantDark
-                                            )
-                                        }
-                                        Text(
-                                            "Requested: ${DateUtils.formatDateTime(rel.requestedAt)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = OnSurfaceVariantDark
-                                        )
-                                        Text(
-                                            "Status: PENDING",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = StatusPending
-                                        )
-                                    }
+                                Button(
+                                    onClick = { viewModel.approveRequest(rel.id) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = StatusApproved
+                                    )
+                                ) {
+                                    Text("ALLOW", fontWeight = FontWeight.Bold, color = OnPrimary)
                                 }
 
-                                Spacer(modifier = Modifier.height(20.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                OutlinedButton(
+                                    onClick = { viewModel.denyRequest(rel.id) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = EmergencyRed
+                                    )
                                 ) {
-                                    Button(
-                                        onClick = { viewModel.approveRequest(rel.id) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = MaterialTheme.shapes.medium,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = StatusApproved
-                                        )
-                                    ) {
-                                        Text("ALLOW", fontWeight = FontWeight.Bold)
-                                    }
-
-                                    OutlinedButton(
-                                        onClick = { viewModel.denyRequest(rel.id) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = MaterialTheme.shapes.medium,
-                                        colors = ButtonDefaults.outlinedButtonColors(
-                                            contentColor = StatusDenied
-                                        )
-                                    ) {
-                                        Text("DENY", fontWeight = FontWeight.Bold)
-                                    }
+                                    Text("DENY", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -205,7 +193,7 @@ fun PermissionRequestScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

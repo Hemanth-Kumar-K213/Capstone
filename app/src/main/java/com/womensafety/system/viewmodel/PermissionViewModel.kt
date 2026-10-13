@@ -110,6 +110,22 @@ class PermissionViewModel(
         }
     }
 
+    fun deleteRelationship(relationshipId: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, actionSuccess = null)
+            val result = relationshipRepository.deleteRelationship(relationshipId)
+            if (result.isSuccess) {
+                _state.value = _state.value.copy(actionSuccess = "Contact removed.")
+                loadRelationships()
+            } else {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = "Failed to remove contact."
+                )
+            }
+        }
+    }
+
     fun clearMessages() {
         _state.value = _state.value.copy(error = null, actionSuccess = null)
     }

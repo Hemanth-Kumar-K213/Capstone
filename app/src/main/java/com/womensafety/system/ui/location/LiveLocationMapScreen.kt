@@ -30,7 +30,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.manager.TrinetraLocationManager
 import com.womensafety.system.service.LocationTrackingService
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.PrimaryButton
+import com.womensafety.system.ui.components.SecondaryButton
 import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
@@ -116,14 +118,15 @@ fun LiveLocationMapScreen(
                     Column {
                         Text(
                             text = effectiveLocation?.userName?.ifBlank { "Live Radar Map" } ?: "Live Radar Map",
-                            color = OnSurfaceDark,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 17.sp
                         )
                         Text(
-                            text = if (hasFix) "10s GPS Sync Active" else "Acquiring GPS fix...",
-                            color = if (hasFix) Color(0xFF10B981) else GradientAmber,
-                            fontSize = 11.sp
+                            text = if (hasFix) "10s GPS Sync Active" else "Acquiring satellite fix...",
+                            color = if (hasFix) StatusApproved else AmberWarning,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 },
@@ -132,14 +135,16 @@ fun LiveLocationMapScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark.copy(alpha = 0.92f))
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -164,20 +169,19 @@ fun LiveLocationMapScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp, start = 16.dp, end = 16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF7F1D1D).copy(alpha = 0.92f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
-                    shadowElevation = 8.dp
+                    shape = RoundedCornerShape(14.dp),
+                    color = EmergencyRed.copy(alpha = 0.95f),
+                    shadowElevation = 6.dp
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.LocationOff, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.LocationOff, contentDescription = null, tint = OnPrimary, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Device Location is OFF", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-                            Text("Turn on GPS in phone settings for accurate fix", fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
+                            Text("Device Location is OFF", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = OnPrimary)
+                            Text("Turn on GPS in phone settings for accurate fix", fontSize = 11.sp, color = OnPrimary.copy(alpha = 0.9f))
                         }
                         TextButton(
                             onClick = {
@@ -185,7 +189,7 @@ fun LiveLocationMapScreen(
                                 context.startActivity(intent)
                             }
                         ) {
-                            Text("ENABLE", color = Color(0xFFFDE047), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("ENABLE", color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp)
                         }
                     }
                 }
@@ -196,8 +200,8 @@ fun LiveLocationMapScreen(
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp),
                     shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF1E1B2E).copy(alpha = 0.92f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber.copy(alpha = 0.5f)),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     shadowElevation = 6.dp
                 ) {
                     Row(
@@ -205,7 +209,7 @@ fun LiveLocationMapScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         CircularProgressIndicator(
-                            color = GradientAmber,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp
                         )
@@ -213,7 +217,7 @@ fun LiveLocationMapScreen(
                         Text(
                             text = "Acquiring GPS fix (updates every 10s)...",
                             fontSize = 12.sp,
-                            color = GradientAmber,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -226,118 +230,118 @@ fun LiveLocationMapScreen(
                     .align(Alignment.BottomCenter)
                     .padding(16.dp)
             ) {
-                GlassCard(
-                    accentGradient = Brush.horizontalGradient(
-                        colors = listOf(GradientAmber.copy(alpha = 0.2f), GradientRose.copy(alpha = 0.15f))
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.PersonPinCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = effectiveLocation?.userName?.ifBlank { "Live Tracker" } ?: "Live Tracker",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "UID: ${effectiveLocation?.uid?.ifBlank { userId } ?: userId} • Streaming every 10s",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    if (!effectiveLocation?.address.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(
+                                Icons.Filled.Place,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp).padding(top = 2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = effectiveLocation?.address ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = if (hasFix) {
+                            "Coordinates: ${String.format("%.5f", lat)}, ${String.format("%.5f", lng)} (±${effectiveLocation?.accuracy?.toInt() ?: 0}m)"
+                        } else {
+                            "Acquiring satellite coordinate fix..."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(GradientAmber.copy(alpha = 0.25f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Filled.PersonPinCircle,
-                                    contentDescription = null,
-                                    tint = GradientAmber,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
 
-                            Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = effectiveLocation?.userName?.ifBlank { "Live Tracker" } ?: "Live Tracker",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = OnSurfaceDark
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                MapUtils.openExternalMap(
+                                    context = context,
+                                    latitude = lat,
+                                    longitude = lng,
+                                    label = effectiveLocation?.userName?.ifBlank { "User Location" } ?: "User Location"
                                 )
-                                Text(
-                                    text = "UID: ${effectiveLocation?.uid?.ifBlank { userId } ?: userId} • Every 10s",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = GradientGold
-                                )
-                            }
-                        }
-
-                        if (!effectiveLocation?.address.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(verticalAlignment = Alignment.Top) {
-                                Icon(
-                                    Icons.Filled.Place,
-                                    contentDescription = null,
-                                    tint = OnSurfaceVariantDark,
-                                    modifier = Modifier.size(16.dp).padding(top = 2.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = effectiveLocation?.address ?: "",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OnSurfaceDark
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = if (hasFix) {
-                                "Coordinates: ${String.format("%.5f", lat)}, ${String.format("%.5f", lng)} (±${effectiveLocation?.accuracy?.toInt() ?: 0}m)"
-                            } else {
-                                "Acquiring GPS coordinates from satellite/network providers..."
                             },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariantDark
-                        )
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Icon(Icons.Filled.Navigation, contentDescription = null, modifier = Modifier.size(16.dp), tint = OnPrimary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("NAVIGATE", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = OnPrimary)
+                        }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            Button(
-                                onClick = {
-                                    MapUtils.openExternalMap(
-                                        context = context,
-                                        latitude = lat,
-                                        longitude = lng,
-                                        label = effectiveLocation?.userName?.ifBlank { "User Location" } ?: "User Location"
-                                    )
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Icon(Icons.Filled.Navigation, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("NAVIGATE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            OutlinedButton(
-                                onClick = {
-                                    val shareText = "Live location of ${effectiveLocation?.userName ?: "Child"}: https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng"
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, shareText)
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share Location"))
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = MaterialTheme.shapes.medium,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurfaceDark)
-                            ) {
-                                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("SHARE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
+                        OutlinedButton(
+                            onClick = {
+                                val shareText = "Live location of ${effectiveLocation?.userName ?: "Child"}: https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng"
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Location"))
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("SHARE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }

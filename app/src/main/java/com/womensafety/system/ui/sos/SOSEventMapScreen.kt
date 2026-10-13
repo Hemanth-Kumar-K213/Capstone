@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -22,7 +23,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.womensafety.system.data.model.SOSEvent
 import com.womensafety.system.data.repository.SOSRepository
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.PrimaryButton
 import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
@@ -60,8 +62,9 @@ fun SOSEventMapScreen(
                 title = {
                     Text(
                         "SOS Incident Map",
-                        color = StatusDenied,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = EmergencyRed
                     )
                 },
                 navigationIcon = {
@@ -69,14 +72,16 @@ fun SOSEventMapScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -86,12 +91,16 @@ fun SOSEventMapScreen(
             when {
                 isLoading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = StatusDenied)
+                        CircularProgressIndicator(color = EmergencyRed, strokeWidth = 3.dp)
                     }
                 }
                 sosEvent == null -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("SOS Event details not found", color = OnSurfaceVariantDark)
+                        Text(
+                            "SOS Event details not found",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
                     }
                 }
                 else -> {
@@ -122,10 +131,14 @@ fun SOSEventMapScreen(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .background(SurfaceVariantDark),
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text("No GPS fix was available at time of alert", color = OnSurfaceVariantDark)
+                                        Text(
+                                            "No GPS fix was available at time of alert",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
                                     }
                                 }
                             }
@@ -134,101 +147,102 @@ fun SOSEventMapScreen(
                         // Event Summary & Delivery Details Card
                         item {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                GlassCard(
-                                    accentGradient = Brush.horizontalGradient(
-                                        listOf(StatusDenied.copy(alpha = 0.3f), StatusDenied.copy(alpha = 0.08f))
-                                    )
-                                ) {
-                                    Column(modifier = Modifier.padding(18.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(44.dp)
-                                                    .clip(CircleShape)
-                                                    .background(StatusDenied.copy(alpha = 0.25f)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(Icons.Filled.Warning, contentDescription = null, tint = StatusDenied)
-                                            }
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Column {
-                                                Text(
-                                                    text = "Incident #${event.id.take(8).uppercase()}",
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = OnSurfaceDark
-                                                )
-                                                Text(
-                                                    text = "Status: ${event.status.name}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = if (event.status.name == "ACTIVE") StatusDenied else StatusApproved,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 12.dp),
-                                            color = GlassBorder
-                                        )
-
-                                        DetailRow(label = "Trigger Method", value = event.triggerMethod.name, icon = Icons.Filled.TouchApp)
-                                        DetailRow(label = "Triggered At", value = DateUtils.formatDateTime(event.triggeredAt), icon = Icons.Filled.Schedule)
-                                        if (event.resolvedAt != null) {
-                                            DetailRow(label = "Resolved At", value = DateUtils.formatDateTime(event.resolvedAt!!), icon = Icons.Filled.CheckCircle)
-                                        }
-                                        if (!event.address.isNullOrBlank()) {
-                                            DetailRow(label = "Location", value = event.address!!, icon = Icons.Filled.Place)
-                                        }
-                                        if (hasLocation) {
-                                            DetailRow(
-                                                label = "GPS Fix",
-                                                value = "${String.format("%.5f", event.latitude)}, ${String.format("%.5f", event.longitude)} (±${event.accuracy?.toInt() ?: 0}m)",
-                                                icon = Icons.Filled.MyLocation
+                                AppCard(modifier = Modifier.fillMaxWidth()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .clip(CircleShape)
+                                                .background(EmergencyRed.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Warning,
+                                                contentDescription = null,
+                                                tint = EmergencyRed,
+                                                modifier = Modifier.size(24.dp)
                                             )
                                         }
-
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(vertical = 12.dp),
-                                            color = GlassBorder
-                                        )
-
-                                        Text(
-                                            text = "EMERGENCY BROADCAST STATS",
-                                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
-                                            color = GradientAmber,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            StatBadge(label = "Twilio SMS", count = event.smsSent)
-                                            StatBadge(label = "Auto Call", count = if (event.callMade) 1 else 0)
-                                        }
-
-                                        if (hasLocation) {
-                                            Spacer(modifier = Modifier.height(16.dp))
-                                            Button(
-                                                onClick = {
-                                                    MapUtils.openExternalMap(
-                                                        context = context,
-                                                        latitude = event.latitude!!,
-                                                        longitude = event.longitude!!,
-                                                        label = "SOS Emergency"
-                                                    )
-                                                },
-                                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                                colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                                                shape = MaterialTheme.shapes.medium
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Column {
+                                            Text(
+                                                text = "Incident #${event.id.take(8).uppercase()}",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Surface(
+                                                color = if (event.status.name == "ACTIVE") EmergencyRed.copy(alpha = 0.15f) else StatusApproved.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(6.dp)
                                             ) {
-                                                Icon(Icons.Filled.Navigation, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text("OPEN IN EXTERNAL MAPS", fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    text = event.status.name,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (event.status.name == "ACTIVE") EmergencyRed else StatusApproved,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
                                             }
                                         }
+                                    }
+
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(vertical = 14.dp),
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                    )
+
+                                    DetailRow(label = "Trigger Method", value = event.triggerMethod.name, icon = Icons.Filled.TouchApp)
+                                    DetailRow(label = "Triggered At", value = DateUtils.formatDateTime(event.triggeredAt), icon = Icons.Filled.Schedule)
+                                    if (event.resolvedAt != null) {
+                                        DetailRow(label = "Resolved At", value = DateUtils.formatDateTime(event.resolvedAt!!), icon = Icons.Filled.CheckCircle)
+                                    }
+                                    if (!event.address.isNullOrBlank()) {
+                                        DetailRow(label = "Location", value = event.address!!, icon = Icons.Filled.Place)
+                                    }
+                                    if (hasLocation) {
+                                        DetailRow(
+                                            label = "GPS Fix",
+                                            value = "${String.format("%.5f", event.latitude)}, ${String.format("%.5f", event.longitude)} (±${event.accuracy?.toInt() ?: 0}m)",
+                                            icon = Icons.Filled.MyLocation
+                                        )
+                                    }
+
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(vertical = 14.dp),
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                    )
+
+                                    Text(
+                                        text = "EMERGENCY BROADCAST STATS",
+                                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        StatBadge(label = "Twilio SMS", count = event.smsSent, modifier = Modifier.weight(1f))
+                                        StatBadge(label = "Auto Call", count = if (event.callMade) 1 else 0, modifier = Modifier.weight(1f))
+                                    }
+
+                                    if (hasLocation) {
+                                        Spacer(modifier = Modifier.height(18.dp))
+                                        PrimaryButton(
+                                            text = "Open in External Maps",
+                                            onClick = {
+                                                MapUtils.openExternalMap(
+                                                    context = context,
+                                                    latitude = event.latitude!!,
+                                                    longitude = event.longitude!!,
+                                                    label = "SOS Emergency"
+                                                )
+                                            },
+                                            icon = Icons.Filled.Navigation
+                                        )
                                     }
                                 }
                             }
@@ -243,28 +257,56 @@ fun SOSEventMapScreen(
 @Composable
 private fun DetailRow(label: String, value: String, icon: ImageVector) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = OnSurfaceVariantDark, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = OnSurfaceDark)
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
 @Composable
-private fun StatBadge(label: String, count: Int) {
+private fun StatBadge(label: String, count: Int, modifier: Modifier = Modifier) {
     Surface(
-        color = SurfaceVariantDark,
-        shape = MaterialTheme.shapes.small
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(10.dp),
+        modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("$label: ", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariantDark)
-            Text("$count", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = GradientGold)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "$count",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

@@ -4,10 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +21,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.womensafety.system.ui.components.*
-import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.TrustedContactHomeViewModel
 
@@ -40,10 +41,17 @@ fun AddUserScreen(
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Add User", color = OnSurfaceDark) },
+                title = {
+                    Text(
+                        "Add Monitored User",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = {
                         viewModel.resetAddUserState()
@@ -52,12 +60,12 @@ fun AddUserScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BackgroundDark
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -65,46 +73,65 @@ fun AddUserScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.4f), BackgroundDark)
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
                     )
                 )
-                .padding(padding)
-                .padding(horizontal = 24.dp)
+                .imePadding()
+                .padding(horizontal = 20.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.PersonAdd,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             Text(
-                "ADD USER",
-                style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 2.sp),
+                "CONNECT PROTECTED USER",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = GradientRose
+                color = MaterialTheme.colorScheme.onBackground
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                "Enter the User's current Safety UID to send a connection request.",
+                "Enter the User's current Safety UID to send an authorization request.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = OnSurfaceVariantDark
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             ErrorMessage(state.error)
             if (state.error != null) Spacer(modifier = Modifier.height(8.dp))
 
             if (state.success) {
-                GlassCard(
-                    accentGradient = Brush.horizontalGradient(
-                        colors = listOf(
-                            StatusApproved.copy(alpha = 0.1f),
-                            StatusApproved.copy(alpha = 0.05f)
-                        )
-                    )
+                Surface(
+                    color = StatusApproved.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -114,7 +141,7 @@ fun AddUserScreen(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
-                                .background(StatusApproved.copy(alpha = 0.15f)),
+                                .background(StatusApproved.copy(alpha = 0.2f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -126,54 +153,37 @@ fun AddUserScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             "Permission request sent successfully!",
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = StatusApproved
                         )
                     }
                 }
             } else {
-                AppTextField(
-                    value = state.uid,
-                    onValueChange = { viewModel.updateUidInput(it) },
-                    label = "Enter Current User UID",
-                    keyboardType = KeyboardType.Number
-                )
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    AppTextField(
+                        value = state.uid,
+                        onValueChange = { viewModel.updateUidInput(it) },
+                        label = "User Safety UID",
+                        keyboardType = KeyboardType.Number
+                    )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                Text(
-                    "UID format: 12 digits (e.g., 202608180472)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark.copy(alpha = 0.5f)
-                )
+                    Text(
+                        "UID format: 12 numeric digits (e.g., 202608180472)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                Button(
-                    onClick = { viewModel.addUserByUid() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    enabled = !state.isLoading,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GradientRose
-                    )
-                ) {
-                    if (state.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = OnPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text(
-                            "ADD USER",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                }
+                PrimaryButton(
+                    text = "Send Request",
+                    isLoading = state.isLoading,
+                    onClick = { viewModel.addUserByUid() }
+                )
             }
 
             Spacer(modifier = Modifier.height(32.dp))

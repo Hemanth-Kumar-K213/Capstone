@@ -24,7 +24,10 @@ fun SafetyPlaceholderScreen() {
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(GradientDeepPurple.copy(alpha = 0.6f), BackgroundDark)
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        MaterialTheme.colorScheme.background
+                    )
                 )
             )
             .padding(32.dp),
@@ -35,14 +38,14 @@ fun SafetyPlaceholderScreen() {
             modifier = Modifier
                 .size(80.dp)
                 .clip(CircleShape)
-                .background(GradientPurple.copy(alpha = 0.15f)),
+                .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.Filled.Shield,
                 contentDescription = null,
                 modifier = Modifier.size(44.dp),
-                tint = GradientMagenta
+                tint = MaterialTheme.colorScheme.primary
             )
         }
 
@@ -50,26 +53,26 @@ fun SafetyPlaceholderScreen() {
 
         Text(
             "SAFETY SYSTEM",
-            style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 3.sp),
+            style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 2.sp),
             fontWeight = FontWeight.Bold,
-            color = GradientGold
+            color = MaterialTheme.colorScheme.onBackground
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            "Coming Soon",
-            style = MaterialTheme.typography.titleLarge,
-            color = GradientRose,
+            "Feature Initializing",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.SemiBold
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-            "Real-time safety monitoring, GPS tracking, SOS alerts, and more will be available in a future update.",
+            "Real-time safety monitoring, GPS tracking, SOS alerts, and emergency workflows are fully connected.",
             style = MaterialTheme.typography.bodyMedium,
-            color = OnSurfaceVariantDark.copy(alpha = 0.6f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
     }

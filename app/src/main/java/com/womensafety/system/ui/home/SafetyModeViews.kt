@@ -3,6 +3,7 @@ package com.womensafety.system.ui.home
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -19,6 +20,7 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.womensafety.system.data.model.UserProfile
 import com.womensafety.system.manager.TrinetraLocationManager
 import com.womensafety.system.service.LocationTrackingService
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.UserHomeViewModel
 import java.text.SimpleDateFormat
@@ -41,7 +43,7 @@ fun WorkingModeView(
     )
 
     if (!permissionState.allPermissionsGranted) {
-        GlassCard {
+        AppCard {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -51,7 +53,7 @@ fun WorkingModeView(
                 Icon(
                     imageVector = Icons.Filled.LocationOn,
                     contentDescription = null,
-                    tint = GradientAmber,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(44.dp)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -59,20 +61,21 @@ fun WorkingModeView(
                     "Location Access Required",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = OnSurfaceDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     "Working Mode requires precise location access to monitor your safety at work/college.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = { permissionState.launchMultiplePermissionRequest() },
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp)
                 ) {
                     Text("Grant Permission", fontWeight = FontWeight.Bold)
                 }
@@ -119,62 +122,64 @@ fun WorkingModeView(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // Current Location Status Card
-        GlassCard(
+        AppCard(
             accentGradient = Brush.horizontalGradient(
-                colors = listOf(GradientGold.copy(alpha = 0.1f), GradientAmber.copy(alpha = 0.05f))
+                colors = listOf(
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.04f)
+                )
             )
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
-                            .background(GradientGold.copy(alpha = 0.15f)),
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Filled.Work,
                             contentDescription = null,
-                            tint = GradientGold,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Workplace / College Mode Active",
+                            "Workplace / Campus Mode Active",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = OnSurfaceDark
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            "Interval: 15s • Last Update: $lastUpdatedTime",
+                            "Interval: 15s • Updated: $lastUpdatedTime",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = {
                         LocationTrackingService.startTracking(context, 15000L)
                     }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh Location", tint = GradientAmber)
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh Location", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    "CURRENT DETECTED LOCATION:",
+                    "DETECTED LOCATION:",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
                     fontWeight = FontWeight.Bold,
-                    color = OnSurfaceVariantDark
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = lastKnownLoc?.address ?: (locationError ?: "Resolving current address…"),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -191,7 +196,7 @@ fun WorkingModeView(
                         -1.0
                     }
                     val isAtWork = distance >= 0 && distance <= 200.0
-                    
+
                     Text(
                         text = if (isAtWork) "✓ INSIDE WORKPLACE SAFE ZONE" else "⚠️ OUTSIDE WORKPLACE SAFE ZONE",
                         style = MaterialTheme.typography.bodyMedium,
@@ -200,24 +205,24 @@ fun WorkingModeView(
                     )
                     if (distance >= 0 && !isAtWork) {
                         Text(
-                            text = "${String.format(Locale.US, "%.1f", distance / 1000.0)} km away from saved location",
+                            text = "${String.format(Locale.US, "%.1f", distance / 1000.0)} km away from designated safe zone",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (locationError != null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "⚠️ Showing Last Known ($locationError)",
+                            text = "Showing Last Known ($locationError)",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusPending
                         )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Saved Workplace: ${workAddr ?: "($workLat, $workLng)"}",
+                        text = "Designated Workplace: ${workAddr ?: "($workLat, $workLng)"}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 } else {
                     Text(
@@ -237,12 +242,12 @@ fun WorkingModeView(
                                 lastKnownLoc!!.address ?: "Workplace Location"
                             )
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = GradientGold.copy(alpha = 0.2f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GradientGold),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                         modifier = Modifier.fillMaxWidth().height(42.dp),
-                        shape = MaterialTheme.shapes.small
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("SAVE CURRENT LOCATION AS WORKPLACE", fontWeight = FontWeight.Bold, color = GradientGold, fontSize = 12.sp)
+                        Text("SAVE CURRENT LOCATION AS WORKPLACE", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                     }
                 }
             }
@@ -266,7 +271,7 @@ fun SleepingModeView(
     )
 
     if (!permissionState.allPermissionsGranted) {
-        GlassCard {
+        AppCard {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -276,7 +281,7 @@ fun SleepingModeView(
                 Icon(
                     imageVector = Icons.Filled.LocationOn,
                     contentDescription = null,
-                    tint = GradientAmber,
+                    tint = SecondaryViolet,
                     modifier = Modifier.size(44.dp)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -284,20 +289,21 @@ fun SleepingModeView(
                     "Location Access Required",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = OnSurfaceDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "Sleeping Mode requires location access to monitor your safety status periodically.",
+                    "Sleeping Mode requires location access to monitor safety status periodically.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = { permissionState.launchMultiplePermissionRequest() },
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryViolet),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp)
                 ) {
                     Text("Grant Permission", fontWeight = FontWeight.Bold)
                 }
@@ -344,62 +350,64 @@ fun SleepingModeView(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // Current Location Status Card
-        GlassCard(
+        AppCard(
             accentGradient = Brush.horizontalGradient(
-                colors = listOf(GradientRose.copy(alpha = 0.1f), GradientMagenta.copy(alpha = 0.05f))
+                colors = listOf(
+                    SecondaryViolet.copy(alpha = 0.12f),
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.04f)
+                )
             )
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
-                            .background(GradientRose.copy(alpha = 0.15f)),
+                            .background(SecondaryViolet.copy(alpha = 0.14f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Filled.NightsStay,
                             contentDescription = null,
-                            tint = GradientRose,
+                            tint = SecondaryViolet,
                             modifier = Modifier.size(22.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Sleeping Mode Standby Active",
+                            "Nighttime / Sleeping Mode Standby",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = OnSurfaceDark
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            "Interval: 60s • Last Update: $lastUpdatedTime",
+                            "Interval: 60s • Updated: $lastUpdatedTime",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = {
                         LocationTrackingService.startTracking(context, 60000L)
                     }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh Location", tint = GradientRose)
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh Location", tint = SecondaryViolet)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    "CURRENT SLEEPING LOCATION:",
+                    "DETECTED SLEEPING LOCATION:",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
                     fontWeight = FontWeight.Bold,
-                    color = OnSurfaceVariantDark
+                    color = SecondaryViolet
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = lastKnownLoc?.address ?: (locationError ?: "Resolving current address…"),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -416,7 +424,7 @@ fun SleepingModeView(
                         -1.0
                     }
                     val isAtHome = distance >= 0 && distance <= 200.0
-                    
+
                     Text(
                         text = if (isAtHome) "✓ INSIDE HOME SAFE ZONE" else "⚠️ OUTSIDE HOME SAFE ZONE",
                         style = MaterialTheme.typography.bodyMedium,
@@ -425,24 +433,24 @@ fun SleepingModeView(
                     )
                     if (distance >= 0 && !isAtHome) {
                         Text(
-                            text = "${String.format(Locale.US, "%.1f", distance / 1000.0)} km away from saved location",
+                            text = "${String.format(Locale.US, "%.1f", distance / 1000.0)} km away from saved home address",
                             style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (locationError != null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "⚠️ Showing Last Known ($locationError)",
+                            text = "Showing Last Known ($locationError)",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusPending
                         )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Saved Home: ${homeAddr ?: "($homeLat, $homeLng)"}",
+                        text = "Designated Home: ${homeAddr ?: "($homeLat, $homeLng)"}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 } else {
                     Text(
@@ -462,12 +470,12 @@ fun SleepingModeView(
                                 lastKnownLoc!!.address ?: "Home Location"
                             )
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = GradientRose.copy(alpha = 0.2f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GradientRose),
+                        colors = ButtonDefaults.buttonColors(containerColor = SecondaryViolet.copy(alpha = 0.15f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryViolet),
                         modifier = Modifier.fillMaxWidth().height(42.dp),
-                        shape = MaterialTheme.shapes.small
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("SAVE CURRENT LOCATION AS HOME", fontWeight = FontWeight.Bold, color = GradientRose, fontSize = 12.sp)
+                        Text("SAVE CURRENT LOCATION AS HOME", fontWeight = FontWeight.Bold, color = SecondaryViolet, fontSize = 12.sp)
                     }
                 }
             }

@@ -43,6 +43,8 @@ fun AppNavGraph(
     // Shared SetupWizardViewModel for all 5 setup steps
     val setupWizardViewModel: SetupWizardViewModel = viewModel()
     val emergencyContactViewModel: EmergencyContactViewModel = viewModel()
+    val tcHomeViewModel: TrustedContactHomeViewModel = viewModel()
+    val sharedSOSViewModel: SOSViewModel = viewModel()
 
     val isSafetyCheckActive by com.womensafety.system.manager.SafetyMonitoringManager.isSafetyCheckActive.collectAsState()
     LaunchedEffect(isSafetyCheckActive) {
@@ -68,9 +70,11 @@ fun AppNavGraph(
     val activeEvent by com.womensafety.system.manager.SOSManager.activeEvent.collectAsState()
     LaunchedEffect(activeEvent) {
         activeEvent?.let { event ->
-            navController.navigate(SOSAlertScreen(eventId = event.id)) {
-                popUpTo(UserHome) { inclusive = false }
-                launchSingleTop = true
+            if (event.status == com.womensafety.system.data.model.SOSStatus.ACTIVE && currentRoute?.contains("SOSAlertScreen") != true) {
+                navController.navigate(SOSAlertScreen(eventId = event.id)) {
+                    popUpTo(UserHome) { inclusive = false }
+                    launchSingleTop = true
+                }
             }
         }
     }
@@ -347,15 +351,26 @@ fun AppNavGraph(
                     onNavigateToTravelMode = { navController.navigate(com.womensafety.system.ui.navigation.TravelMode) },
                     onNavigateToLiveMap = { targetId ->
                         navController.navigate(LiveLocationMapScreen(userId = targetId))
+                    },
+                    onNavigateToHeartRate = {
+                        navController.navigate(HeartRateMonitoringScreen)
+                    },
+                    onNavigateToContacts = {
+                        navController.navigate(UserContacts) {
+                            popUpTo(navController.graph.startDestinationId) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 )
             }
 
             composable<UserSafety> {
-                val sosViewModel: SOSViewModel = viewModel()
                 val profileViewModel: UserProfileViewModel = viewModel()
                 com.womensafety.system.ui.safety.SafetyScreen(
-                    sosViewModel = sosViewModel,
+                    sosViewModel = sharedSOSViewModel,
                     profileViewModel = profileViewModel,
                     onNavigateToAlert = { eventId ->
                         navController.navigate(SOSAlertScreen(eventId = eventId))
@@ -395,12 +410,23 @@ fun AppNavGraph(
                     onNavigateToSetupWizard = {
                         navController.navigate(WelcomeSetupScreen)
                     },
+                    onNavigateToHeartRate = {
+                        navController.navigate(HeartRateMonitoringScreen)
+                    },
                     onLogout = {
                         authViewModel.signOut()
                         navController.navigate(RoleSelection) {
                             popUpTo(0) { inclusive = true }
                         }
                     }
+                )
+            }
+
+            composable<HeartRateMonitoringScreen> {
+                val hrViewModel: HeartRateMonitoringViewModel = viewModel()
+                com.womensafety.system.ui.health.HeartRateMonitoringScreen(
+                    viewModel = hrViewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -477,10 +503,9 @@ fun AppNavGraph(
             // ─── Emergency SOS Screens ───────────────────────
             composable<SOSAlertScreen> { backStackEntry ->
                 val route = backStackEntry.toRoute<SOSAlertScreen>()
-                val sosViewModel: SOSViewModel = viewModel()
                 com.womensafety.system.ui.sos.SOSAlertScreen(
                     eventId = route.eventId,
-                    viewModel = sosViewModel,
+                    viewModel = sharedSOSViewModel,
                     onNavigateToHome = {
                         navController.navigate(UserHome) {
                             popUpTo(UserHome) { inclusive = true }
@@ -490,9 +515,8 @@ fun AppNavGraph(
             }
 
             composable<SOSHistoryScreen> {
-                val sosViewModel: SOSViewModel = viewModel()
                 com.womensafety.system.ui.sos.SOSHistoryScreen(
-                    viewModel = sosViewModel,
+                    viewModel = sharedSOSViewModel,
                     onNavigateToDetail = { eventId ->
                         navController.navigate(SOSHistoryDetailScreen(eventId = eventId))
                     },
@@ -502,10 +526,9 @@ fun AppNavGraph(
 
             composable<SOSHistoryDetailScreen> { backStackEntry ->
                 val route = backStackEntry.toRoute<SOSHistoryDetailScreen>()
-                val sosViewModel: SOSViewModel = viewModel()
                 com.womensafety.system.ui.sos.SOSHistoryDetailScreen(
                     eventId = route.eventId,
-                    viewModel = sosViewModel,
+                    viewModel = sharedSOSViewModel,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -588,7 +611,6 @@ fun AppNavGraph(
 
             // ─── TC Main Screens ─────────────────────────────
             composable<TCHome> {
-                val tcHomeViewModel: TrustedContactHomeViewModel = viewModel()
                 TCHomeScreen(
                     viewModel = tcHomeViewModel,
                     onNavigateToAddUser = { navController.navigate(AddUser) },
@@ -599,7 +621,6 @@ fun AppNavGraph(
             }
 
             composable<AddUser> {
-                val tcHomeViewModel: TrustedContactHomeViewModel = viewModel()
                 AddUserScreen(
                     viewModel = tcHomeViewModel,
                     onBack = { navController.popBackStack() }
@@ -607,7 +628,6 @@ fun AppNavGraph(
             }
 
             composable<TCProfile> {
-                val tcHomeViewModel: TrustedContactHomeViewModel = viewModel()
                 TCProfileScreen(
                     viewModel = tcHomeViewModel,
                     onLogout = {

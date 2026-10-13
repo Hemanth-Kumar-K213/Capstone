@@ -38,10 +38,16 @@ class UserHomeViewModel(
     val homeState: StateFlow<HomeState> = _homeState.asStateFlow()
 
     fun loadHomeData() {
-        val userId = authRepository.currentUserId ?: return
+        val userId = authRepository.currentUserId
+        if (userId == null) {
+            _homeState.value = _homeState.value.copy(isLoading = false)
+            return
+        }
 
         viewModelScope.launch {
-            _homeState.value = _homeState.value.copy(isLoading = true)
+            if (_homeState.value.userProfile == null) {
+                _homeState.value = _homeState.value.copy(isLoading = true)
+            }
 
             // Load user profile
             val profileResult = userRepository.getUserProfile(userId)

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,7 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.PrimaryButton
+import com.womensafety.system.ui.components.SecondaryButton
 import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
@@ -50,8 +53,9 @@ fun SOSReceivedScreen(
                 title = {
                     Text(
                         "Emergency Alert Received",
-                        color = StatusDenied,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = EmergencyRed
                     )
                 },
                 navigationIcon = {
@@ -59,14 +63,16 @@ fun SOSReceivedScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -75,8 +81,8 @@ fun SOSReceivedScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            StatusDenied.copy(alpha = 0.2f),
-                            BackgroundDark
+                            EmergencyRed.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.background
                         )
                     )
                 )
@@ -84,53 +90,61 @@ fun SOSReceivedScreen(
                 .padding(20.dp)
         ) {
             // Urgent Alert Card
-            GlassCard(
-                accentGradient = Brush.horizontalGradient(
-                    colors = listOf(StatusDenied.copy(alpha = 0.3f), StatusDenied.copy(alpha = 0.1f))
-                )
+            Surface(
+                color = EmergencyRed.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, EmergencyRed.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(CircleShape)
-                                .background(StatusDenied.copy(alpha = 0.25f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.Warning, contentDescription = null, tint = StatusDenied, modifier = Modifier.size(26.dp))
-                        }
+                Row(
+                    modifier = Modifier.padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(EmergencyRed.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = EmergencyRed,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
 
-                        Spacer(modifier = Modifier.width(14.dp))
+                    Spacer(modifier = Modifier.width(16.dp))
 
-                        Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "🚨 ${liveLocation?.userName?.ifBlank { "Connected User" } ?: "Connected User"} NEEDS HELP!",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = EmergencyRed
+                        )
+
+                        if (activeSOSEvent != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "🚨 ${liveLocation?.userName?.ifBlank { "Connected User" } ?: "Connected User"} NEEDS HELP!",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Black,
-                                color = StatusDenied
+                                "Triggered: ${DateUtils.formatDateTime(activeSOSEvent!!.triggeredAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-
-                            if (activeSOSEvent != null) {
-                                Text(
-                                    "Triggered: ${DateUtils.formatDateTime(activeSOSEvent!!.triggeredAt)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OnSurfaceDark
-                                )
-                            }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // OpenStreetMap (OSMDroid) Live Map Preview
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(280.dp)
-                    .clip(MaterialTheme.shapes.large)
+                    .clip(RoundedCornerShape(16.dp))
             ) {
                 if (liveLocation != null && (liveLocation!!.latitude != 0.0 || liveLocation!!.longitude != 0.0)) {
                     SafetyMapTracker(
@@ -144,52 +158,52 @@ fun SOSReceivedScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(SurfaceVariantDark),
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = StatusDenied)
+                        CircularProgressIndicator(color = EmergencyRed, strokeWidth = 3.dp)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Address & Accuracy Info
             if (liveLocation != null) {
-                GlassCard {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "CURRENT LOCATION",
-                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                            color = GradientGold,
-                            fontWeight = FontWeight.Bold
-                        )
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "CURRENT LOCATION",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
 
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (!liveLocation!!.address.isNullOrBlank()) {
+                        Text(
+                            liveLocation!!.address!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
-
-                        if (!liveLocation!!.address.isNullOrBlank()) {
-                            Text(
-                                liveLocation!!.address!!,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = OnSurfaceDark
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                        }
-
-                        Text(
-                            "Lat: ${String.format("%.5f", liveLocation!!.latitude)}, Lng: ${String.format("%.5f", liveLocation!!.longitude)} (±${liveLocation!!.accuracy.toInt()}m)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = GradientAmber
-                        )
                     }
+
+                    Text(
+                        "Lat: ${String.format("%.5f", liveLocation!!.latitude)}, Lng: ${String.format("%.5f", liveLocation!!.longitude)} (±${liveLocation!!.accuracy.toInt()}m)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // Action Buttons
-            Button(
+            PrimaryButton(
+                text = "Start Turn-by-Turn Navigation",
                 onClick = {
                     if (liveLocation != null) {
                         MapUtils.openExternalMap(
@@ -200,30 +214,16 @@ fun SOSReceivedScreen(
                         )
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
                 enabled = liveLocation != null,
-                colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Icon(Icons.Filled.Navigation, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("START TURN-BY-TURN NAVIGATION", fontWeight = FontWeight.Bold)
-            }
+                icon = Icons.Filled.Navigation
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            OutlinedButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurfaceDark)
-            ) {
-                Text("DISMISS ALERT", fontWeight = FontWeight.Bold)
-            }
+            SecondaryButton(
+                text = "Dismiss Alert",
+                onClick = onBack
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }

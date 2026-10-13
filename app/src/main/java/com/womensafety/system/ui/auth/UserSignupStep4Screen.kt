@@ -1,17 +1,21 @@
 package com.womensafety.system.ui.auth
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.womensafety.system.ui.components.*
 import com.womensafety.system.ui.theme.*
@@ -25,6 +29,7 @@ fun UserSignupStep4Screen(
     onBack: () -> Unit
 ) {
     val state by viewModel.signupState.collectAsState()
+    val isDark = LocalDarkTheme.current
 
     // Auto-trigger duplicate check when arriving at this step
     LaunchedEffect(Unit) {
@@ -38,82 +43,109 @@ fun UserSignupStep4Screen(
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Account Check") },
+                title = {
+                    Text(
+                        "Account Check",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
+        val bgGradient = if (isDark) {
+            Brush.verticalGradient(
+                colors = listOf(Color(0xFF1E1B4B).copy(alpha = 0.4f), BackgroundDark)
+            )
+        } else {
+            Brush.verticalGradient(
+                colors = listOf(Color(0xFFEEF2FF), BackgroundLight)
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(bgGradient)
                 .padding(padding)
+                .imePadding()
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             StepIndicator(currentStep = 4, totalSteps = 6)
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                "Account Check",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                "Checking for existing accounts…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            if (state.isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(48.dp),
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Security Audit",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "Verifying your information…",
+                    text = "Checking system registry for duplicate accounts…",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            if (state.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(54.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 3.5.dp
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = "Validating registration credentials…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
             } else if (state.error != null) {
-                // Duplicate found
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
+                AppCard(
+                    accentGradient = Brush.horizontalGradient(
+                        colors = listOf(EmergencyRed.copy(alpha = 0.15f), EmergencyRed.copy(alpha = 0.05f))
                     )
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(18.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Filled.Error,
+                            Icons.Filled.ErrorOutline,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
+                            tint = EmergencyRed,
+                            modifier = Modifier.size(28.dp)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Text(
-                            state.error!!,
+                            text = state.error!!,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            color = EmergencyRed,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -121,31 +153,31 @@ fun UserSignupStep4Screen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 SecondaryButton(
-                    text = "GO BACK",
+                    text = "GO BACK & EDIT DETAILS",
                     onClick = onBack
                 )
             } else if (state.duplicateCheckDone) {
-                // No duplicate — auto-advancing
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                AppCard(
+                    accentGradient = Brush.horizontalGradient(
+                        colors = listOf(StatusApproved.copy(alpha = 0.15f), StatusApproved.copy(alpha = 0.05f))
                     )
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(18.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             Icons.Filled.CheckCircle,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.tertiary
+                            tint = StatusApproved,
+                            modifier = Modifier.size(28.dp)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
                         Text(
-                            "No existing account found. You can proceed.",
+                            text = "No existing account found. Ready for password setup.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = StatusApproved,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }

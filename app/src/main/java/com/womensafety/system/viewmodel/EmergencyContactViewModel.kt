@@ -37,8 +37,10 @@ class EmergencyContactViewModel(
             _state.value = _state.value.copy(isLoading = true, error = null)
             val result = userRepository.getEmergencyContacts()
             if (result.isSuccess) {
+                val contacts = result.getOrNull() ?: emptyList()
+                com.womensafety.system.manager.SOSManager.updateCachedEmergencyContacts(contacts)
                 _state.value = _state.value.copy(
-                    contacts = result.getOrNull() ?: emptyList(),
+                    contacts = contacts,
                     isLoading = false
                 )
             } else {

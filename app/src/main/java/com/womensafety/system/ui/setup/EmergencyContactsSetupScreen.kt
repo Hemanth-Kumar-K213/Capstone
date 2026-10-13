@@ -14,16 +14,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.womensafety.system.data.model.EmergencyContact
-import com.womensafety.system.ui.components.AppTextField
-import com.womensafety.system.ui.components.ErrorMessage
-import com.womensafety.system.ui.components.PrimaryButton
-import com.womensafety.system.ui.components.StepIndicator
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.*
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.Validators
 import com.womensafety.system.viewmodel.SetupWizardViewModel
@@ -35,6 +32,7 @@ fun EmergencyContactsSetupScreen(
     onBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val isDark = LocalDarkTheme.current
     var showAddDialog by remember { mutableStateOf(false) }
 
     var dialogName by remember { mutableStateOf("") }
@@ -47,20 +45,21 @@ fun EmergencyContactsSetupScreen(
                 showAddDialog = false
                 dialogError = null
             },
-            containerColor = SurfaceVariantDark,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(20.dp),
             title = {
                 Text(
                     "Add Emergency Contact",
-                    color = OnSurfaceDark,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Column {
                     Text(
-                        "Enter the contact's name and phone number (e.g. +91XXXXXXXXXX):",
+                        "Enter the contact's name and mobile number (e.g. +91XXXXXXXXXX):",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -73,7 +72,7 @@ fun EmergencyContactsSetupScreen(
                         },
                         label = "Contact Name",
                         leadingIcon = {
-                            Icon(Icons.Filled.Person, contentDescription = null, tint = GradientAmber)
+                            Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         }
                     )
 
@@ -88,7 +87,7 @@ fun EmergencyContactsSetupScreen(
                         label = "Phone Number",
                         keyboardType = KeyboardType.Phone,
                         leadingIcon = {
-                            Icon(Icons.Filled.Phone, contentDescription = null, tint = GradientAmber)
+                            Icon(Icons.Filled.Phone, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         }
                     )
 
@@ -96,8 +95,9 @@ fun EmergencyContactsSetupScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = dialogError ?: "",
-                            color = StatusDenied,
-                            style = MaterialTheme.typography.bodySmall
+                            color = EmergencyRed,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -125,7 +125,8 @@ fun EmergencyContactsSetupScreen(
                             dialogError = state.error
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientAmber)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Text("ADD CONTACT", fontWeight = FontWeight.Bold)
                 }
@@ -135,143 +136,153 @@ fun EmergencyContactsSetupScreen(
                     showAddDialog = false
                     dialogError = null
                 }) {
-                    Text("Cancel", color = OnSurfaceVariantDark)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
     }
 
-    Column(
+    val bgGradient = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF1E1B4B).copy(alpha = 0.5f), BackgroundDark)
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFEEF2FF), BackgroundLight)
+        )
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        GradientDeepPurple.copy(alpha = 0.8f),
-                        BackgroundDark,
-                        BackgroundDark
-                    )
-                )
-            )
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp)
+            .background(bgGradient)
     ) {
-        StepIndicator(currentStep = 2, totalSteps = 4)
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Text(
-            text = "EMERGENCY CONTACTS",
-            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-            color = GradientGold,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "Add Emergency Contacts",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = OnSurfaceDark
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "These people will receive SMS alerts with your real-time GPS location during emergencies. They don't need to install this app.",
-            style = MaterialTheme.typography.bodySmall,
-            color = OnSurfaceVariantDark
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        ErrorMessage(state.error)
-
-        // Contact count and Add button
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState())
         ) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            StepIndicator(currentStep = 2, totalSteps = 4)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text(
-                text = "${state.emergencyContactsList.size} Contact(s) Added",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (state.emergencyContactsList.isNotEmpty()) StatusApproved else StatusPending
+                text = "EMERGENCY CONTACTS",
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
             )
 
-            OutlinedButton(
-                onClick = { showAddDialog = true },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GradientRose),
-                shape = RoundedCornerShape(12.dp)
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "Register Contacts for SMS",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "These contacts will receive cellular SMS alerts with your live coordinates whenever emergency SOS is triggered. App installation is not required for them.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            ErrorMessage(state.error)
+
+            // Contact count and Add button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("ADD CONTACT", fontWeight = FontWeight.Bold)
-            }
-        }
+                Text(
+                    text = "${state.emergencyContactsList.size} Contact(s) Added",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (state.emergencyContactsList.isNotEmpty()) StatusApproved else StatusPending
+                )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (state.emergencyContactsList.isEmpty()) {
-            GlassCard {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                OutlinedButton(
+                    onClick = { showAddDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .clip(CircleShape)
-                            .background(GradientRose.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.ContactPhone,
-                            contentDescription = null,
-                            tint = GradientRose,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "No emergency contacts added yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = OnSurfaceDark
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "You must add at least 1 emergency contact (e.g. parent, guardian, partner) to proceed.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("ADD CONTACT", fontWeight = FontWeight.Bold)
                 }
             }
-        } else {
-            state.emergencyContactsList.forEach { contact ->
-                EmergencyContactItemCard(
-                    contact = contact,
-                    onDelete = { viewModel.removeEmergencyContact(contact.id) }
-                )
-                Spacer(modifier = Modifier.height(10.dp))
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (state.emergencyContactsList.isEmpty()) {
+                AppCard {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.ContactPhone,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            "No emergency contacts registered yet.",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "Add at least 1 emergency contact (such as a parent, friend, or guardian) to enable SOS dispatch.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                state.emergencyContactsList.forEach { contact ->
+                    EmergencyContactItemCard(
+                        contact = contact,
+                        onDelete = { viewModel.removeEmergencyContact(contact.id) }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Next Button (disabled if < 1 contact)
+            PrimaryButton(
+                text = "CONTINUE TO SOS PREFERENCES",
+                enabled = state.emergencyContactsList.isNotEmpty(),
+                onClick = onNext
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Next Button (disabled if < 1 contact)
-        PrimaryButton(
-            text = "CONTINUE TO SOS PREFERENCES",
-            enabled = state.emergencyContactsList.isNotEmpty(),
-            onClick = onNext
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -280,7 +291,7 @@ private fun EmergencyContactItemCard(
     contact: EmergencyContact,
     onDelete: () -> Unit
 ) {
-    GlassCard {
+    AppCard {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -289,15 +300,15 @@ private fun EmergencyContactItemCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .clip(CircleShape)
-                    .background(GradientRose.copy(alpha = 0.15f)),
+                    .background(PrimaryIndigo.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Filled.Person,
                     contentDescription = null,
-                    tint = GradientRose,
+                    tint = PrimaryIndigo,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -309,13 +320,13 @@ private fun EmergencyContactItemCard(
                     text = contact.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = OnSurfaceDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = contact.phone,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = OnSurfaceVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -323,7 +334,7 @@ private fun EmergencyContactItemCard(
                 Icon(
                     Icons.Filled.Delete,
                     contentDescription = "Remove contact",
-                    tint = StatusDenied.copy(alpha = 0.8f)
+                    tint = EmergencyRed.copy(alpha = 0.8f)
                 )
             }
         }

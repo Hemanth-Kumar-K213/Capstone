@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -21,8 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.womensafety.system.data.model.SOSEvent
 import com.womensafety.system.data.model.SOSStatus
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.components.EmptyStateCard
-import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.viewmodel.SOSViewModel
@@ -59,8 +60,9 @@ fun SOSHistoryScreen(
                 title = {
                     Text(
                         "SOS Incident History",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -68,14 +70,16 @@ fun SOSHistoryScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -83,12 +87,15 @@ fun SOSHistoryScreen(
                 .padding(paddingValues)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
                     )
                 )
                 .padding(horizontal = 20.dp)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Filter Chips
             LazyRow(
@@ -96,8 +103,9 @@ fun SOSHistoryScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(filterOptions) { filter ->
+                    val isSelected = selectedFilter == filter
                     FilterChip(
-                        selected = selectedFilter == filter,
+                        selected = isSelected,
                         onClick = { selectedFilter = filter },
                         label = {
                             Text(
@@ -107,25 +115,38 @@ fun SOSHistoryScreen(
                                     "RESOLVED" -> "Resolved"
                                     "FALSE_ALARM" -> "False Alarms"
                                     else -> filter
-                                }
+                                },
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 13.sp
                             )
                         },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = GradientAmber.copy(alpha = 0.2f),
-                            selectedLabelColor = GradientAmber
-                        )
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = isSelected,
+                            borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = GradientAmber)
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp
+                    )
                 }
             } else if (filteredEvents.isEmpty()) {
                 EmptyStateCard(
@@ -136,8 +157,8 @@ fun SOSHistoryScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 28.dp)
                 ) {
                     items(filteredEvents, key = { it.id }) { event ->
                         SOSHistoryCard(
@@ -156,109 +177,117 @@ private fun SOSHistoryCard(
     event: SOSEvent,
     onClick: () -> Unit
 ) {
-    GlassCard(
-        modifier = Modifier.clickable { onClick() },
-        accentGradient = if (event.status == SOSStatus.ACTIVE) {
-            Brush.horizontalGradient(
-                colors = listOf(StatusDenied.copy(alpha = 0.18f), StatusDenied.copy(alpha = 0.05f))
-            )
-        } else null
+    val statusColor = when (event.status) {
+        SOSStatus.ACTIVE -> EmergencyRed
+        SOSStatus.RESOLVED -> StatusApproved
+        else -> StatusPending
+    }
+
+    AppCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            when (event.status) {
-                                SOSStatus.ACTIVE -> StatusDenied.copy(alpha = 0.15f)
-                                SOSStatus.RESOLVED -> StatusApproved.copy(alpha = 0.15f)
-                                else -> StatusPending.copy(alpha = 0.15f)
-                            }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        when (event.status) {
-                            SOSStatus.ACTIVE -> Icons.Filled.Warning
-                            SOSStatus.RESOLVED -> Icons.Filled.CheckCircle
-                            else -> Icons.Filled.Info
-                        },
-                        contentDescription = null,
-                        tint = when (event.status) {
-                            SOSStatus.ACTIVE -> StatusDenied
-                            SOSStatus.RESOLVED -> StatusApproved
-                            else -> StatusPending
-                        },
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        DateUtils.formatDateTime(event.triggeredAt),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = OnSurfaceDark
-                    )
-                    Text(
-                        "Trigger Method: ${event.triggerMethod.name}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark
-                    )
-                }
-
-                Surface(
-                    color = when (event.status) {
-                        SOSStatus.ACTIVE -> StatusDenied.copy(alpha = 0.2f)
-                        SOSStatus.RESOLVED -> StatusApproved.copy(alpha = 0.2f)
-                        else -> StatusPending.copy(alpha = 0.2f)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(statusColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    when (event.status) {
+                        SOSStatus.ACTIVE -> Icons.Filled.Warning
+                        SOSStatus.RESOLVED -> Icons.Filled.CheckCircle
+                        else -> Icons.Filled.Info
                     },
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Text(
-                        event.status.name,
-                        color = when (event.status) {
-                            SOSStatus.ACTIVE -> StatusDenied
-                            SOSStatus.RESOLVED -> StatusApproved
-                            else -> StatusPending
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
+                    contentDescription = null,
+                    tint = statusColor,
+                    modifier = Modifier.size(22.dp)
+                )
             }
 
-            if (!event.address.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    DateUtils.formatDateTime(event.triggeredAt),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    "Trigger: ${event.triggerMethod.name}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Surface(
+                color = statusColor.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    event.status.name,
+                    color = statusColor,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+        }
+
+        if (!event.address.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Place,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     event.address!!,
                     style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
                 )
             }
+        }
 
-            Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+        Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "SMS: ${event.smsSent} • Call: ${if (event.callMade) "Dispatched" else "No"}",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "SMS Dispatched: ${event.smsSent} • Call: ${if (event.callMade) "Yes" else "No"}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = GradientAmber
+                    "View Report",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
                 Icon(
                     Icons.Filled.ChevronRight,
                     contentDescription = null,
-                    tint = OnSurfaceVariantDark.copy(alpha = 0.6f)
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }

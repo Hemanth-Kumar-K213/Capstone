@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -19,7 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.womensafety.system.data.model.LocationServiceState
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.PrimaryButton
+import com.womensafety.system.ui.components.SecondaryButton
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.viewmodel.LocationViewModel
@@ -46,8 +49,9 @@ fun LocationSettingsScreen(
                 title = {
                     Text(
                         "Location Settings",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -55,14 +59,16 @@ fun LocationSettingsScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -70,160 +76,163 @@ fun LocationSettingsScreen(
                 .padding(paddingValues)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
                     )
                 )
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             Text(
                 text = "GPS TRACKING SERVICE",
-                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                color = GradientGold,
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Manage background GPS streaming to share your coordinates with approved trusted contacts.",
+                text = "Manage background GPS streaming to share your coordinates with approved trusted contacts in real-time.",
                 style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceVariantDark
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Service Status Card
-            GlassCard(
-                accentGradient = Brush.horizontalGradient(
-                    colors = listOf(
-                        GradientAmber.copy(alpha = 0.08f),
-                        GradientGold.copy(alpha = 0.04f)
-                    )
-                )
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (serviceState == LocationServiceState.TRACKING) StatusApproved.copy(alpha = 0.15f)
-                                    else StatusDenied.copy(alpha = 0.15f)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Filled.LocationOn,
-                                contentDescription = null,
-                                tint = if (serviceState == LocationServiceState.TRACKING) StatusApproved else StatusDenied,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Service Status",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = OnSurfaceVariantDark
-                            )
-                            Text(
-                                when (serviceState) {
-                                    LocationServiceState.TRACKING -> "Active (Tracking)"
-                                    LocationServiceState.PAUSED -> "Paused"
-                                    LocationServiceState.STARTING -> "Initializing..."
-                                    LocationServiceState.STOPPING -> "Stopping..."
-                                    else -> "Inactive"
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (serviceState == LocationServiceState.TRACKING) StatusApproved else OnSurfaceDark
-                            )
-                        }
+            AppCard(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val isTracking = serviceState == LocationServiceState.TRACKING
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isTracking) StatusApproved.copy(alpha = 0.15f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.LocationOn,
+                            contentDescription = null,
+                            tint = if (isTracking) StatusApproved else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(26.dp)
+                        )
                     }
 
-                    if (currentLocation != null) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        HorizontalDivider(color = GlassBorder)
-                        Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.width(16.dp))
 
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Latest Coordinate Fix",
+                            "Service Status",
                             style = MaterialTheme.typography.labelSmall,
-                            color = OnSurfaceVariantDark
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            "Lat: ${String.format("%.5f", currentLocation!!.latitude)}, Lng: ${String.format("%.5f", currentLocation!!.longitude)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = OnSurfaceDark
-                        )
-
-                        if (!currentLocation!!.address.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                currentLocation!!.address!!,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OnSurfaceVariantDark
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Updated: ${DateUtils.formatDateTime(currentLocation!!.timestamp)} (±${currentLocation!!.accuracy.toInt()}m)",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = GradientAmber
+                            when (serviceState) {
+                                LocationServiceState.TRACKING -> "Active (Streaming Coordinates)"
+                                LocationServiceState.PAUSED -> "Paused"
+                                LocationServiceState.STARTING -> "Starting..."
+                                LocationServiceState.STOPPING -> "Stopping..."
+                                else -> "Inactive"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isTracking) StatusApproved else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+                if (currentLocation != null) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-            // Update Interval Customization
-            GlassCard {
-                Column(modifier = Modifier.padding(20.dp)) {
                     Text(
-                        "Update Interval",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = OnSurfaceDark
+                        "Latest Coordinate Fix",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Current: ${sliderValue.toInt()} seconds (boosts to 5s during SOS)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = GradientAmber
+                        "Lat: ${String.format("%.5f", currentLocation!!.latitude)}, Lng: ${String.format("%.5f", currentLocation!!.longitude)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Slider(
-                        value = sliderValue,
-                        onValueChange = { sliderValue = it },
-                        onValueChangeFinished = {
-                            viewModel.updateInterval(context, (sliderValue.toInt() * 1000).toLong())
-                        },
-                        valueRange = 5f..60f,
-                        steps = 10,
-                        colors = SliderDefaults.colors(
-                            thumbColor = GradientAmber,
-                            activeTrackColor = GradientAmber,
-                            inactiveTrackColor = OutlineDark
+                    if (!currentLocation!!.address.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            currentLocation!!.address!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("5 sec (High Battery)", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = OnSurfaceVariantDark)
-                        Text("60 sec (Battery Saver)", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = OnSurfaceVariantDark)
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Updated: ${DateUtils.formatDateTime(currentLocation!!.timestamp)} (±${currentLocation!!.accuracy.toInt()}m accuracy)",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Update Interval Customization
+            AppCard(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "UPDATE INTERVAL",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Current: ${sliderValue.toInt()} seconds (boosts to 5s automatically during SOS)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Slider(
+                    value = sliderValue,
+                    onValueChange = { sliderValue = it },
+                    onValueChangeFinished = {
+                        viewModel.updateInterval(context, (sliderValue.toInt() * 1000).toLong())
+                    },
+                    valueRange = 5f..60f,
+                    steps = 10,
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "5s (High Precision)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "60s (Battery Saver)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -231,131 +240,102 @@ fun LocationSettingsScreen(
 
             // Service Control Buttons
             if (serviceState == LocationServiceState.TRACKING) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Button(
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    FilledTonalButton(
                         onClick = { viewModel.pauseLocationTracking(context) },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = GradientGold),
-                        shape = MaterialTheme.shapes.medium
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("PAUSE", fontWeight = FontWeight.Bold)
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
-
                     Button(
                         onClick = { viewModel.stopLocationTracking(context) },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
-                        shape = MaterialTheme.shapes.medium
+                        colors = ButtonDefaults.buttonColors(containerColor = EmergencyRed),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp), tint = OnPrimary)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("STOP", fontWeight = FontWeight.Bold)
+                        Text("STOP", fontWeight = FontWeight.Bold, color = OnPrimary)
                     }
                 }
             } else if (serviceState == LocationServiceState.PAUSED) {
-                Row(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Button(
                         onClick = { viewModel.resumeLocationTracking(context) },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                        shape = MaterialTheme.shapes.medium
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp), tint = OnPrimary)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("RESUME", fontWeight = FontWeight.Bold)
+                        Text("RESUME", fontWeight = FontWeight.Bold, color = OnPrimary)
                     }
-
-                    Spacer(modifier = Modifier.width(12.dp))
 
                     Button(
                         onClick = { viewModel.stopLocationTracking(context) },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
-                        shape = MaterialTheme.shapes.medium
+                        colors = ButtonDefaults.buttonColors(containerColor = EmergencyRed),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp), tint = OnPrimary)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("STOP", fontWeight = FontWeight.Bold)
+                        Text("STOP", fontWeight = FontWeight.Bold, color = OnPrimary)
                     }
                 }
             } else {
-                Button(
+                PrimaryButton(
+                    text = "Start Location Tracking",
                     onClick = { viewModel.startLocationTracking(context) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("START LOCATION TRACKING", fontWeight = FontWeight.Bold)
-                }
+                    icon = Icons.Filled.PlayArrow
+                )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // History Button
-            OutlinedButton(
+            SecondaryButton(
+                text = "View Location History",
                 onClick = onNavigateToHistory,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurfaceDark)
-            ) {
-                Icon(Icons.Filled.History, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("VIEW LOCATION HISTORY", fontWeight = FontWeight.Bold)
-            }
+                icon = Icons.Filled.History
+            )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Diagnostics Button
-            OutlinedButton(
+            SecondaryButton(
+                text = "Run GPS Diagnostics",
                 onClick = onNavigateToDiagnostics,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GradientAmber),
-                border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber)
-            ) {
-                Icon(Icons.Filled.GpsFixed, contentDescription = null, modifier = Modifier.size(20.dp), tint = GradientAmber)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("RUN GPS DIAGNOSTICS", fontWeight = FontWeight.Bold)
-            }
+                icon = Icons.Filled.GpsFixed
+            )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Map Test Button
-            OutlinedButton(
+            SecondaryButton(
+                text = "Run Map Test",
                 onClick = onNavigateToMapTest,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = GradientAmber),
-                border = androidx.compose.foundation.BorderStroke(1.dp, GradientAmber)
-            ) {
-                Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(20.dp), tint = GradientAmber)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("RUN MAP TEST", fontWeight = FontWeight.Bold)
-            }
+                icon = Icons.Filled.Map
+            )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 }

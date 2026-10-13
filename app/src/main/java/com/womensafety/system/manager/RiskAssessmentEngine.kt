@@ -1,5 +1,7 @@
 package com.womensafety.system.manager
 
+import com.womensafety.system.data.health.model.HealthDataFreshness
+import com.womensafety.system.data.health.model.HealthRiskSignal
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.model.SafetyMode
 import kotlin.math.abs
@@ -20,6 +22,43 @@ object RiskAssessmentEngine {
         val activeAnomalies: List<String>
     )
 
+    data class CapstoneScenarioResult(
+        val routeDeviationContribution: Int,
+        val lateNightContribution: Int,
+        val heartRateSpikeContribution: Int,
+        val totalRiskScore: Int,
+        val isConfirmationPromptTriggered: Boolean,
+        val isCriticalRisk: Boolean
+    )
+
+    /**
+     * Exact evaluation of the Capstone Report documented scenario:
+     * - Route deviation: +3
+     * - Late-night travel: +2
+     * - Initial risk score: 5 (triggers safety confirmation prompt)
+     * - 60-second response window
+     * - Abnormal heart-rate spike: +4
+     * - Updated risk score: 9 (Critical risk)
+     */
+    fun evaluateCapstoneScenario(
+        isRouteDeviated: Boolean,
+        isLateNight: Boolean,
+        isHeartRateSpike: Boolean
+    ): CapstoneScenarioResult {
+        val routeScore = if (isRouteDeviated) 3 else 0
+        val lateNightScore = if (isLateNight) 2 else 0
+        val hrScore = if (isHeartRateSpike) 4 else 0
+        val total = routeScore + lateNightScore + hrScore
+        return CapstoneScenarioResult(
+            routeDeviationContribution = routeScore,
+            lateNightContribution = lateNightScore,
+            heartRateSpikeContribution = hrScore,
+            totalRiskScore = total,
+            isConfirmationPromptTriggered = total >= 5,
+            isCriticalRisk = total >= 9
+        )
+    }
+
     /**
      * Assesses overall safety risk based on current state parameters.
      */
@@ -34,7 +73,8 @@ object RiskAssessmentEngine {
         currentTime: Long,
         isRouteDeviated: Boolean = false,
         isNoResponseToDeviation: Boolean = false,
-        activeOperatingMode: SafetyMode = SafetyMode.REGULAR
+        activeOperatingMode: SafetyMode = SafetyMode.REGULAR,
+        healthSignal: HealthRiskSignal? = null
     ): AssessmentResult {
         val anomalies = mutableListOf<String>()
         var score = 0
@@ -97,6 +137,27 @@ object RiskAssessmentEngine {
         if (activeOperatingMode != SafetyMode.SLEEPING && isLateNight) {
             anomalies.add("Late-Night Travel Context")
             score += (15 * weightMultiplier).toInt()
+        }
+
+        // 4.5. Physiological Health Signal (Smartwatch Heart Rate)
+        if (healthSignal != null && activeOperatingMode != SafetyMode.SLEEPING) {
+            when {
+                // Missing or stale data MUST NEVER be converted to danger
+                healthSignal.freshness == HealthDataFreshness.UNAVAILABLE || healthSignal.freshness == HealthDataFreshness.STALE -> {
+                    // Do not inflate risk score; preserve safety baseline
+                }
+                healthSignal.isObservationOnly -> {
+                    // Observation Mode: log diagnostic anomaly without escalating risk score
+                    if (healthSignal.heartRateBpm != null) {
+                        anomalies.add("Observed Heart Rate: ${healthSignal.heartRateBpm} BPM (Observation Mode)")
+                    }
+                }
+                healthSignal.isAnomalousSpike -> {
+                    // Evaluated physiological anomaly
+                    anomalies.add("Abnormal Physiological Heart-Rate Spike")
+                    score += (25 * weightMultiplier).toInt()
+                }
+            }
         }
 
         // 5. Compounding Risk for multiple simultaneous anomalies

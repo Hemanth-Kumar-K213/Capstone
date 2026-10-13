@@ -34,29 +34,51 @@ class RelationshipRepository(
         userId: String,
         trustedContactId: String,
         userName: String = "",
-        tcName: String = ""
+        tcName: String = "",
+        tcPhone: String = ""
     ): Result<String> {
         // Check for existing relationship using deterministic doc ID
         val existing = firestoreManager.findExistingRelationship(userId, trustedContactId)
-        if (existing.isFailure) return Result.failure(existing.exceptionOrNull()!!)
-
         val existingRel = existing.getOrNull()
+
         if (existingRel != null) {
-            return when (existingRel.permissionState) {
-                PermissionState.APPROVED -> Result.failure(Exception("Already connected"))
-                PermissionState.PENDING -> Result.failure(Exception("Request already pending"))
+            when (existingRel.permissionState) {
+                PermissionState.APPROVED -> return Result.failure(Exception("Already connected to this user"))
+                PermissionState.PENDING -> {
+                    // Update the request with refreshed timestamps and denormalized info
+                    val relationship = Relationship(
+                        id = FirestoreManager.relationshipDocId(userId, trustedContactId),
+                        userId = userId,
+                        trustedContactId = trustedContactId,
+                        userName = userName.ifBlank { existingRel.userName },
+                        trustedContactName = tcName.ifBlank { existingRel.trustedContactName },
+                        trustedContactPhone = tcPhone.ifBlank { existingRel.trustedContactPhone },
+                        status = PermissionState.PENDING.name,
+                        requestedAt = System.currentTimeMillis()
+                    )
+                    val result = firestoreManager.createRelationship(relationship)
+                    if (result.isSuccess) {
+                        try { firestoreManager.addConnectedUserIdToTc(trustedContactId, userId) } catch (_: Exception) {}
+                    }
+                    return result
+                }
                 PermissionState.DENIED, PermissionState.REVOKED, PermissionState.EXPIRED -> {
                     // Allow re-request by overwriting the same deterministic document
                     val relationship = Relationship(
                         id = FirestoreManager.relationshipDocId(userId, trustedContactId),
                         userId = userId,
                         trustedContactId = trustedContactId,
-                        userName = userName,
-                        trustedContactName = tcName,
+                        userName = userName.ifBlank { existingRel.userName },
+                        trustedContactName = tcName.ifBlank { existingRel.trustedContactName },
+                        trustedContactPhone = tcPhone.ifBlank { existingRel.trustedContactPhone },
                         status = PermissionState.PENDING.name,
                         requestedAt = System.currentTimeMillis()
                     )
-                    firestoreManager.createRelationship(relationship)
+                    val result = firestoreManager.createRelationship(relationship)
+                    if (result.isSuccess) {
+                        try { firestoreManager.addConnectedUserIdToTc(trustedContactId, userId) } catch (_: Exception) {}
+                    }
+                    return result
                 }
             }
         }
@@ -67,17 +89,17 @@ class RelationshipRepository(
             trustedContactId = trustedContactId,
             userName = userName,
             trustedContactName = tcName,
+            trustedContactPhone = tcPhone,
             status = PermissionState.PENDING.name,
             requestedAt = System.currentTimeMillis()
         )
         val result = firestoreManager.createRelationship(relationship)
 
         if (result.isSuccess) {
-            // Update both profiles' ID arrays for relationship listing
-            // TC can update their own profile
-            firestoreManager.addConnectedUserIdToTc(trustedContactId, userId)
-            // User profile update: TC cannot update user profile directly.
-            // The user's trustedContactIds will be updated when they approve.
+            // Update TC profile ID array for relationship listing
+            try {
+                firestoreManager.addConnectedUserIdToTc(trustedContactId, userId)
+            } catch (_: Exception) {}
         }
 
         return result
@@ -145,6 +167,8 @@ class RelationshipRepository(
         val userId = parts[0]
         val trustedContactId = parts[1]
 
+        firestoreManager.removeTrustedContactIdFromUser(userId, trustedContactId)
+
         return firestoreManager.updateRelationshipStatus(
             relationshipId,
             mapOf(
@@ -157,6 +181,49 @@ class RelationshipRepository(
     }
 
     /**
+     * Trusted Contact removes a monitored user (Approved or Pending).
+     * Cleans up the TC's connectedUserIds list and deletes/revokes the relationship.
+     */
+    suspend fun removeRelationshipByTc(tcId: String, relationshipId: String): Result<Unit> {
+        val parts = relationshipId.split("_", limit = 2)
+        val userId = if (parts.size == 2) parts[0] else ""
+
+        if (userId.isNotBlank()) {
+            firestoreManager.removeConnectedUserIdFromTc(tcId, userId)
+        }
+
+        val deleteResult = firestoreManager.deleteRelationship(relationshipId)
+        if (deleteResult.isSuccess) {
+            return Result.success(Unit)
+        }
+
+        // Fallback: If delete was rejected by rule or temporary offline, mark REVOKED
+        return firestoreManager.updateRelationshipStatus(
+            relationshipId,
+            mapOf(
+                "userId" to userId,
+                "trustedContactId" to tcId,
+                "status" to PermissionState.REVOKED.name,
+                "revokedAt" to System.currentTimeMillis()
+            )
+        )
+    }
+
+    /**
+     * Deletes a relationship completely from Firestore and unlinks both profiles.
+     */
+    suspend fun deleteRelationship(relationshipId: String): Result<Unit> {
+        val parts = relationshipId.split("_", limit = 2)
+        if (parts.size == 2) {
+            val userId = parts[0]
+            val tcId = parts[1]
+            firestoreManager.removeTrustedContactIdFromUser(userId, tcId)
+            firestoreManager.removeConnectedUserIdFromTc(tcId, userId)
+        }
+        return firestoreManager.deleteRelationship(relationshipId)
+    }
+
+    /**
      * Gets all relationships for a User (where they are the owner).
      * Reads from the user's trustedContactIds array, then fetches each doc.
      */
@@ -166,13 +233,17 @@ class RelationshipRepository(
 
         val list = rawResult.getOrNull() ?: emptyList()
         val enriched = list.map { rel ->
-            val tcProfileResult = firestoreManager.getTrustedContactProfile(rel.trustedContactId)
-            val tcProfile = tcProfileResult.getOrNull()
-            if (tcProfile != null) {
-                rel.copy(
-                    trustedContactName = tcProfile.name,
-                    trustedContactPhone = tcProfile.phone
-                )
+            if (rel.trustedContactName.isBlank() || rel.trustedContactPhone.isBlank()) {
+                val tcProfileResult = firestoreManager.getTrustedContactProfile(rel.trustedContactId)
+                val tcProfile = tcProfileResult.getOrNull()
+                if (tcProfile != null) {
+                    rel.copy(
+                        trustedContactName = rel.trustedContactName.ifBlank { tcProfile.name },
+                        trustedContactPhone = rel.trustedContactPhone.ifBlank { tcProfile.phone }
+                    )
+                } else {
+                    rel
+                }
             } else {
                 rel
             }

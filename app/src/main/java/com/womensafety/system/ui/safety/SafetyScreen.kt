@@ -1,11 +1,17 @@
 package com.womensafety.system.ui.safety
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -24,7 +31,8 @@ import androidx.compose.ui.unit.sp
 import com.womensafety.system.data.model.SOSEvent
 import com.womensafety.system.data.model.SOSStatus
 import com.womensafety.system.data.model.SOSTriggerMethod
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.StatusBadge
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.viewmodel.SOSViewModel
@@ -43,6 +51,24 @@ fun SafetyScreen(
     val activeSOSEvent by sosViewModel.activeSOSEvent.collectAsState()
     val sosHistory by sosViewModel.sosHistory.collectAsState()
     val profileState by profileViewModel.profileState.collectAsState()
+    val isDark = LocalDarkTheme.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        val needed = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.CALL_PHONE)
+        }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.SEND_SMS)
+        }
+        if (needed.isNotEmpty()) {
+            permissionLauncher.launch(needed.toTypedArray())
+        }
+    }
 
     var showConfirmDialog by remember { mutableStateOf(false) }
     var confirmCountdown by remember { mutableIntStateOf(3) }
@@ -76,19 +102,28 @@ fun SafetyScreen(
 
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
-            containerColor = SurfaceVariantDark,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(20.dp),
             icon = {
-                Icon(
-                    Icons.Filled.Warning,
-                    contentDescription = null,
-                    tint = StatusDenied,
-                    modifier = Modifier.size(36.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(EmergencyRed.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = EmergencyRed,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             },
             title = {
                 Text(
                     "Trigger Emergency SOS?",
-                    color = OnSurfaceDark,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
@@ -102,13 +137,13 @@ fun SafetyScreen(
                         "Alerting in $confirmCountdown seconds...",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = StatusDenied
+                        color = EmergencyRed
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "This will immediately dispatch cellular SMS to your emergency contacts, sound sirens, and notify trusted contacts.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceVariantDark,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -121,14 +156,15 @@ fun SafetyScreen(
                             onNavigateToAlert(eventId)
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = StatusDenied)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmergencyRed)
                 ) {
-                    Text("TRIGGER NOW", fontWeight = FontWeight.Bold)
+                    Text("TRIGGER NOW", fontWeight = FontWeight.Black, color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showConfirmDialog = false }) {
-                    Text("CANCEL", color = OnSurfaceVariantDark)
+                    Text("CANCEL", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -138,225 +174,251 @@ fun SafetyScreen(
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.06f,
+        targetValue = 1.07f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
+            animation = tween(1100, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "scale"
     )
 
-    Column(
+    val bgGradient = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFF1E1B4B).copy(alpha = 0.5f), BackgroundDark)
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(Color(0xFFEEF2FF), BackgroundLight)
+        )
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(GradientDeepPurple.copy(alpha = 0.6f), BackgroundDark)
-                )
-            )
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(bgGradient)
     ) {
-        Text(
-            "SAFETY CENTER",
-            style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 3.sp),
-            fontWeight = FontWeight.Bold,
-            color = GradientGold
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-            "Instant emergency dispatch and response network",
-            style = MaterialTheme.typography.bodySmall,
-            color = OnSurfaceVariantDark
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Giant SOS Button with Pulsing Ring
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.size(240.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Pulsing Background Glow Ring
-            Box(
-                modifier = Modifier
-                    .size(230.dp)
-                    .scale(pulseScale)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(StatusDenied.copy(alpha = 0.35f), StatusDenied.copy(alpha = 0.02f))
-                        )
-                    )
+            Text(
+                "SAFETY CENTER",
+                style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 2.sp),
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
             )
 
-            // Inner SOS Button
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                "Instant emergency dispatch and response network",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Giant SOS Button with Pulsing Ring
             Box(
-                modifier = Modifier
-                    .size(180.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(StatusDenied, StatusDenied.copy(alpha = 0.85f))
-                        )
-                    )
-                    .clickable { showConfirmDialog = true },
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(240.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Filled.Sos,
-                        contentDescription = "SOS Button",
-                        tint = OnPrimary,
-                        modifier = Modifier.size(44.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "TAP FOR SOS",
-                        color = OnPrimary,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 14.sp,
-                        letterSpacing = 1.sp
-                    )
+                // Pulsing Glow Ring
+                Box(
+                    modifier = Modifier
+                        .size(230.dp)
+                        .scale(pulseScale)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    EmergencyRed.copy(alpha = 0.35f),
+                                    EmergencyRed.copy(alpha = 0.02f)
+                                )
+                            )
+                        )
+                )
+
+                // Middle Ring
+                Box(
+                    modifier = Modifier
+                        .size(200.dp)
+                        .clip(CircleShape)
+                        .background(EmergencyRed.copy(alpha = 0.2f))
+                )
+
+                // Inner SOS Button
+                Box(
+                    modifier = Modifier
+                        .size(175.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(EmergencyRedLight, EmergencyRedDark)
+                            )
+                        )
+                        .clickable {
+                            sosViewModel.triggerSOS(context, SOSTriggerMethod.BUTTON) { eventId ->
+                                onNavigateToAlert(eventId)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.Sos,
+                            contentDescription = "SOS Button",
+                            tint = Color.White,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "TAP FOR SOS",
+                            color = Color.White,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp,
+                            letterSpacing = 1.sp
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // Emergency Network Summary Card
-        GlassCard(
-            accentGradient = Brush.horizontalGradient(
-                colors = listOf(
-                    GradientAmber.copy(alpha = 0.08f),
-                    GradientGold.copy(alpha = 0.04f)
+            // Emergency Network Summary Card
+            AppCard(
+                accentGradient = Brush.horizontalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.03f)
+                    )
                 )
-            )
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "DISPATCH RECIPIENT NETWORK",
+                        style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.5.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Group, contentDescription = null, tint = PrimaryIndigo, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Trusted Contacts", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Text(
+                            "${profileState.trustedContactCount} Enrolled",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = PrimaryIndigo
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Sms, contentDescription = null, tint = SecondaryViolet, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Cellular SMS Recipients", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Text(
+                            "${profileState.emergencyContactCount} Contacts",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = SecondaryViolet
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.PhoneInTalk, contentDescription = null, tint = StatusApproved, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Auto-Call Top Contact", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Text(
+                            if (profileState.userProfile?.sosAutoCall == true) "Enabled" else "Disabled",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (profileState.userProfile?.sosAutoCall == true) StatusApproved else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Recent SOS History Section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    "ACTIVE SAFETY NETWORK",
-                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                    color = GradientGold,
+                    "RECENT INCIDENTS",
+                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Bold
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Group, contentDescription = null, tint = GradientAmber, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("Trusted Contacts", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark)
+                if (sosHistory.isNotEmpty()) {
+                    TextButton(onClick = onNavigateToHistory) {
+                        Text("View Full History", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
-                    Text(
-                        "${profileState.trustedContactCount} Notified",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = GradientAmber
-                    )
                 }
+            }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
+            Spacer(modifier = Modifier.height(8.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Sms, contentDescription = null, tint = GradientRose, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("Emergency SMS Contacts", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark)
+            if (sosHistory.isEmpty()) {
+                AppCard {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No past SOS emergency incidents recorded.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Text(
-                        "${profileState.emergencyContactCount} Contacts",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = GradientRose
-                    )
                 }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = GlassBorder)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.PhoneInTalk, contentDescription = null, tint = StatusApproved, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("Auto-Call Primary Contact", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    sosHistory.take(3).forEach { event ->
+                        RecentSOSItem(
+                            event = event,
+                            onClick = { onNavigateToHistoryDetail(event.id) }
+                        )
                     }
-                    Text(
-                        if (profileState.userProfile?.sosAutoCall == true) "Enabled" else "Disabled",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (profileState.userProfile?.sosAutoCall == true) StatusApproved else OnSurfaceVariantDark
-                    )
                 }
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Recent SOS History Section
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "RECENT INCIDENTS",
-                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                color = OnSurfaceVariantDark,
-                fontWeight = FontWeight.Bold
-            )
-
-            if (sosHistory.isNotEmpty()) {
-                TextButton(onClick = onNavigateToHistory) {
-                    Text("View Full History", color = GradientGold, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (sosHistory.isEmpty()) {
-            GlassCard {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "No past SOS incidents recorded.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = OnSurfaceVariantDark
-                    )
-                }
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                sosHistory.take(3).forEach { event ->
-                    RecentSOSItem(
-                        event = event,
-                        onClick = { onNavigateToHistoryDetail(event.id) }
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
@@ -365,8 +427,8 @@ private fun RecentSOSItem(
     event: SOSEvent,
     onClick: () -> Unit
 ) {
-    GlassCard(
-        modifier = Modifier.clickable { onClick() }
+    AppCard(
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -374,17 +436,17 @@ private fun RecentSOSItem(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val statusColor = when (event.status) {
+                SOSStatus.ACTIVE -> EmergencyRed
+                SOSStatus.RESOLVED -> StatusApproved
+                else -> StatusPending
+            }
+
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
-                    .background(
-                        when (event.status) {
-                            SOSStatus.ACTIVE -> StatusDenied.copy(alpha = 0.2f)
-                            SOSStatus.RESOLVED -> StatusApproved.copy(alpha = 0.2f)
-                            else -> StatusPending.copy(alpha = 0.2f)
-                        }
-                    ),
+                    .background(statusColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -394,35 +456,32 @@ private fun RecentSOSItem(
                         else -> Icons.Filled.Info
                     },
                     contentDescription = null,
-                    tint = when (event.status) {
-                        SOSStatus.ACTIVE -> StatusDenied
-                        SOSStatus.RESOLVED -> StatusApproved
-                        else -> StatusPending
-                    },
-                    modifier = Modifier.size(18.dp)
+                    tint = statusColor,
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     DateUtils.formatDateTime(event.triggeredAt),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = OnSurfaceDark
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    "Trigger: ${event.triggerMethod.name} • Status: ${event.status.name}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = OnSurfaceVariantDark
+                    "Method: ${event.triggerMethod.name} • Status: ${event.status.name}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Icon(
                 Icons.Filled.ChevronRight,
                 contentDescription = null,
-                tint = OnSurfaceVariantDark.copy(alpha = 0.5f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
         }
     }

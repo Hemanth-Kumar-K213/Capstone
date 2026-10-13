@@ -17,10 +17,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.components.AppTextField
 import com.womensafety.system.ui.components.ErrorMessage
 import com.womensafety.system.ui.components.PrimaryButton
-import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.Validators
 import com.womensafety.system.viewmodel.EmergencyContactViewModel
@@ -44,8 +44,9 @@ fun AddEmergencyContactScreen(
                 title = {
                     Text(
                         "Add Emergency Contact",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -53,16 +54,16 @@ fun AddEmergencyContactScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BackgroundDark
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -71,18 +72,19 @@ fun AddEmergencyContactScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            GradientDeepPurple.copy(alpha = 0.5f),
-                            BackgroundDark
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
                         )
                     )
                 )
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             Text(
                 text = "CONTACT DETAILS",
-                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                color = GradientGold,
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
 
@@ -91,87 +93,109 @@ fun AddEmergencyContactScreen(
             Text(
                 text = "Add a trusted person who should receive immediate SMS coordinates and emergency alerts.",
                 style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceVariantDark
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             ErrorMessage(formError ?: state.error)
             if (formError != null || state.error != null) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            GlassCard {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    AppTextField(
-                        value = name,
-                        onValueChange = {
-                            name = it
-                            formError = null
-                        },
-                        label = "Full Name",
-                        leadingIcon = {
-                            Icon(Icons.Filled.Person, contentDescription = null, tint = GradientAmber)
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    AppTextField(
-                        value = phone,
-                        onValueChange = {
-                            phone = it
-                            formError = null
-                        },
-                        label = "Phone Number (e.g. +91XXXXXXXXXX)",
-                        keyboardType = KeyboardType.Phone,
-                        leadingIcon = {
-                            Icon(Icons.Filled.Phone, contentDescription = null, tint = GradientAmber)
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Switch(
-                            checked = isPrimary,
-                            onCheckedChange = { isPrimary = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = GradientAmber)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Primary Contact", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark, fontWeight = FontWeight.Bold)
-                            Text("Make this the default emergency call recipient", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
-                        }
+            AppCard(modifier = Modifier.fillMaxWidth()) {
+                AppTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        formError = null
+                    },
+                    label = "Full Name",
+                    leadingIcon = {
+                        Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     }
+                )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Switch(
-                            checked = enableEscalation,
-                            onCheckedChange = { enableEscalation = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = GradientAmber)
+                AppTextField(
+                    value = phone,
+                    onValueChange = {
+                        phone = it
+                        formError = null
+                    },
+                    label = "Phone Number (e.g. +91XXXXXXXXXX)",
+                    keyboardType = KeyboardType.Phone,
+                    leadingIcon = {
+                        Icon(Icons.Filled.Phone, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(
+                        checked = isPrimary,
+                        onCheckedChange = { isPrimary = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Enable Alert Escalation", style = MaterialTheme.typography.bodyMedium, color = OnSurfaceDark, fontWeight = FontWeight.Bold)
-                            Text("Sends automated SMS with live coordinates", style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariantDark)
-                        }
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            "Primary Contact",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Default contact for emergency phone call",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(
+                        checked = enableEscalation,
+                        onCheckedChange = { enableEscalation = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = OnPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            "Enable Alert Escalation",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Dispatches automated SMS with live GPS coordinates",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
             PrimaryButton(
-                text = "SAVE CONTACT",
+                text = "Save Emergency Contact",
                 isLoading = state.isLoading,
                 onClick = {
                     val trimmedName = name.trim()

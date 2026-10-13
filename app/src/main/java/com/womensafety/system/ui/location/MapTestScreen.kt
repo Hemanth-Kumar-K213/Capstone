@@ -2,6 +2,7 @@ package com.womensafety.system.ui.location
 
 import android.content.Context
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -11,14 +12,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-import com.womensafety.system.ui.theme.BackgroundDark
-import com.womensafety.system.ui.theme.OnSurfaceDark
+import com.womensafety.system.ui.components.AppCard
 
 /**
  * Diagnostic testing screen for OpenStreetMap (OSMDroid) tile rendering and camera controls.
@@ -46,16 +47,29 @@ fun MapTestScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("OpenStreetMap Diagnostics", color = OnSurfaceDark, fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        "OpenStreetMap Diagnostics",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = OnSurfaceDark)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -99,12 +113,15 @@ fun MapTestScreen(
             )
 
             // Camera Position Info Card
-            Card(
+            Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(16.dp)
                     .fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = BackgroundDark.copy(alpha = 0.9f))
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                shadowElevation = 6.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -112,20 +129,22 @@ fun MapTestScreen(
                 ) {
                     Text(
                         text = "OSMDROID CAMERA POSITION",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = OnSurfaceDark.copy(alpha = 0.6f)
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Lat: ${String.format("%.5f", centerLat)} • Lng: ${String.format("%.5f", centerLon)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = OnSurfaceDark
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Zoom: ${String.format("%.1f", zoomLevel)} • FOSS OpenStreetMap (No API Key)",
+                        text = "Zoom: ${String.format("%.1f", zoomLevel)} • FOSS OpenStreetMap (Zero Billing)",
                         style = MaterialTheme.typography.bodySmall,
-                        color = OnSurfaceDark.copy(alpha = 0.8f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

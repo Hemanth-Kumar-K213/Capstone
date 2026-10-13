@@ -4,14 +4,17 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,16 +34,17 @@ fun SplashScreen(
     onNavigateToWelcomeSetup: () -> Unit,
     onNavigateToTCHome: () -> Unit
 ) {
+    val isDark = LocalDarkTheme.current
+
     // Logo scale animation
-    val logoScale = remember { Animatable(0.5f) }
+    val logoScale = remember { Animatable(0.6f) }
     // Text fade animation
     val textAlpha = remember { Animatable(0f) }
     // Tagline slide + fade
     val taglineAlpha = remember { Animatable(0f) }
-    val taglineOffset = remember { Animatable(30f) }
+    val taglineOffset = remember { Animatable(24f) }
 
     LaunchedEffect(Unit) {
-        // Animate logo in with spring
         logoScale.animateTo(
             targetValue = 1f,
             animationSpec = spring(
@@ -48,16 +52,14 @@ fun SplashScreen(
                 stiffness = Spring.StiffnessLow
             )
         )
-        // Then fade in title
-        textAlpha.animateTo(1f, animationSpec = tween(600, easing = EaseOutCubic))
-        // Then slide in tagline
-        taglineAlpha.animateTo(1f, animationSpec = tween(500))
-        taglineOffset.animateTo(0f, animationSpec = tween(500, easing = EaseOutCubic))
+        textAlpha.animateTo(1f, animationSpec = tween(500, easing = EaseOutCubic))
+        taglineAlpha.animateTo(1f, animationSpec = tween(400))
+        taglineOffset.animateTo(0f, animationSpec = tween(400, easing = EaseOutCubic))
     }
 
     LaunchedEffect(sessionState) {
         if (!sessionState.isChecking) {
-            delay(2000)
+            delay(400)
             when {
                 sessionState.isLoggedIn && sessionState.accountType == "USER" -> {
                     if (sessionState.setupCompleted) {
@@ -72,105 +74,105 @@ fun SplashScreen(
         }
     }
 
-    // Shimmer animation for the loading indicator
-    val shimmerTransition = rememberInfiniteTransition(label = "shimmer")
-    val shimmerOffset by shimmerTransition.animateFloat(
-        initialValue = -200f,
-        targetValue = 600f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer_offset"
-    )
+    val bgGradient = if (isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF1E1B4B),
+                BackgroundDark,
+                BackgroundDark
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFFEEF2FF),
+                BackgroundLight,
+                BackgroundLight
+            )
+        )
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        GradientDeepPurple,
-                        BackgroundDark,
-                        BackgroundDark
-                    )
-                )
-            ),
+            .background(bgGradient),
         contentAlignment = Alignment.Center
     ) {
-        // Subtle radial glow behind logo
+        // Subtle ambient radial glow behind logo
         Box(
             modifier = Modifier
-                .size(320.dp)
-                .alpha(0.15f)
+                .size(340.dp)
+                .clip(CircleShape)
+                .alpha(if (isDark) 0.18f else 0.12f)
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            GradientAmber,
-                            GradientRose.copy(alpha = 0.3f),
-                            BackgroundDark.copy(alpha = 0f)
+                            PrimaryIndigo,
+                            SecondaryViolet.copy(alpha = 0.4f),
+                            Color.Transparent
                         ),
-                        radius = 400f
+                        radius = 420f
                     )
                 )
         )
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp)
         ) {
             // Logo
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
                 contentDescription = "Trinetra",
                 modifier = Modifier
-                    .size(160.dp)
+                    .size(150.dp)
                     .scale(logoScale.value)
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // App title with gradient text effect
+            // App title
             Text(
                 text = "TRINETRA",
                 style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 36.sp,
+                    fontSize = 34.sp,
                     letterSpacing = 6.sp,
                     shadow = Shadow(
-                        color = GradientAmber.copy(alpha = 0.4f),
+                        color = PrimaryIndigo.copy(alpha = 0.35f),
                         offset = Offset(0f, 4f),
-                        blurRadius = 12f
+                        blurRadius = 16f
                     )
                 ),
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
-                color = GradientGold,
+                color = if (isDark) Color(0xFFC7D2FE) else PrimaryIndigoDark,
                 modifier = Modifier.alpha(textAlpha.value)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Tagline
             Text(
-                text = "Your safety, our priority",
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    letterSpacing = 1.sp
+                text = "Women Safety & Emergency Response",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    letterSpacing = 1.sp,
+                    fontWeight = FontWeight.Medium
                 ),
-                color = OnSurfaceVariantDark.copy(alpha = 0.8f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .alpha(taglineAlpha.value)
                     .offset(y = taglineOffset.value.dp)
             )
 
-            Spacer(modifier = Modifier.height(56.dp))
+            Spacer(modifier = Modifier.height(48.dp))
 
             if (sessionState.isChecking) {
-                // Custom loading indicator with brand colors
                 CircularProgressIndicator(
                     modifier = Modifier.size(28.dp),
-                    color = GradientAmber,
-                    trackColor = GradientDeepPurple,
+                    color = MaterialTheme.colorScheme.primary,
                     strokeWidth = 3.dp
                 )
             }

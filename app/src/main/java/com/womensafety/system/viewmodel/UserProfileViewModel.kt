@@ -64,10 +64,16 @@ class UserProfileViewModel(
     val changePhoneState: StateFlow<ChangePhoneState> = _changePhoneState.asStateFlow()
 
     fun loadProfile() {
-        val userId = authRepository.currentUserId ?: return
+        val userId = authRepository.currentUserId
+        if (userId == null) {
+            _profileState.value = _profileState.value.copy(isLoading = false)
+            return
+        }
 
         viewModelScope.launch {
-            _profileState.value = _profileState.value.copy(isLoading = true)
+            if (_profileState.value.userProfile == null) {
+                _profileState.value = _profileState.value.copy(isLoading = true)
+            }
 
             val profileResult = userRepository.getUserProfile(userId)
             val uidResult = uidRepository.getCurrentUid(userId)
@@ -87,6 +93,7 @@ class UserProfileViewModel(
                 com.womensafety.system.manager.SafetyMonitoringManager.setProactiveEnabled(profile.proactiveMonitoringEnabled)
                 com.womensafety.system.manager.SafetyMonitoringManager.setSafetyMode(profile.safetyMode)
                 com.womensafety.system.manager.TravelModeManager.routeDeviationToleranceMeters = profile.routeDeviationToleranceMeters
+                com.womensafety.system.manager.SOSManager.updateCachedProfile(profile)
             }
 
             _profileState.value = ProfileState(

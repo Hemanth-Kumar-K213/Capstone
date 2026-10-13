@@ -94,6 +94,12 @@ class LocationViewModel(
         return locationRepository.observeLocationByUserIdOrUid(identifier)
     }
 
+    suspend fun getLatestLocation(identifier: String): UserLocation? {
+        val uidLoc = locationRepository.getLatestUidLocation(identifier).getOrNull()
+        if (uidLoc != null) return uidLoc
+        return locationRepository.getLatestLocation(identifier).getOrNull()
+    }
+
     fun clearHistory(userId: String, beforeTimestamp: Long) {
         viewModelScope.launch {
             _isLoading.value = true

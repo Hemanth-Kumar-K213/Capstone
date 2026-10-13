@@ -56,16 +56,22 @@ class SOSViewModel(
     }
 
     fun triggerSOS(context: Context, method: SOSTriggerMethod, onTriggered: ((String) -> Unit)? = null) {
+        val eventId = java.util.UUID.randomUUID().toString()
+        // 1. Immediately publish active event so activeSOSEvent is ACTIVE right now
+        SOSManager.publishInitialActiveEvent(context, eventId, method)
+        // 2. Immediately start the 5-minute auto-resolve countdown
+        startCountdown()
+        // 3. Immediately invoke navigation callback so UI moves to Emergency SOS Active page at once
+        onTriggered?.invoke(eventId)
+
+        // 4. Launch background pipeline for simultaneous alarm & call, GPS, Firestore, and SMS
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val event = SOSManager.triggerSOS(context, method)
-                if (event != null) {
-                    startCountdown()
-                    onTriggered?.invoke(event.id)
-                }
+                SOSManager.triggerSOS(context, method, customEventId = eventId)
             } catch (e: Exception) {
+                android.util.Log.e("SOSViewModel", "triggerSOS error", e)
                 _errorMessage.value = e.message ?: "Failed to trigger SOS alert"
             } finally {
                 _isLoading.value = false
@@ -90,11 +96,12 @@ class SOSViewModel(
             try {
                 stopCountdown()
                 SOSManager.resolveSOS(context, eventId, SOSStatus.RESOLVED)
-                onResolved?.invoke()
             } catch (e: Exception) {
+                android.util.Log.e("SOSViewModel", "markAsSafe error", e)
                 _errorMessage.value = e.message ?: "Failed to resolve SOS"
             } finally {
                 _isLoading.value = false
+                onResolved?.invoke()
             }
         }
     }
@@ -105,11 +112,12 @@ class SOSViewModel(
             try {
                 stopCountdown()
                 SOSManager.resolveSOS(context, eventId, SOSStatus.FALSE_ALARM)
-                onCancelled?.invoke()
             } catch (e: Exception) {
+                android.util.Log.e("SOSViewModel", "markAsFalseAlarm error", e)
                 _errorMessage.value = e.message ?: "Failed to cancel false alarm"
             } finally {
                 _isLoading.value = false
+                onCancelled?.invoke()
             }
         }
     }

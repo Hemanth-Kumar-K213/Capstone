@@ -7,13 +7,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -34,70 +34,111 @@ fun UserLoginScreen(
     onBack: () -> Unit
 ) {
     val loginState by viewModel.loginState.collectAsState()
+    val isDark = LocalDarkTheme.current
 
-    if (loginState.isLoggedIn) {
-        onLoginSuccess()
-        return
+    LaunchedEffect(loginState.isLoggedIn) {
+        if (loginState.isLoggedIn) {
+            onLoginSuccess()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.clearError()
     }
 
     Scaffold(
-        containerColor = BackgroundDark,
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnSurfaceDark)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
+        val bgGradient = if (isDark) {
+            Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF1E1B4B).copy(alpha = 0.5f),
+                    BackgroundDark
+                )
+            )
+        } else {
+            Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFFEEF2FF),
+                    BackgroundLight
+                )
+            )
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(GradientDeepPurple.copy(alpha = 0.5f), BackgroundDark)
-                    )
-                )
+                .background(bgGradient)
                 .padding(padding)
+                .imePadding()
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Image(
                 painter = painterResource(id = R.drawable.app_logo),
                 contentDescription = null,
-                modifier = Modifier.size(64.dp)
+                modifier = Modifier.size(72.dp)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "USER LOGIN",
-                style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = 2.sp),
+                text = "Welcome Back",
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = GradientGold
+                color = MaterialTheme.colorScheme.onBackground
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "Sign in to access your safety protection network",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
 
             ErrorMessage(loginState.error)
-            if (loginState.error != null) Spacer(modifier = Modifier.height(8.dp))
+            if (loginState.error != null) Spacer(modifier = Modifier.height(10.dp))
 
             SuccessMessage(loginState.successMessage)
-            if (loginState.successMessage != null) Spacer(modifier = Modifier.height(8.dp))
+            if (loginState.successMessage != null) Spacer(modifier = Modifier.height(10.dp))
 
             AppTextField(
                 value = loginState.email,
                 onValueChange = { viewModel.updateLoginEmail(it) },
-                label = "Primary Gmail",
+                label = "Primary Gmail Address",
                 keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Next
+                imeAction = ImeAction.Next,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.Email,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -106,98 +147,75 @@ fun UserLoginScreen(
                 PasswordTextField(
                     value = loginState.password,
                     onValueChange = { viewModel.updateLoginPassword(it) },
-                    label = "Password"
+                    label = "Password",
+                    imeAction = ImeAction.Done
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                TextButton(
-                    onClick = { viewModel.forgotPassword() },
-                    modifier = Modifier.align(Alignment.End)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Text("Forgot Password?", color = GradientAmber)
+                    TextButton(onClick = { viewModel.forgotPassword() }) {
+                        Text(
+                            text = "Forgot Password?",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Button(
+                PrimaryButton(
+                    text = "LOGIN",
                     onClick = { viewModel.loginWithEmailAndPassword() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    enabled = !loginState.isLoading,
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientAmber)
-                ) {
-                    if (loginState.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = OnPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("LOGIN", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (loginState.showEmailLinkLogin) {
+                    isLoading = loginState.isLoading
+                )
+            } else {
                 if (loginState.emailLinkSent) {
                     SuccessMessage("Sign-in link sent to ${loginState.email}. Check your email and tap the link to log in.")
                 } else {
-                    Button(
+                    PrimaryButton(
+                        text = "SEND SIGN-IN LINK",
                         onClick = { viewModel.sendEmailLoginLink() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        enabled = !loginState.isLoading,
-                        shape = MaterialTheme.shapes.medium,
-                        colors = ButtonDefaults.buttonColors(containerColor = GradientAmber)
-                    ) {
-                        if (loginState.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = OnPrimary,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("SEND SIGN-IN LINK", fontWeight = FontWeight.Bold)
-                        }
-                    }
+                        isLoading = loginState.isLoading
+                    )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            OutlinedButton(
-                onClick = { viewModel.toggleEmailLinkLogin() },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurfaceDark)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            SecondaryButton(
+                text = if (loginState.showEmailLinkLogin) "LOGIN WITH PASSWORD" else "PASSWORDLESS SIGN-IN LINK",
+                onClick = { viewModel.toggleEmailLinkLogin() }
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    if (loginState.showEmailLinkLogin) "LOGIN WITH PASSWORD" else "PASSWORDLESS LOGIN"
+                    text = "Don't have an account?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.width(6.dp))
+                TextButton(onClick = onNavigateToSignup) {
+                    Text(
+                        text = "SIGN UP",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                "Don't have an account?",
-                style = MaterialTheme.typography.bodyMedium,
-                color = OnSurfaceVariantDark
-            )
-
-            TextButton(onClick = onNavigateToSignup) {
-                Text(
-                    "SIGN UP",
-                    fontWeight = FontWeight.Bold,
-                    color = GradientGold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

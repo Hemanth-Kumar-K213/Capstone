@@ -22,8 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.womensafety.system.data.model.UserLocation
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.components.EmptyStateCard
-import com.womensafety.system.ui.home.GlassCard
 import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
@@ -61,12 +61,19 @@ fun LocationHistoryScreen(
     if (showClearDialog && userId != null) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            containerColor = SurfaceVariantDark,
-            title = { Text("Clear Location History", color = OnSurfaceDark, fontWeight = FontWeight.Bold) },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Text(
+                    "Clear Location History",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
                 Text(
                     "Delete all stored location coordinates older than 7 days?",
-                    color = OnSurfaceVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
             confirmButton = {
@@ -75,12 +82,12 @@ fun LocationHistoryScreen(
                     val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
                     viewModel.clearHistory(userId, sevenDaysAgo)
                 }) {
-                    Text("Clear", color = StatusDenied, fontWeight = FontWeight.Bold)
+                    Text("Clear", color = EmergencyRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) {
-                    Text("Cancel", color = OnSurfaceVariantDark)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -92,8 +99,9 @@ fun LocationHistoryScreen(
                 title = {
                     Text(
                         "Location History",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -101,26 +109,40 @@ fun LocationHistoryScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 actions = {
                     if (history.isNotEmpty()) {
                         IconButton(onClick = { showClearDialog = true }) {
-                            Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear History", tint = StatusDenied)
+                            Icon(
+                                Icons.Filled.DeleteSweep,
+                                contentDescription = "Clear History",
+                                tint = EmergencyRed
+                            )
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
+                    )
+                )
                 .padding(horizontal = 16.dp)
         ) {
             // Filter Pills
@@ -133,42 +155,50 @@ fun LocationHistoryScreen(
                 FilterChip(
                     selected = !sosOnlyFilter,
                     onClick = { sosOnlyFilter = false },
-                    label = { Text("All Records (${history.size})") },
+                    label = { Text("All Records (${history.size})", fontWeight = FontWeight.Medium) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = GradientAmber,
-                        selectedLabelColor = BackgroundDark
-                    )
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    shape = RoundedCornerShape(10.dp)
                 )
 
                 val sosCount = history.count { it.isSOSLocation }
                 FilterChip(
                     selected = sosOnlyFilter,
                     onClick = { sosOnlyFilter = true },
-                    label = { Text("SOS Incidents ($sosCount)") },
+                    label = { Text("SOS Incidents ($sosCount)", fontWeight = FontWeight.Medium) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = StatusDenied,
-                        selectedLabelColor = OnSurfaceDark
-                    )
+                        selectedContainerColor = EmergencyRed.copy(alpha = 0.2f),
+                        selectedLabelColor = EmergencyRed,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    shape = RoundedCornerShape(10.dp)
                 )
             }
 
             when {
                 isLoading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = GradientAmber)
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, strokeWidth = 3.dp)
                     }
                 }
                 filteredLocations.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         EmptyStateCard(
                             icon = Icons.Filled.LocationOff,
                             title = if (sosOnlyFilter) "No SOS Locations" else "No Location History",
-                            description = if (sosOnlyFilter) "No emergency incidents have been recorded." else "Background location logs will appear here as you move."
+                            description = if (sosOnlyFilter) "No emergency incidents have been recorded." else "Background location logs will appear here as you travel."
                         )
+                    }
                 }
                 else -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(filteredLocations, key = { it.id }) { loc ->
@@ -198,131 +228,133 @@ private fun LocationHistoryItemCard(
 ) {
     var isMapExpanded by remember { mutableStateOf(false) }
 
-    GlassCard(
-        accentGradient = if (location.isSOSLocation) {
-            Brush.horizontalGradient(listOf(StatusDenied.copy(alpha = 0.35f), StatusDenied.copy(alpha = 0.1f)))
-        } else {
-            Brush.horizontalGradient(listOf(GradientAmber.copy(alpha = 0.15f), GradientGold.copy(alpha = 0.05f)))
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (location.isSOSLocation) EmergencyRed.copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.primaryContainer
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(if (location.isSOSLocation) StatusDenied.copy(alpha = 0.25f) else GradientAmber.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (location.isSOSLocation) Icons.Filled.Warning else Icons.Filled.Place,
-                        contentDescription = null,
-                        tint = if (location.isSOSLocation) StatusDenied else GradientAmber,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = DateUtils.formatDateTime(location.timestamp),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = OnSurfaceDark
-                    )
-                    Text(
-                        text = "Lat: ${String.format("%.4f", location.latitude)}, Lng: ${String.format("%.4f", location.longitude)} (±${location.accuracy.toInt()}m)",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = OnSurfaceVariantDark
-                    )
-                }
-
-                if (location.isSOSLocation) {
-                    Surface(
-                        color = StatusDenied.copy(alpha = 0.2f),
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Text(
-                            text = "SOS",
-                            color = StatusDenied,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            if (!location.address.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = location.address ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnSurfaceVariantDark.copy(alpha = 0.9f)
+                Icon(
+                    imageVector = if (location.isSOSLocation) Icons.Filled.Warning else Icons.Filled.Place,
+                    contentDescription = null,
+                    tint = if (location.isSOSLocation) EmergencyRed else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
-            // Compact OpenStreetMap preview when toggled or SOS
-            if (isMapExpanded || location.isSOSLocation) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                        .clip(RoundedCornerShape(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = DateUtils.formatDateTime(location.timestamp),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Lat: ${String.format("%.4f", location.latitude)}, Lng: ${String.format("%.4f", location.longitude)} (±${location.accuracy.toInt()}m)",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (location.isSOSLocation) {
+                Surface(
+                    color = EmergencyRed.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
                 ) {
-                    SafetyMapTracker(
-                        userLatitude = location.latitude,
-                        userLongitude = location.longitude,
-                        zoomLevel = 16.0,
-                        enableZoomControls = false,
-                        markerTitle = if (location.isSOSLocation) "SOS Incident" else "Recorded Location"
+                    Text(
+                        text = "SOS",
+                        color = EmergencyRed,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
             }
+        }
 
+        if (!location.address.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = location.address ?: "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Compact OpenStreetMap preview when toggled or SOS
+        if (isMapExpanded || location.isSOSLocation) {
             Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(12.dp))
             ) {
-                TextButton(
-                    onClick = { isMapExpanded = !isMapExpanded },
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isMapExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = GradientGold
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isMapExpanded) "Hide Map" else "Preview Map",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GradientGold,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                SafetyMapTracker(
+                    userLatitude = location.latitude,
+                    userLongitude = location.longitude,
+                    zoomLevel = 16.0,
+                    enableZoomControls = false,
+                    markerTitle = if (location.isSOSLocation) "SOS Incident" else "Recorded Location"
+                )
+            }
+        }
 
-                TextButton(
-                    onClick = onOpenMap,
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(Icons.Filled.Navigation, contentDescription = null, modifier = Modifier.size(14.dp), tint = OnSurfaceDark)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("External Nav", style = MaterialTheme.typography.labelMedium, color = OnSurfaceDark)
-                }
+        Spacer(modifier = Modifier.height(10.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = { isMapExpanded = !isMapExpanded },
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(
+                    imageVector = if (isMapExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = if (isMapExpanded) "Hide Map" else "Preview Map",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            TextButton(
+                onClick = onOpenMap,
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Navigation,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    "External Nav",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

@@ -14,5 +14,6 @@ class WomenSafetyApp : Application() {
         com.womensafety.system.utils.NotificationChannelManager.createNotificationChannels(this)
         com.womensafety.system.manager.SafetyMonitoringManager.initialize(this)
         com.womensafety.system.manager.TravelModeManager.initialize(this)
+        com.womensafety.system.manager.SOSManager.initialize(this)
     }
 }

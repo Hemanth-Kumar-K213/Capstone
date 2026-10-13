@@ -3,13 +3,16 @@ package com.womensafety.system.ui.travel
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -27,7 +30,7 @@ import org.osmdroid.views.overlay.Polyline
 import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.manager.JourneyState
 import com.womensafety.system.manager.TravelModeManager
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.TravelViewModel
 
@@ -91,7 +94,7 @@ fun ActiveJourneyScreen(
             if (routePoints.isNotEmpty()) {
                 val polyline = Polyline(map).apply {
                     setPoints(routePoints)
-                    outlinePaint.color = if (isDeviated) android.graphics.Color.RED else android.graphics.Color.parseColor("#FFA726")
+                    outlinePaint.color = if (isDeviated) android.graphics.Color.RED else android.graphics.Color.parseColor("#4F46E5")
                     outlinePaint.strokeWidth = 10f
                 }
                 map.overlays.add(polyline)
@@ -130,16 +133,34 @@ fun ActiveJourneyScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Active Safe Journey",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isDeviated) EmergencyRed.copy(alpha = 0.15f) else StatusApproved.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = if (isDeviated) "DEVIATED" else "ON ROUTE",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDeviated) EmergencyRed else StatusApproved,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "Active Safe Journey",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark.copy(alpha = 0.9f))
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -164,37 +185,39 @@ fun ActiveJourneyScreen(
             )
 
             // Stats Overlay (Top Center)
-            Card(
+            Surface(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(16.dp)
                     .fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = BackgroundDark.copy(alpha = 0.9f)),
-                border = BorderStroke(1.dp, GlassBorder)
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                shadowElevation = 6.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(horizontal = 12.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("SPEED", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariantDark)
-                        Text("${speedKmh.toInt()} km/h", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GradientAmber)
+                        Text("SPEED", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${speedKmh.toInt()} km/h", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("STOPS", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariantDark)
-                        Text("$stopCount", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GradientGold)
+                        Text("STOPS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("$stopCount", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("DEVIATION", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariantDark)
-                        Text("${deviationDistance.toInt()}m", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (isDeviated) StatusDenied else StatusApproved)
+                        Text("DEVIATION", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${deviationDistance.toInt()}m", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (isDeviated) EmergencyRed else StatusApproved)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("DURATION", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariantDark)
+                        Text("DURATION", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         val mins = durationSeconds / 60
                         val secs = durationSeconds % 60
-                        Text(String.format("%02d:%02d", mins, secs), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OnSurfaceDark)
+                        Text(String.format("%02d:%02d", mins, secs), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -206,102 +229,96 @@ fun ActiveJourneyScreen(
                     .padding(16.dp)
                     .fillMaxWidth()
             ) {
-                GlassCard(
-                    accentGradient = Brush.horizontalGradient(
-                        colors = listOf(GradientAmber.copy(alpha = 0.1f), GradientRose.copy(alpha = 0.05f))
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "JOURNEY CONTROLS",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "JOURNEY ACTIONS",
-                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.5.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = GradientAmber
-                        )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.completeJourney()
+                                onNavigateToHome()
+                            },
+                            modifier = Modifier
+                                .weight(1.4f)
+                                .height(50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusApproved),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Button(
-                                onClick = {
-                                    viewModel.completeJourney()
-                                    onNavigateToHome()
-                                },
-                                modifier = Modifier
-                                    .weight(1.5f)
-                                    .height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = StatusApproved),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Icon(Icons.Filled.Check, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("COMPLETE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-
-                            Button(
-                                onClick = {
-                                    viewModel.cancelJourney()
-                                    onNavigateToHome()
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = StatusDenied),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Icon(Icons.Filled.Stop, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("END", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
+                            Icon(Icons.Filled.Check, contentDescription = null, tint = OnPrimary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("COMPLETE", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = OnPrimary)
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Simulation helper buttons for Travel Route Deviation testing
-                        Text(
-                            "SIMULATION PRESETS",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Button(
+                            onClick = {
+                                viewModel.cancelJourney()
+                                onNavigateToHome()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = EmergencyRed),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Button(
-                                onClick = {
-                                    val loc = UserLocation(
-                                        latitude = 12.9736,
-                                        longitude = 77.5966,
-                                        speed = 6.0f,
-                                        timestamp = System.currentTimeMillis()
-                                    )
-                                    TravelModeManager.onLocationUpdated(loc)
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariantDark)
-                            ) {
-                                Text("On Path", fontSize = 10.sp)
-                            }
-                            Button(
-                                onClick = {
-                                    val loc = UserLocation(
-                                        latitude = 12.9856,
-                                        longitude = 77.5800,
-                                        speed = 5.0f,
-                                        timestamp = System.currentTimeMillis()
-                                    )
-                                    TravelModeManager.onLocationUpdated(loc)
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariantDark)
-                            ) {
-                                Text("Deviate (>300m)", fontSize = 10.sp)
-                            }
+                            Icon(Icons.Filled.Stop, contentDescription = null, tint = OnPrimary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("END", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = OnPrimary)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Simulation helper buttons for Travel Route Deviation testing
+                    Text(
+                        "ROUTE SIMULATION TESTING",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = {
+                                val loc = UserLocation(
+                                    latitude = 12.9736,
+                                    longitude = 77.5966,
+                                    speed = 6.0f,
+                                    timestamp = System.currentTimeMillis()
+                                )
+                                TravelModeManager.onLocationUpdated(loc)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Simulate On Path", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                val loc = UserLocation(
+                                    latitude = 12.9856,
+                                    longitude = 77.5800,
+                                    speed = 5.0f,
+                                    timestamp = System.currentTimeMillis()
+                                )
+                                TravelModeManager.onLocationUpdated(loc)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Simulate Deviate (>300m)", fontSize = 11.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -312,22 +329,28 @@ fun ActiveJourneyScreen(
                 AlertDialog(
                     onDismissRequest = { /* Force confirmation response */ },
                     title = {
-                        Text(
-                            "Route Changed!",
-                            color = StatusDenied,
-                            fontWeight = FontWeight.Black
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Warning, contentDescription = null, tint = EmergencyRed)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Route Deviation Detected!",
+                                color = EmergencyRed,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                     },
                     text = {
                         Column {
                             Text(
-                                "Your route has changed from the expected polyline. Are you safe?",
-                                color = OnSurfaceDark
+                                "Your journey path has deviated significantly from the safe expected route. Are you safe?",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                "Auto-reporting alert in $countdown seconds",
-                                color = StatusDenied,
+                                "Auto-reporting emergency in $countdown seconds",
+                                color = EmergencyRed,
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -336,7 +359,8 @@ fun ActiveJourneyScreen(
                     confirmButton = {
                         Button(
                             onClick = { viewModel.confirmSafety() },
-                            colors = ButtonDefaults.buttonColors(containerColor = StatusApproved)
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusApproved),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Text("I'M SAFE (RE-ROUTE)", color = OnPrimary, fontWeight = FontWeight.Bold)
                         }
@@ -347,11 +371,11 @@ fun ActiveJourneyScreen(
                                 viewModel.ignoreDeviationPrompt()
                             }
                         ) {
-                            Text("I NEED HELP", color = StatusDenied, fontWeight = FontWeight.Bold)
+                            Text("I NEED HELP", color = EmergencyRed, fontWeight = FontWeight.Bold)
                         }
                     },
-                    containerColor = Color(0xFF291414),
-                    textContentColor = OnSurfaceDark
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(18.dp)
                 )
             }
         }

@@ -35,10 +35,10 @@ object SafetyMonitoringManager {
     private const val TAG = "SafetyMonitoringManager"
     private const val DEFAULT_THRESHOLD = 50
 
-    private val authManager = FirebaseAuthManager()
-    private val riskRepository = RiskRepository()
+    private val authManager by lazy { FirebaseAuthManager() }
+    private val riskRepository by lazy { RiskRepository() }
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val serviceScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     private var countdownJob: Job? = null
     private var appContext: Context? = null
 
@@ -278,10 +278,12 @@ object SafetyMonitoringManager {
         }
     }
 
+    var isTestMode: Boolean = false
+
     private fun triggerSafetyCheck(location: UserLocation?) {
         Log.w(TAG, "Risk score exceeded threshold! Triggering safety check...")
         _isSafetyCheckActive.value = true
-        _countdownSeconds.value = 30 // Configurable duration
+        _countdownSeconds.value = 60 // 60-second response window per capstone specification
 
         val eventId = UUID.randomUUID().toString()
         val userId = authManager.currentUserId ?: ""
@@ -298,13 +300,23 @@ object SafetyMonitoringManager {
         )
         currentRiskEvent = event
 
-        // Persist to repository (Firestore log)
-        serviceScope.launch {
-            riskRepository.createRiskEvent(event)
+        // Persist to repository (Firestore log) unless in isolated test mode
+        if (!isTestMode) {
+            serviceScope.launch {
+                riskRepository.createRiskEvent(event)
+            }
         }
 
-        // Play vibration alert
-        appContext?.let { vibratePhone(it) }
+        // Play vibration alert and display system notification
+        appContext?.let { ctx ->
+            vibratePhone(ctx)
+            com.womensafety.system.utils.SafetyNotificationManager.showSafetyCheckNotification(
+                context = ctx,
+                eventId = eventId,
+                riskScore = _riskScore.value,
+                countdownSeconds = _countdownSeconds.value
+            )
+        }
 
         // Start countdown timer
         startCountdown()
@@ -317,7 +329,7 @@ object SafetyMonitoringManager {
                 delay(1000)
                 _countdownSeconds.value -= 1
             }
-            // Escalation stage on timeout (no response)
+            // Escalation stage on timeout (no response after 60 seconds)
             escalateToSOS("EXPIRED")
         }
     }
@@ -326,10 +338,13 @@ object SafetyMonitoringManager {
         countdownJob?.cancel()
         countdownJob = null
 
+        // Dismiss the system notification immediately
+        com.womensafety.system.utils.SafetyNotificationManager.cancelSafetyCheckNotification(context)
+
         val event = currentRiskEvent
         val status = if (safe) "SAFE" else "ESCALATED"
 
-        if (event != null) {
+        if (event != null && !isTestMode) {
             currentRiskEvent = event.copy(status = status)
             serviceScope.launch {
                 riskRepository.updateRiskEventStatus(event.id, status)
@@ -343,9 +358,13 @@ object SafetyMonitoringManager {
         lastMovementTime = System.currentTimeMillis() // Reset movement reference
 
         if (!safe) {
-            // Trigger emergency escalation to existing SOSManager
-            serviceScope.launch {
-                SOSManager.triggerSOS(context, SOSTriggerMethod.AUTO)
+            if (isTestMode) {
+                Log.w(TAG, "TEST MODE: User clicked I NEED HELP. Real SOS/SMS dispatch suppressed.")
+            } else {
+                // Trigger emergency escalation to existing SOSManager
+                serviceScope.launch {
+                    SOSManager.triggerSOS(context, SOSTriggerMethod.AUTO)
+                }
             }
             endTrip() // End trip after escalating
         } else {
@@ -369,10 +388,19 @@ object SafetyMonitoringManager {
         val updatedEvent = event.copy(status = status)
         currentRiskEvent = updatedEvent
 
-        serviceScope.launch {
-            riskRepository.updateRiskEventStatus(event.id, status)
-            appContext?.let { context ->
-                SOSManager.triggerSOS(context, SOSTriggerMethod.AUTO)
+        // Dismiss system notification on timeout
+        appContext?.let { ctx ->
+            com.womensafety.system.utils.SafetyNotificationManager.cancelSafetyCheckNotification(ctx)
+        }
+
+        if (isTestMode) {
+            Log.w(TAG, "TEST MODE: Safety check timed out. Real SOS/SMS dispatch suppressed.")
+        } else {
+            serviceScope.launch {
+                riskRepository.updateRiskEventStatus(event.id, status)
+                appContext?.let { context ->
+                    SOSManager.triggerSOS(context, SOSTriggerMethod.AUTO)
+                }
             }
         }
 
@@ -381,7 +409,7 @@ object SafetyMonitoringManager {
         _riskScore.value = 0
         _activeAnomalies.value = emptyList()
         _isTripActive.value = false // Auto-stop trip on escalation
-        Log.w(TAG, "Safety check timed out without response. SOS escalated.")
+        Log.w(TAG, "Safety check timed out without response (status: $status).")
     }
 
     private fun vibratePhone(context: Context) {

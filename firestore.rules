@@ -137,9 +137,9 @@ service cloud.firestore {
                        request.resource.data.trustedContactId;
 
 
-      // Only the USER can approve / deny / revoke.
+      // User can approve / deny / revoke. Trusted contact can also revoke or cancel their relationship.
       allow update: if isSignedIn()
-                    && resource.data.userId == request.auth.uid
+                    && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid)
 
                     // Relationship identities cannot be changed.
                     && request.resource.data.userId == resource.data.userId
@@ -148,7 +148,7 @@ service cloud.firestore {
 
                     // Only valid relationship states.
                     && request.resource.data.status
-                       in ['APPROVED', 'DENIED', 'REVOKED']
+                       in ['APPROVED', 'DENIED', 'REVOKED', 'PENDING']
 
                     // Relationship ID remains deterministic.
                     && relationshipId ==
@@ -157,8 +157,12 @@ service cloud.firestore {
 
 
 
-      // Client cannot delete relationships.
-      allow delete: if false;
+      // User or trusted contact can delete their own relationship.
+      allow delete: if isSignedIn()
+                    && (
+                      resource.data.userId == request.auth.uid
+                      || resource.data.trustedContactId == request.auth.uid
+                    );
     }
 
 

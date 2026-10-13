@@ -6,9 +6,10 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.womensafety.system.ui.theme.*
 
 @Composable
 fun TCBottomNavBar(navController: NavHostController) {
@@ -21,15 +22,21 @@ fun TCBottomNavBar(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        containerColor = SurfaceDark,
-        contentColor = OnSurfaceDark
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 8.dp
     ) {
         items.forEach { item ->
             val itemRoute = item.route::class.qualifiedName
             val selected = currentRoute?.contains(itemRoute ?: "") == true
             NavigationBarItem(
                 icon = { Icon(item.icon, contentDescription = item.label) },
-                label = { Text(item.label) },
+                label = {
+                    Text(
+                        text = item.label,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    )
+                },
                 selected = selected,
                 onClick = {
                     navController.navigate(item.route) {
@@ -41,11 +48,11 @@ fun TCBottomNavBar(navController: NavHostController) {
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = GradientRose,
-                    selectedTextColor = GradientRose,
-                    unselectedIconColor = OnSurfaceVariantDark.copy(alpha = 0.5f),
-                    unselectedTextColor = OnSurfaceVariantDark.copy(alpha = 0.5f),
-                    indicatorColor = GradientRose.copy(alpha = 0.12f)
+                    selectedIconColor = MaterialTheme.colorScheme.secondary,
+                    selectedTextColor = MaterialTheme.colorScheme.secondary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
                 )
             )
         }

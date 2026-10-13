@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -16,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -36,7 +38,9 @@ import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import com.womensafety.system.service.LocationTrackingService
-import com.womensafety.system.ui.home.GlassCard
+import com.womensafety.system.ui.components.AppCard
+import com.womensafety.system.ui.components.PrimaryButton
+import com.womensafety.system.ui.components.SecondaryButton
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.viewmodel.TravelViewModel
 import java.util.Locale
@@ -64,43 +68,49 @@ fun TravelModeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(BackgroundDark)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = Icons.Filled.LocationOn,
-                contentDescription = null,
-                tint = StatusDenied,
-                modifier = Modifier.size(64.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.LocationOn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(20.dp))
             Text(
                 text = "Location Permission Required",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = OnSurfaceDark
+                color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Travel Mode requires location access to track your journey and monitor deviations.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = OnSurfaceVariantDark,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = { permissionState.launchMultiplePermissionRequest() },
-                colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Text("GRANT PERMISSION", fontWeight = FontWeight.Bold)
-            }
+            PrimaryButton(
+                text = "Grant Permission",
+                onClick = { permissionState.launchMultiplePermissionRequest() }
+            )
             Spacer(modifier = Modifier.height(12.dp))
-            TextButton(onClick = onBack) {
-                Text("CANCEL", color = OnSurfaceVariantDark)
-            }
+            SecondaryButton(
+                text = "Cancel",
+                onClick = onBack
+            )
         }
         return
     }
@@ -204,8 +214,8 @@ fun TravelModeScreen(
             if (destinationLatLng != null && routePoints.isNotEmpty()) {
                 val polyline = Polyline(map).apply {
                     setPoints(routePoints)
-                    outlinePaint.color = android.graphics.Color.parseColor("#FFA726")
-                    outlinePaint.strokeWidth = 8f
+                    outlinePaint.color = android.graphics.Color.parseColor("#4F46E5")
+                    outlinePaint.strokeWidth = 9f
                 }
                 map.overlays.add(polyline)
             }
@@ -219,9 +229,10 @@ fun TravelModeScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Travel Mode Navigation",
-                        color = OnSurfaceDark,
-                        fontWeight = FontWeight.Bold
+                        "Travel Mode",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -229,7 +240,7 @@ fun TravelModeScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -238,30 +249,27 @@ fun TravelModeScreen(
                         Icon(
                             Icons.Filled.History,
                             contentDescription = "Travel History",
-                            tint = OnSurfaceDark
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark.copy(alpha = 0.9f))
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         },
-        containerColor = BackgroundDark
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(BackgroundDark, Color(0xFF130F00))
-                    )
-                )
         ) {
-            // Preview Map (Half Screen)
+            // Preview Map (Top Half)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.9f)
+                    .weight(0.95f)
             ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -280,185 +288,183 @@ fun TravelModeScreen(
                 // Map Selection Guide Banner
                 if (isSelectingSourceOnMap || isSelectingDestOnMap) {
                     Surface(
-                        color = GradientAmber.copy(alpha = 0.9f),
-                        contentColor = BackgroundDark,
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp)
-                            .align(Alignment.TopCenter)
+                            .padding(12.dp)
+                            .align(Alignment.TopCenter),
+                        shape = RoundedCornerShape(12.dp),
+                        shadowElevation = 4.dp
                     ) {
                         Text(
-                            text = if (isSelectingSourceOnMap) "👉 TAP ON MAP TO SET START LOCATION" else "👉 TAP ON MAP TO SET DESTINATION",
+                            text = if (isSelectingSourceOnMap) "👉 Tap anywhere on map to set start location" else "👉 Tap anywhere on map to set destination",
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(8.dp),
-                            fontSize = 12.sp
+                            modifier = Modifier.padding(10.dp),
+                            fontSize = 13.sp
                         )
                     }
                 }
             }
 
-            // Route Settings & Action Card
+            // Route Settings & Action Card (Bottom Half)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1.1f)
-                    .padding(16.dp)
+                    .weight(1.05f)
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                GlassCard(
-                    accentGradient = Brush.horizontalGradient(
-                        colors = listOf(GradientAmber.copy(alpha = 0.1f), GradientGold.copy(alpha = 0.05f))
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "JOURNEY CONFIGURATION",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
                     )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "JOURNEY CONFIGURATION",
-                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp),
-                            color = GradientAmber,
-                            fontWeight = FontWeight.Bold
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (isGeocoding) {
+                        LinearProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth()
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        if (isGeocoding) {
-                            LinearProgressIndicator(color = GradientAmber, modifier = Modifier.fillMaxWidth())
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-
-                        if (geocodeError != null) {
-                            Text(geocodeError!!, color = StatusDenied, style = MaterialTheme.typography.bodySmall)
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-
-                        // SOURCE INPUT GROUP
+                    if (geocodeError != null) {
                         Text(
-                            "1. STARTING LOCATION",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark,
-                            fontWeight = FontWeight.Bold
+                            geocodeError!!,
+                            color = EmergencyRed,
+                            style = MaterialTheme.typography.bodySmall
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = sourceSearchQuery,
-                                onValueChange = { sourceSearchQuery = it },
-                                label = { Text("Search Start Address") },
-                                trailingIcon = {
-                                    IconButton(onClick = { viewModel.geocodeAddressString(context, sourceSearchQuery, true) }) {
-                                        Icon(Icons.Default.Search, contentDescription = "Search Source", tint = GradientAmber)
-                                    }
-                                },
-                                placeholder = { Text(sourceAddressName.ifBlank { "Current GPS location" }) },
-                                modifier = Modifier.weight(1f),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = GradientAmber,
-                                    unfocusedBorderColor = OutlineDark
-                                )
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    curLoc?.let {
-                                        viewModel.updateSourceLatLng(GeoPoint(it.latitude, it.longitude), it.address ?: "Current Location")
-                                        sourceSearchQuery = it.address ?: ""
-                                        Toast.makeText(context, "Using current location!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.weight(1.1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariantDark)
-                            ) {
-                                Text("USE CURRENT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // SOURCE INPUT GROUP
+                    Text(
+                        "1. Starting Location",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = sourceSearchQuery,
+                        onValueChange = { sourceSearchQuery = it },
+                        label = { Text("Search Start Address") },
+                        trailingIcon = {
+                            IconButton(onClick = { viewModel.geocodeAddressString(context, sourceSearchQuery, true) }) {
+                                Icon(Icons.Default.Search, contentDescription = "Search Source", tint = MaterialTheme.colorScheme.primary)
                             }
-                            Button(
-                                onClick = {
-                                    isSelectingSourceOnMap = true
-                                    isSelectingDestOnMap = false
-                                },
-                                modifier = Modifier.weight(0.9f),
-                                colors = ButtonDefaults.buttonColors(containerColor = if (isSelectingSourceOnMap) GradientAmber else SurfaceVariantDark)
-                            ) {
-                                Text("SELECT ON MAP", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // DESTINATION INPUT GROUP
-                        Text(
-                            "2. DESTINATION",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = OnSurfaceVariantDark,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = destinationSearchQuery,
-                                onValueChange = { destinationSearchQuery = it },
-                                label = { Text("Search Destination") },
-                                trailingIcon = {
-                                    IconButton(onClick = { viewModel.geocodeAddressString(context, destinationSearchQuery, false) }) {
-                                        Icon(Icons.Default.Search, contentDescription = "Search Destination", tint = GradientAmber)
-                                    }
-                                },
-                                placeholder = { Text(destinationAddressName.ifBlank { "Enter place name" }) },
-                                modifier = Modifier.weight(1.1f),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = GradientAmber,
-                                    unfocusedBorderColor = OutlineDark
-                                )
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Button(
+                        },
+                        placeholder = { Text(sourceAddressName.ifBlank { "Current GPS location" }) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalButton(
                             onClick = {
-                                isSelectingDestOnMap = true
-                                isSelectingSourceOnMap = false
+                                curLoc?.let {
+                                    viewModel.updateSourceLatLng(GeoPoint(it.latitude, it.longitude), it.address ?: "Current Location")
+                                    sourceSearchQuery = it.address ?: ""
+                                    Toast.makeText(context, "Using current location!", Toast.LENGTH_SHORT).show()
+                                }
                             },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isSelectingDestOnMap) GradientAmber else SurfaceVariantDark)
+                            modifier = Modifier.weight(1.1f),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("SELECT DESTINATION ON MAP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Current GPS", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        val canStart = destinationLatLng != null
-                        Button(
+                        FilledTonalButton(
                             onClick = {
-                                viewModel.startJourney(activeSourceLatLng, activeDestinationLatLng)
-                                onNavigateToActiveJourney()
+                                isSelectingSourceOnMap = true
+                                isSelectingDestOnMap = false
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp),
-                            enabled = canStart,
-                            colors = ButtonDefaults.buttonColors(containerColor = GradientAmber),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Icon(Icons.Filled.Navigation, contentDescription = null, tint = OnPrimary)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "START JOURNEY",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = OnPrimary
+                            modifier = Modifier.weight(0.9f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = if (isSelectingSourceOnMap) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                             )
+                        ) {
+                            Text("Pick on Map", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // DESTINATION INPUT GROUP
+                    Text(
+                        "2. Destination",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = destinationSearchQuery,
+                        onValueChange = { destinationSearchQuery = it },
+                        label = { Text("Search Destination") },
+                        trailingIcon = {
+                            IconButton(onClick = { viewModel.geocodeAddressString(context, destinationSearchQuery, false) }) {
+                                Icon(Icons.Default.Search, contentDescription = "Search Destination", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        },
+                        placeholder = { Text(destinationAddressName.ifBlank { "Enter place name or landmark" }) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    FilledTonalButton(
+                        onClick = {
+                            isSelectingDestOnMap = true
+                            isSelectingSourceOnMap = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = if (isSelectingDestOnMap) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text("Pick Destination on Map", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    val canStart = destinationLatLng != null
+                    PrimaryButton(
+                        text = "Start Safe Journey",
+                        onClick = {
+                            viewModel.startJourney(activeSourceLatLng, activeDestinationLatLng)
+                            onNavigateToActiveJourney()
+                        },
+                        enabled = canStart,
+                        icon = Icons.Filled.Navigation
+                    )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
