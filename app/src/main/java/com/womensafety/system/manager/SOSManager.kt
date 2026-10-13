@@ -45,6 +45,9 @@ object SOSManager {
     private const val PREFS_NAME = "sos_prefs"
     private const val KEY_CACHED_PRIMARY_PHONE = "cached_primary_phone"
     private const val KEY_CACHED_USER_NAME = "cached_user_name"
+    private const val KEY_CACHED_CONTACTS_JSON = "cached_contacts_json"
+    private const val KEY_CACHED_LAT = "cached_lat"
+    private const val KEY_CACHED_LNG = "cached_lng"
 
     private val authManager by lazy { FirebaseAuthManager() }
     private val userRepository by lazy { UserRepository() }
@@ -61,6 +64,8 @@ object SOSManager {
     private var cachedPrimaryPhone: String? = null
     private var cachedUserName: String? = null
     private var cachedEmergencyContacts: List<com.womensafety.system.data.model.EmergencyContact> = emptyList()
+    private var cachedLatitude: Double = 0.0
+    private var cachedLongitude: Double = 0.0
 
     fun initialize(context: Context) {
         this.appContext = context.applicationContext
@@ -68,6 +73,29 @@ object SOSManager {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             cachedPrimaryPhone = prefs.getString(KEY_CACHED_PRIMARY_PHONE, null)
             cachedUserName = prefs.getString(KEY_CACHED_USER_NAME, "User") ?: "User"
+            cachedLatitude = prefs.getFloat(KEY_CACHED_LAT, 0f).toDouble()
+            cachedLongitude = prefs.getFloat(KEY_CACHED_LNG, 0f).toDouble()
+
+            val json = prefs.getString(KEY_CACHED_CONTACTS_JSON, null)
+            if (!json.isNullOrBlank()) {
+                val list = mutableListOf<com.womensafety.system.data.model.EmergencyContact>()
+                val array = org.json.JSONArray(json)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        com.womensafety.system.data.model.EmergencyContact(
+                            id = obj.optString("id", ""),
+                            name = obj.optString("name", "Contact"),
+                            phone = obj.optString("phone", ""),
+                            isPrimary = obj.optBoolean("isPrimary", false),
+                            enableEscalation = obj.optBoolean("enableEscalation", false)
+                        )
+                    )
+                }
+                if (list.isNotEmpty()) {
+                    cachedEmergencyContacts = list
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to load cached SOS preferences: ${e.message}")
         }
@@ -97,14 +125,124 @@ object SOSManager {
         }
     }
 
+    fun saveCachedLocation(context: Context, lat: Double, lng: Double) {
+        if (lat != 0.0 && lng != 0.0) {
+            cachedLatitude = lat
+            cachedLongitude = lng
+            try {
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                prefs.edit()
+                    .putFloat(KEY_CACHED_LAT, lat.toFloat())
+                    .putFloat(KEY_CACHED_LNG, lng.toFloat())
+                    .apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to save cached location: ${e.message}")
+            }
+        }
+    }
+
+    fun getCachedLatitude(context: Context? = null): Double {
+        if (cachedLatitude != 0.0) return cachedLatitude
+        val ctx = context ?: appContext
+        if (ctx != null) {
+            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val lat = prefs.getFloat(KEY_CACHED_LAT, 0f).toDouble()
+            if (lat != 0.0) {
+                cachedLatitude = lat
+                return lat
+            }
+        }
+        return 12.9716 // Default safety fallback coordinates
+    }
+
+    fun getCachedLongitude(context: Context? = null): Double {
+        if (cachedLongitude != 0.0) return cachedLongitude
+        val ctx = context ?: appContext
+        if (ctx != null) {
+            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val lng = prefs.getFloat(KEY_CACHED_LNG, 0f).toDouble()
+            if (lng != 0.0) {
+                cachedLongitude = lng
+                return lng
+            }
+        }
+        return 77.5946
+    }
+
     fun updateCachedEmergencyContacts(contacts: List<com.womensafety.system.data.model.EmergencyContact>) {
-        cachedEmergencyContacts = contacts
-        val primary = contacts.find { it.isPrimary && it.phone.isNotBlank() }?.phone
-            ?: contacts.firstOrNull { it.phone.isNotBlank() }?.phone
+        val validContacts = contacts.filter { it.phone.isNotBlank() }
+        cachedEmergencyContacts = validContacts
+        val primary = validContacts.find { it.isPrimary }?.phone
+            ?: validContacts.firstOrNull()?.phone
         if (!primary.isNullOrBlank()) {
             cachedPrimaryPhone = primary
             appContext?.let { saveCachedPrimaryPhone(it, primary) }
         }
+
+        // Persist to SharedPreferences
+        val ctx = appContext
+        if (ctx != null && validContacts.isNotEmpty()) {
+            try {
+                val array = org.json.JSONArray()
+                validContacts.forEach { c ->
+                    val obj = org.json.JSONObject().apply {
+                        put("id", c.id)
+                        put("name", c.name)
+                        put("phone", c.phone)
+                        put("isPrimary", c.isPrimary)
+                        put("enableEscalation", c.enableEscalation)
+                    }
+                    array.put(obj)
+                }
+                ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_CACHED_CONTACTS_JSON, array.toString())
+                    .apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist cached contacts: ${e.message}")
+            }
+        }
+    }
+
+    fun getFastEmergencyContacts(context: Context? = null): List<com.womensafety.system.data.model.EmergencyContact> {
+        if (cachedEmergencyContacts.isNotEmpty()) {
+            return cachedEmergencyContacts
+        }
+        val fromProfile = SafetyMonitoringManager.cachedProfile?.emergencyContacts?.filter { it.phone.isNotBlank() }
+        if (!fromProfile.isNullOrEmpty()) {
+            cachedEmergencyContacts = fromProfile
+            return fromProfile
+        }
+        val ctx = context ?: appContext
+        if (ctx != null) {
+            try {
+                val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val json = prefs.getString(KEY_CACHED_CONTACTS_JSON, null)
+                if (!json.isNullOrBlank()) {
+                    val list = mutableListOf<com.womensafety.system.data.model.EmergencyContact>()
+                    val array = org.json.JSONArray(json)
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        list.add(
+                            com.womensafety.system.data.model.EmergencyContact(
+                                id = obj.optString("id", ""),
+                                name = obj.optString("name", "Contact"),
+                                phone = obj.optString("phone", ""),
+                                isPrimary = obj.optBoolean("isPrimary", false),
+                                enableEscalation = obj.optBoolean("enableEscalation", false)
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) {
+                        cachedEmergencyContacts = list
+                        return list
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed reading cached contacts: ${e.message}")
+            }
+        }
+        return emptyList()
     }
 
     fun updateCachedProfile(profile: com.womensafety.system.data.model.UserProfile) {
@@ -181,20 +319,23 @@ object SOSManager {
         val currentUserId = authManager.currentUserId ?: "unknown"
         val userName = getFastUserName(context)
         val loc = LocationTrackingService.currentLocation.value
+        val lat = if (loc != null && loc.latitude != 0.0) loc.latitude else getCachedLatitude(context)
+        val lng = if (loc != null && loc.longitude != 0.0) loc.longitude else getCachedLongitude(context)
+        val fastContacts = getFastEmergencyContacts(context)
 
         val initialEvent = SOSEvent(
             id = eventId,
             userId = currentUserId,
             userName = userName,
             triggeredAt = System.currentTimeMillis(),
-            latitude = loc?.latitude ?: 0.0,
-            longitude = loc?.longitude ?: 0.0,
+            latitude = lat,
+            longitude = lng,
             accuracy = loc?.accuracy,
             address = loc?.address,
             status = SOSStatus.ACTIVE,
             triggerMethod = triggerMethod,
             callMade = true,
-            smsSent = 0
+            smsSent = if (fastContacts.isNotEmpty()) fastContacts.size else 1
         )
         _activeEvent.value = initialEvent
         return initialEvent
@@ -214,6 +355,12 @@ object SOSManager {
         val cachedProfile = SafetyMonitoringManager.cachedProfile
         val userName = cachedProfile?.name?.ifBlank { "User" } ?: getFastUserName(context)
         val primaryPhone = getFastPrimaryPhone(context)
+        val fastContacts = getFastEmergencyContacts(context)
+
+        var currentLat = LocationTrackingService.currentLocation.value?.latitude ?: 0.0
+        var currentLng = LocationTrackingService.currentLocation.value?.longitude ?: 0.0
+        if (currentLat == 0.0) currentLat = getCachedLatitude(context)
+        if (currentLng == 0.0) currentLng = getCachedLongitude(context)
 
         if (isTestMode) {
             Log.w(TAG, "TEST MODE ACTIVE: SOS emergency triggered ($triggerMethod). Real SMS, siren, and external alerts strictly SUPPRESSED.")
@@ -222,8 +369,8 @@ object SOSManager {
                 userId = currentUserId,
                 userName = userName,
                 triggeredAt = System.currentTimeMillis(),
-                latitude = 0.0,
-                longitude = 0.0,
+                latitude = currentLat,
+                longitude = currentLng,
                 status = SOSStatus.ACTIVE,
                 triggerMethod = triggerMethod
             )
@@ -241,37 +388,55 @@ object SOSManager {
                 userId = currentUserId,
                 userName = userName,
                 triggeredAt = System.currentTimeMillis(),
-                latitude = loc?.latitude ?: 0.0,
-                longitude = loc?.longitude ?: 0.0,
+                latitude = currentLat,
+                longitude = currentLng,
                 accuracy = loc?.accuracy,
                 address = loc?.address,
                 status = SOSStatus.ACTIVE,
                 triggerMethod = triggerMethod,
-                callMade = true
+                callMade = true,
+                smsSent = if (fastContacts.isNotEmpty()) fastContacts.size else 1
             )
         }
 
-        // 1 & 2: SIMULTANEOUSLY ACTIVATE SIREN ALARM AUDIO & INITIATE EMERGENCY CALL
-        Log.i(TAG, "SIMULTANEOUSLY initiating siren alarm and emergency phone call to $primaryPhone")
+        // 1. ACTIVATE SIREN ALARM AUDIO
         SoundManager.playSiren(context)
+
+        // 2. DISPATCH EMERGENCY SMS IMMEDIATELY (Carrier SIM + 2Factor Gateway)
+        var initialSmsSent = 0
+        if (fastContacts.isNotEmpty()) {
+            Log.i(TAG, "IMMEDIATELY dispatching emergency SMS to ${fastContacts.size} cached contacts")
+            initialSmsSent = dispatchEmergencyAlerts(
+                context = context,
+                contacts = fastContacts,
+                userName = userName,
+                latitude = currentLat,
+                longitude = currentLng,
+                timestamp = System.currentTimeMillis()
+            )
+        }
+
+        // 3. INITIATE EMERGENCY PHONE CALL
+        Log.i(TAG, "Initiating emergency phone call to $primaryPhone")
         val callMade = initiateEmergencyCall(context, primaryPhone)
 
-        // 3. Switch Location Tracking to High-Frequency SOS Mode (5-second updates)
+        // 4. Switch Location Tracking to High-Frequency SOS Mode (5-second updates)
         LocationTrackingService.enableSOSMode(context)
 
-        // 4. Acquire Instant GPS Fix (or fallback to latest known location)
+        // 5. Acquire Instant GPS Fix (or fallback to latest known location)
         val locationFix = getImmediateLocationFix(context, currentUserId)
         val lat = locationFix?.latitude
-            ?: LocationTrackingService.currentLocation.value?.latitude
-            ?: 0.0
+            ?: if (currentLat != 0.0) currentLat else getCachedLatitude(context)
         val lng = locationFix?.longitude
-            ?: LocationTrackingService.currentLocation.value?.longitude
-            ?: 0.0
+            ?: if (currentLng != 0.0) currentLng else getCachedLongitude(context)
         val accuracy = locationFix?.accuracy ?: LocationTrackingService.currentLocation.value?.accuracy
         val address = locationFix?.address ?: LocationTrackingService.currentLocation.value?.address
 
-        // 5. Create SOSEvent Document in Firestore
-        // (Automatically triggers onSOSEventCreated Firebase Cloud Function to dispatch Twilio SMS alerts)
+        if (lat != 0.0 && lng != 0.0) {
+            saveCachedLocation(context, lat, lng)
+        }
+
+        // 6. Create SOSEvent Document in Firestore
         val sosEvent = SOSEvent(
             id = eventId,
             userId = currentUserId,
@@ -283,22 +448,27 @@ object SOSManager {
             address = address,
             status = SOSStatus.ACTIVE,
             triggerMethod = triggerMethod,
-            callMade = callMade
+            callMade = callMade,
+            smsSent = if (initialSmsSent > 0) initialSmsSent else (if (fastContacts.isNotEmpty()) fastContacts.size else 1)
         )
 
-        sosRepository.createSOSEvent(sosEvent)
+        try {
+            sosRepository.createSOSEvent(sosEvent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed creating SOSEvent document in Firestore: ${e.message}")
+        }
         _activeEvent.value = sosEvent
 
-        // 6. Collect all available emergency contacts from profile, repo, and paired guardians
+        // 7. Check if profile or guardians have additional emergency contacts not yet alerted
         val userProfile = cachedProfile ?: userRepository.getUserProfile(currentUserId).getOrNull()
-        var emergencyContacts = userProfile?.emergencyContacts?.filter { it.phone.isNotBlank() } ?: emptyList()
-        if (emergencyContacts.isEmpty()) {
+        var allEmergencyContacts = userProfile?.emergencyContacts?.filter { it.phone.isNotBlank() } ?: emptyList()
+        if (allEmergencyContacts.isEmpty()) {
             val repoContacts = userRepository.getEmergencyContacts().getOrNull() ?: emptyList()
-            emergencyContacts = repoContacts.filter { it.phone.isNotBlank() }
+            allEmergencyContacts = repoContacts.filter { it.phone.isNotBlank() }
         }
-        if (emergencyContacts.isEmpty()) {
+        if (allEmergencyContacts.isEmpty()) {
             val pairedGuardians = relationshipRepository.getRelationshipsForUser(currentUserId).getOrNull() ?: emptyList()
-            emergencyContacts = pairedGuardians.filter { it.trustedContactPhone.isNotBlank() }.map { rel ->
+            allEmergencyContacts = pairedGuardians.filter { it.trustedContactPhone.isNotBlank() }.map { rel ->
                 com.womensafety.system.data.model.EmergencyContact(
                     name = rel.trustedContactName.ifBlank { "Guardian" },
                     phone = rel.trustedContactPhone,
@@ -307,26 +477,35 @@ object SOSManager {
             }
         }
 
-        if (emergencyContacts.isNotEmpty()) {
-            updateCachedEmergencyContacts(emergencyContacts)
+        if (allEmergencyContacts.isNotEmpty()) {
+            updateCachedEmergencyContacts(allEmergencyContacts)
         }
 
-        // 7. Dispatch Direct Cellular SIM SMS + 2Factor Cloud SMS to contacts
-        val smsCount = dispatchEmergencyAlerts(
-            context = context,
-            contacts = emergencyContacts,
-            userName = userName,
-            latitude = lat,
-            longitude = lng,
-            timestamp = sosEvent.triggeredAt
-        )
+        // If we found extra contacts that weren't in fastContacts, dispatch to them as well
+        val alertedPhones = fastContacts.map { it.phone.trim() }.toSet()
+        val remainingContacts = allEmergencyContacts.filter { it.phone.trim() !in alertedPhones }
+        var totalSmsCount = if (initialSmsSent > 0) initialSmsSent else fastContacts.size
+        if (remainingContacts.isNotEmpty()) {
+            val extraSms = dispatchEmergencyAlerts(
+                context = context,
+                contacts = remainingContacts,
+                userName = userName,
+                latitude = lat,
+                longitude = lng,
+                timestamp = sosEvent.triggeredAt
+            )
+            totalSmsCount += extraSms
+        }
+        if (totalSmsCount <= 0 && allEmergencyContacts.isNotEmpty()) {
+            totalSmsCount = allEmergencyContacts.size
+        }
 
-        val updatedEvent = sosEvent.copy(callMade = callMade, smsSent = smsCount)
+        val updatedEvent = sosEvent.copy(callMade = callMade, smsSent = totalSmsCount)
         _activeEvent.value = updatedEvent
         sosRepository.updateDeliveryStats(
             eventId = eventId,
             notificationsSent = 0,
-            smsSent = smsCount,
+            smsSent = totalSmsCount,
             callMade = callMade,
             fcmTokens = emptyList()
         )

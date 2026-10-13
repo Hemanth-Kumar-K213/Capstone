@@ -35,92 +35,183 @@ class PermissionViewModel(
     private val _state = MutableStateFlow(PermissionListState())
     val state: StateFlow<PermissionListState> = _state.asStateFlow()
 
-    fun loadRelationships() {
-        val userId = authRepository.currentUserId ?: return
+    private var observeJob: kotlinx.coroutines.Job? = null
 
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true)
+    init {
+        authRepository.currentUserId?.let { userId ->
+            startObservingRelationships(userId)
+        }
+    }
 
-            val result = relationshipRepository.getRelationshipsForUser(userId)
-            if (result.isSuccess) {
-                val relationships = result.getOrNull() ?: emptyList()
-                Log.d("PermissionVM", "Loaded ${relationships.size} relationships for user $userId")
-                relationships.forEach { rel ->
-                    Log.d("PermissionVM", "  Relationship: ${rel.id}, status=${rel.status}, tcName=${rel.trustedContactName}")
-                }
-                _state.value = PermissionListState(
+    fun startObservingRelationships(userId: String) {
+        observeJob?.cancel()
+        observeJob = viewModelScope.launch {
+            relationshipRepository.observeRelationshipsForUser(userId).collect { relationships ->
+                Log.d("PermissionVM", "Real-time snapshot: ${relationships.size} relationships for user $userId")
+                _state.value = _state.value.copy(
                     relationships = relationships,
                     isLoading = false
-                )
-            } else {
-                Log.e("PermissionVM", "Failed to load relationships: ${result.exceptionOrNull()?.message}")
-                _state.value = PermissionListState(
-                    isLoading = false,
-                    error = result.exceptionOrNull()?.message ?: "Failed to load contacts."
                 )
             }
         }
     }
 
-    fun approveRequest(relationshipId: String) {
+    fun loadRelationships() {
+        val userId = authRepository.currentUserId
+        if (userId == null) {
+            _state.value = _state.value.copy(isLoading = false)
+            return
+        }
+        startObservingRelationships(userId)
+
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, actionSuccess = null)
-            val result = relationshipRepository.approveRelationship(relationshipId)
-            if (result.isSuccess) {
-                _state.value = _state.value.copy(actionSuccess = "Request approved.")
-                loadRelationships()
-            } else {
+            if (_state.value.relationships.isEmpty()) {
+                _state.value = _state.value.copy(isLoading = true)
+            }
+
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    relationshipRepository.getRelationshipsForUser(userId)
+                } ?: Result.failure(Exception("Timed out loading relationships"))
+
+                if (result.isSuccess) {
+                    val relationships = result.getOrNull() ?: emptyList()
+                    Log.d("PermissionVM", "Loaded ${relationships.size} relationships for user $userId")
+                    _state.value = _state.value.copy(
+                        relationships = relationships,
+                        isLoading = false
+                    )
+                } else {
+                    Log.e("PermissionVM", "Failed to load relationships: ${result.exceptionOrNull()?.message}")
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = result.exceptionOrNull()?.message ?: "Failed to load contacts."
+                    )
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Failed to approve request."
+                    error = e.message ?: "Failed to load contacts."
+                )
+            } finally {
+                _state.value = _state.value.copy(isLoading = false)
+            }
+        }
+    }
+
+    fun approveRequest(relationshipId: String) {
+        if (_state.value.isLoading) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, actionSuccess = null, error = null)
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    relationshipRepository.approveRelationship(relationshipId)
+                } ?: Result.failure(Exception("Operation timed out"))
+
+                if (result.isSuccess) {
+                    _state.value = _state.value.copy(actionSuccess = "Request approved.")
+                    loadRelationships()
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = result.exceptionOrNull()?.message ?: "Failed to approve request."
+                    )
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to approve request."
                 )
             }
         }
     }
 
     fun denyRequest(relationshipId: String) {
+        if (_state.value.isLoading) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, actionSuccess = null)
-            val result = relationshipRepository.denyRelationship(relationshipId)
-            if (result.isSuccess) {
-                _state.value = _state.value.copy(actionSuccess = "Request denied.")
-                loadRelationships()
-            } else {
+            _state.value = _state.value.copy(isLoading = true, actionSuccess = null, error = null)
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    relationshipRepository.denyRelationship(relationshipId)
+                } ?: Result.failure(Exception("Operation timed out"))
+
+                if (result.isSuccess) {
+                    _state.value = _state.value.copy(actionSuccess = "Request denied.")
+                    loadRelationships()
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = result.exceptionOrNull()?.message ?: "Failed to deny request."
+                    )
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Failed to deny request."
+                    error = e.message ?: "Failed to deny request."
                 )
             }
         }
     }
 
     fun revokeAccess(relationshipId: String) {
+        if (_state.value.isLoading) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, actionSuccess = null)
-            val result = relationshipRepository.revokeRelationship(relationshipId)
-            if (result.isSuccess) {
-                _state.value = _state.value.copy(actionSuccess = "Access revoked.")
-                loadRelationships()
-            } else {
+            _state.value = _state.value.copy(isLoading = true, actionSuccess = null, error = null)
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    relationshipRepository.revokeRelationship(relationshipId)
+                } ?: Result.failure(Exception("Operation timed out"))
+
+                if (result.isSuccess) {
+                    _state.value = _state.value.copy(actionSuccess = "Access revoked.")
+                    loadRelationships()
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = result.exceptionOrNull()?.message ?: "Failed to revoke access."
+                    )
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Failed to revoke access."
+                    error = e.message ?: "Failed to revoke access."
                 )
             }
         }
     }
 
     fun deleteRelationship(relationshipId: String) {
+        if (_state.value.isLoading) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, actionSuccess = null)
-            val result = relationshipRepository.deleteRelationship(relationshipId)
-            if (result.isSuccess) {
-                _state.value = _state.value.copy(actionSuccess = "Contact removed.")
-                loadRelationships()
-            } else {
+            _state.value = _state.value.copy(isLoading = true, actionSuccess = null, error = null)
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    relationshipRepository.deleteRelationship(relationshipId)
+                } ?: Result.failure(Exception("Operation timed out"))
+
+                if (result.isSuccess) {
+                    _state.value = _state.value.copy(actionSuccess = "Contact removed.")
+                    loadRelationships()
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = result.exceptionOrNull()?.message ?: "Failed to remove contact."
+                    )
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Failed to remove contact."
+                    error = e.message ?: "Failed to remove contact."
                 )
             }
         }

@@ -38,13 +38,16 @@ class OTPViewModel : ViewModel() {
      * Dispatches a 6-digit verification code strictly via 2Factor SMS (AUTOGEN2 endpoint).
      */
     fun sendOTP(phoneNumber: String, userName: String) {
+        if (_state.value.isLoading) return
         val normalizedPhone = Validators.normalizePhone(phoneNumber)
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
 
             try {
                 Log.d(TAG, "Calling TwoFactorClient.sendOTP for $normalizedPhone...")
-                val result = TwoFactorClient.sendOTP(normalizedPhone, userName = userName)
+                val result = kotlinx.coroutines.withTimeoutOrNull(20000L) {
+                    TwoFactorClient.sendOTP(normalizedPhone, userName = userName)
+                } ?: Result.failure(Exception("SMS OTP dispatch timed out. Please try again."))
 
                 if (result.isSuccess) {
                     val sessionId = result.getOrNull()
@@ -66,12 +69,16 @@ class OTPViewModel : ViewModel() {
                         error = errorMsg
                     )
                 }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Send OTP error: ${e.message}", e)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = e.message ?: "Failed to dispatch verification OTP via SMS."
                 )
+            } finally {
+                _state.value = _state.value.copy(isLoading = false)
             }
         }
     }
@@ -80,6 +87,7 @@ class OTPViewModel : ViewModel() {
      * Authoritatively validates the 6-digit OTP code through 2Factor SMS/VERIFY.
      */
     fun verifyOTP(phoneNumber: String, otp: String) {
+        if (_state.value.isLoading) return
         val normalizedPhone = Validators.normalizePhone(phoneNumber)
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
@@ -97,7 +105,10 @@ class OTPViewModel : ViewModel() {
             }
 
             try {
-                val result = TwoFactorClient.verifyOTP(sessionId, submittedOtp)
+                val result = kotlinx.coroutines.withTimeoutOrNull(20000L) {
+                    TwoFactorClient.verifyOTP(sessionId, submittedOtp)
+                } ?: Result.failure(Exception("OTP verification timed out. Please try again."))
+
                 if (result.isSuccess && result.getOrDefault(false)) {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -113,6 +124,8 @@ class OTPViewModel : ViewModel() {
                         error = err
                     )
                 }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Verify OTP error: ${e.message}", e)
                 val newAttempts = _state.value.attempts + 1
@@ -121,6 +134,8 @@ class OTPViewModel : ViewModel() {
                     attempts = newAttempts,
                     error = e.message ?: "Invalid OTP verification code."
                 )
+            } finally {
+                _state.value = _state.value.copy(isLoading = false)
             }
         }
     }

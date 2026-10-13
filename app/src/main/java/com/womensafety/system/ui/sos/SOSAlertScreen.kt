@@ -45,7 +45,8 @@ fun SOSAlertScreen(
     val context = LocalContext.current
     val activeEvent by viewModel.activeSOSEvent.collectAsState()
     val countdownSeconds by viewModel.sosCountdownSeconds.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val isResolvingSafe by viewModel.isResolvingSafe.collectAsState()
+    val isResolvingFalseAlarm by viewModel.isResolvingFalseAlarm.collectAsState()
 
     var isSirenMuted by remember { mutableStateOf(false) }
 
@@ -366,11 +367,11 @@ fun SOSAlertScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            enabled = !isLoading,
+            enabled = !isResolvingSafe && !isResolvingFalseAlarm,
             colors = ButtonDefaults.buttonColors(containerColor = StatusApproved),
             shape = RoundedCornerShape(14.dp)
         ) {
-            if (isLoading) {
+            if (isResolvingSafe) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
             } else {
                 Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White)
@@ -396,14 +397,18 @@ fun SOSAlertScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),
-            enabled = !isLoading,
+            enabled = !isResolvingSafe && !isResolvingFalseAlarm,
             colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusPending),
             border = androidx.compose.foundation.BorderStroke(1.dp, StatusPending),
             shape = RoundedCornerShape(14.dp)
         ) {
-            Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("CANCEL AS FALSE ALARM", fontWeight = FontWeight.Bold)
+            if (isResolvingFalseAlarm) {
+                CircularProgressIndicator(color = StatusPending, modifier = Modifier.size(20.dp))
+            } else {
+                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("CANCEL AS FALSE ALARM", fontWeight = FontWeight.Bold)
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

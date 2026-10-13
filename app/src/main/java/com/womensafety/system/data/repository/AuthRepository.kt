@@ -22,6 +22,9 @@ class AuthRepository(
     val currentUserId: String?
         get() = authManager.currentUserId
 
+    val currentUserEmail: String?
+        get() = authManager.currentUser?.email
+
     val isLoggedIn: Boolean
         get() = authManager.isLoggedIn
 
@@ -90,6 +93,12 @@ class AuthRepository(
      */
     suspend fun checkDuplicateAccount(phone: String, email: String): Result<DuplicateCheckResult> {
         return try {
+            // Check if this email belongs to the currently authenticated session created during Step 3
+            val currentEmail = authManager.currentUser?.email
+            if (currentEmail != null && currentEmail.equals(email, ignoreCase = true)) {
+                return Result.success(DuplicateCheckResult.NO_DUPLICATE)
+            }
+
             // Check email via Firebase Auth
             val signInMethods = authManager.fetchSignInMethodsForEmail(email)
             if (signInMethods.isFailure) {
@@ -98,7 +107,7 @@ class AuthRepository(
 
             val methods = signInMethods.getOrNull() ?: emptyList()
             if (methods.isNotEmpty()) {
-                // Email already has sign-in methods registered
+                // Email already has sign-in methods registered under another account
                 return Result.success(DuplicateCheckResult.EMAIL_EXISTS)
             }
 
@@ -110,6 +119,13 @@ class AuthRepository(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Updates the password for the current user.
+     */
+    suspend fun updatePassword(password: String): Result<Unit> {
+        return authManager.updatePassword(password)
     }
 
     /**

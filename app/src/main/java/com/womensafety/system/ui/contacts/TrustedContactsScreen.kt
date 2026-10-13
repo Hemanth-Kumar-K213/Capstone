@@ -35,6 +35,19 @@ fun TrustedContactsScreen(
 
     LaunchedEffect(Unit) { viewModel.loadRelationships() }
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.loadRelationships()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val pendingCount = viewModel.getPendingCount()
     val approvedCount = viewModel.getApprovedCount()
 

@@ -110,31 +110,45 @@ class HeartRateMonitoringViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(isQuerying = true, errorMessage = null) }
 
-            val result = HealthConnectManager.queryHeartRateRecords(context)
-            result.onSuccess { samples ->
-                val latest = samples.firstOrNull()
-                val isUnchanged = latest != null && latest.timestamp == lastObservedTimestamp
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(10000L) {
+                    HealthConnectManager.queryHeartRateRecords(context)
+                } ?: Result.failure(Exception("Health Connect query timed out"))
 
-                lastObservedTimestamp = latest?.timestamp
+                result.onSuccess { samples ->
+                    val latest = samples.firstOrNull()
+                    val isUnchanged = latest != null && latest.timestamp == lastObservedTimestamp
 
+                    lastObservedTimestamp = latest?.timestamp
+
+                    _uiState.update {
+                        it.copy(
+                            latestMeasurement = latest,
+                            recentMeasurements = samples,
+                            lastQueryTimestamp = System.currentTimeMillis(),
+                            isWaitingForNewerRecord = isUnchanged && samples.isNotEmpty(),
+                            errorMessage = null
+                        )
+                    }
+                }.onFailure { ex ->
+                    Log.e(TAG, "Refresh failed", ex)
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = ex.message ?: "Failed querying Health Connect"
+                        )
+                    }
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Refresh unexpected error", e)
                 _uiState.update {
                     it.copy(
-                        isQuerying = false,
-                        latestMeasurement = latest,
-                        recentMeasurements = samples,
-                        lastQueryTimestamp = System.currentTimeMillis(),
-                        isWaitingForNewerRecord = isUnchanged && samples.isNotEmpty(),
-                        errorMessage = null
+                        errorMessage = e.message ?: "Error querying Health Connect"
                     )
                 }
-            }.onFailure { ex ->
-                Log.e(TAG, "Refresh failed", ex)
-                _uiState.update {
-                    it.copy(
-                        isQuerying = false,
-                        errorMessage = ex.message ?: "Failed querying Health Connect"
-                    )
-                }
+            } finally {
+                _uiState.update { it.copy(isQuerying = false) }
             }
         }
     }

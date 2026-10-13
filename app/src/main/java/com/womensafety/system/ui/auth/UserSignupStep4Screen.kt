@@ -152,6 +152,14 @@ fun UserSignupStep4Screen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                PrimaryButton(
+                    text = "RETRY AUDIT",
+                    onClick = { viewModel.performDuplicateCheck() },
+                    isLoading = state.isLoading
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
                 SecondaryButton(
                     text = "GO BACK & EDIT DETAILS",
                     onClick = onBack

@@ -15,10 +15,13 @@ import com.womensafety.system.data.repository.RelationshipRepository
 import com.womensafety.system.data.repository.UidRepository
 import com.womensafety.system.data.repository.UserRepository
 import com.womensafety.system.utils.Validators
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * ViewModel for User Profile screen.
@@ -66,46 +69,62 @@ class UserProfileViewModel(
     fun loadProfile() {
         val userId = authRepository.currentUserId
         if (userId == null) {
-            _profileState.value = _profileState.value.copy(isLoading = false)
+            _profileState.update { it.copy(isLoading = false) }
             return
         }
 
         viewModelScope.launch {
             if (_profileState.value.userProfile == null) {
-                _profileState.value = _profileState.value.copy(isLoading = true)
+                _profileState.update { it.copy(isLoading = true) }
             }
 
-            val profileResult = userRepository.getUserProfile(userId)
-            val uidResult = uidRepository.getCurrentUid(userId)
+            try {
+                val profileResult = withTimeoutOrNull(15000L) {
+                    userRepository.getUserProfile(userId)
+                }
+                val uidResult = withTimeoutOrNull(10000L) {
+                    uidRepository.getCurrentUid(userId)
+                }
+                val relResult = withTimeoutOrNull(10000L) {
+                    relationshipRepository.getRelationshipsForUser(userId)
+                }
 
-            // Load trusted contact relationships
-            val relResult = relationshipRepository.getRelationshipsForUser(userId)
-            val relationships = relResult.getOrNull() ?: emptyList()
-            val approvedContacts = relationships.filter {
-                it.permissionState == PermissionState.APPROVED
-            }
-            val pendingCount = relationships.count {
-                it.permissionState == PermissionState.PENDING
-            }
-            val profile = profileResult.getOrNull()
-            if (profile != null) {
-                com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(profile)
-                com.womensafety.system.manager.SafetyMonitoringManager.setProactiveEnabled(profile.proactiveMonitoringEnabled)
-                com.womensafety.system.manager.SafetyMonitoringManager.setSafetyMode(profile.safetyMode)
-                com.womensafety.system.manager.TravelModeManager.routeDeviationToleranceMeters = profile.routeDeviationToleranceMeters
-                com.womensafety.system.manager.SOSManager.updateCachedProfile(profile)
-            }
+                val relationships = relResult?.getOrNull() ?: emptyList()
+                val approvedContacts = relationships.filter {
+                    it.permissionState == PermissionState.APPROVED
+                }
+                val pendingCount = relationships.count {
+                    it.permissionState == PermissionState.PENDING
+                }
+                val profile = profileResult?.getOrNull()
+                if (profile != null) {
+                    com.womensafety.system.manager.SafetyMonitoringManager.updateProfileCache(profile)
+                    com.womensafety.system.manager.SafetyMonitoringManager.setProactiveEnabled(profile.proactiveMonitoringEnabled)
+                    com.womensafety.system.manager.SafetyMonitoringManager.setSafetyMode(profile.safetyMode)
+                    com.womensafety.system.manager.TravelModeManager.routeDeviationToleranceMeters = profile.routeDeviationToleranceMeters
+                    com.womensafety.system.manager.SOSManager.updateCachedProfile(profile)
+                }
 
-            _profileState.value = ProfileState(
-                userProfile = profile,
-                currentUid = uidResult.getOrNull(),
-                trustedContacts = approvedContacts,
-                trustedContactCount = approvedContacts.size,
-                pendingRequestCount = pendingCount,
-                emergencyContactCount = profile?.emergencyContacts?.size ?: 0,
-                isLoading = false,
-                error = if (profileResult.isFailure) profileResult.exceptionOrNull()?.message else null
-            )
+                _profileState.update {
+                    it.copy(
+                        userProfile = profile,
+                        currentUid = uidResult?.getOrNull(),
+                        trustedContacts = approvedContacts,
+                        trustedContactCount = approvedContacts.size,
+                        pendingRequestCount = pendingCount,
+                        emergencyContactCount = profile?.emergencyContacts?.size ?: 0,
+                        error = if (profileResult?.isFailure == true) profileResult.exceptionOrNull()?.localizedMessage else null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _profileState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to load profile.")
+                }
+            } finally {
+                _profileState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
@@ -185,35 +204,56 @@ class UserProfileViewModel(
     }
 
     fun sendPasswordReset() {
+        if (_profileState.value.isLoading) return
         val email = _profileState.value.userProfile?.primaryEmail ?: return
 
         viewModelScope.launch {
-            _profileState.value = _profileState.value.copy(isLoading = true)
-            val result = authRepository.sendPasswordResetEmail(email)
-            _profileState.value = _profileState.value.copy(
-                isLoading = false,
-                successMessage = if (result.isSuccess) "Password reset link sent to $email" else null,
-                error = if (result.isFailure) "Failed to send password reset email." else null
-            )
+            _profileState.update { it.copy(isLoading = true, error = null, successMessage = null) }
+            try {
+                val result = withTimeoutOrNull(15000L) {
+                    authRepository.sendPasswordResetEmail(email)
+                }
+                if (result == null) {
+                    _profileState.update {
+                        it.copy(error = "Password reset request timed out. Please retry.")
+                    }
+                    return@launch
+                }
+                _profileState.update {
+                    it.copy(
+                        successMessage = if (result.isSuccess) "Password reset link sent to $email" else null,
+                        error = if (result.isFailure) result.exceptionOrNull()?.localizedMessage ?: "Failed to send password reset email." else null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _profileState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to send password reset email.")
+                }
+            } finally {
+                _profileState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
     // ─── Change Phone ────────────────────────────────────────────
 
     fun updateNewPhone(phone: String) {
-        _changePhoneState.value = _changePhoneState.value.copy(newPhone = phone, error = null)
+        _changePhoneState.update { it.copy(newPhone = phone, error = null) }
     }
 
     fun sendChangePhoneOtp(activity: Activity) {
+        if (_changePhoneState.value.isLoading) return
         val state = _changePhoneState.value
         val normalized = Validators.normalizePhone(state.newPhone)
 
         if (!Validators.isValidPhone(normalized)) {
-            _changePhoneState.value = state.copy(error = "Please enter a valid phone number.")
+            _changePhoneState.update { it.copy(error = "Please enter a valid phone number.") }
             return
         }
 
-        _changePhoneState.value = state.copy(isLoading = true, error = null)
+        _changePhoneState.update { it.copy(isLoading = true, error = null) }
 
         val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
             override fun onVerificationCompleted(credential: PhoneAuthCredential) {
@@ -221,74 +261,117 @@ class UserProfileViewModel(
             }
 
             override fun onVerificationFailed(e: FirebaseException) {
-                _changePhoneState.value = _changePhoneState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Phone verification failed."
-                )
+                _changePhoneState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.localizedMessage ?: "Phone verification failed."
+                    )
+                }
             }
 
             override fun onCodeSent(
                 verificationId: String,
                 token: PhoneAuthProvider.ForceResendingToken
             ) {
-                _changePhoneState.value = _changePhoneState.value.copy(
-                    isLoading = false,
-                    verificationId = verificationId,
-                    resendToken = token,
-                    otpSent = true,
-                    resendCooldown = 60
-                )
+                _changePhoneState.update {
+                    it.copy(
+                        isLoading = false,
+                        verificationId = verificationId,
+                        resendToken = token,
+                        otpSent = true,
+                        resendCooldown = 60
+                    )
+                }
             }
         }
 
-        authRepository.sendPhoneOtp(normalized, activity, callbacks)
+        try {
+            authRepository.sendPhoneOtp(normalized, activity, callbacks)
+        } catch (e: Exception) {
+            _changePhoneState.update {
+                it.copy(
+                    isLoading = false,
+                    error = e.localizedMessage ?: "Failed to initiate phone verification."
+                )
+            }
+        }
     }
 
     fun updateChangePhoneOtp(code: String) {
         if (code.length <= 6) {
-            _changePhoneState.value = _changePhoneState.value.copy(otpCode = code, error = null)
+            _changePhoneState.update { it.copy(otpCode = code, error = null) }
         }
     }
 
     fun verifyAndChangePhone() {
+        if (_changePhoneState.value.isLoading) return
         val state = _changePhoneState.value
         if (!Validators.isValidOtp(state.otpCode)) {
-            _changePhoneState.value = state.copy(error = "Please enter a valid 6-digit OTP.")
+            _changePhoneState.update { it.copy(error = "Please enter a valid 6-digit OTP.") }
             return
         }
 
-        val verificationId = state.verificationId ?: return
+        val verificationId = state.verificationId
+        if (verificationId == null) {
+            _changePhoneState.update { it.copy(error = "No active OTP request found. Please request an OTP first.") }
+            return
+        }
         val credential = authRepository.getPhoneCredential(verificationId, state.otpCode)
         completePhoneChange(credential)
     }
 
     private fun completePhoneChange(credential: PhoneAuthCredential) {
+        if (_changePhoneState.value.isLoading) return
         val state = _changePhoneState.value
-        _changePhoneState.value = state.copy(isLoading = true, error = null)
+        _changePhoneState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            val userId = authRepository.currentUserId ?: return@launch
-            val normalized = Validators.normalizePhone(state.newPhone)
+            try {
+                val userId = authRepository.currentUserId
+                if (userId == null) {
+                    _changePhoneState.update {
+                        it.copy(error = "User session expired. Please sign in again.")
+                    }
+                    return@launch
+                }
+                val normalized = Validators.normalizePhone(state.newPhone)
 
-            // NOTE: Phone duplicate checking is handled by Firebase Auth.
-            // If this phone is already linked to another account, the
-            // updatePhoneNumber/linkPhoneCredential call will fail with
-            // an appropriate error.
+                // Update in Firestore
+                val updateResult = withTimeoutOrNull(15000L) {
+                    userRepository.updatePhone(userId, normalized)
+                }
 
-            // Update in Firestore
-            val updateResult = userRepository.updatePhone(userId, normalized)
-            if (updateResult.isSuccess) {
-                _changePhoneState.value = _changePhoneState.value.copy(
-                    isLoading = false,
-                    success = true
-                )
-                // Reload profile
-                loadProfile()
-            } else {
-                _changePhoneState.value = _changePhoneState.value.copy(
-                    isLoading = false,
-                    error = "Failed to update phone number."
-                )
+                if (updateResult == null) {
+                    _changePhoneState.update {
+                        it.copy(error = "Updating phone timed out. Please retry.")
+                    }
+                    return@launch
+                }
+
+                if (updateResult.isSuccess) {
+                    _changePhoneState.update {
+                        it.copy(
+                            success = true,
+                            error = null
+                        )
+                    }
+                    // Reload profile
+                    loadProfile()
+                } else {
+                    _changePhoneState.update {
+                        it.copy(
+                            error = updateResult.exceptionOrNull()?.localizedMessage ?: "Failed to update phone number."
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _changePhoneState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to update phone number.")
+                }
+            } finally {
+                _changePhoneState.update { it.copy(isLoading = false) }
             }
         }
     }

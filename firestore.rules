@@ -120,7 +120,13 @@ service cloud.firestore {
     match /relationships/{relationshipId} {
 
       // User or trusted contact can read ONLY their own relationship.
-      allow read: if isSignedIn()
+      allow get: if isSignedIn()
+                 && (
+                   (resource != null && resource.data != null && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid))
+                   || relationshipId.matches('^' + request.auth.uid + '_.*')
+                   || relationshipId.matches('.*_' + request.auth.uid + '$')
+                 );
+      allow list: if isSignedIn()
                   && (
                     resource.data.userId == request.auth.uid
                     || resource.data.trustedContactId == request.auth.uid
@@ -160,8 +166,9 @@ service cloud.firestore {
       // User or trusted contact can delete their own relationship.
       allow delete: if isSignedIn()
                     && (
-                      resource.data.userId == request.auth.uid
-                      || resource.data.trustedContactId == request.auth.uid
+                      (resource != null && resource.data != null && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid))
+                      || relationshipId.matches('^' + request.auth.uid + '_.*')
+                      || relationshipId.matches('.*_' + request.auth.uid + '$')
                     );
     }
 

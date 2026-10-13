@@ -85,6 +85,23 @@ fun SafetyScreen(
         }
     }
 
+    // Automatically navigate back to SOSAlertScreen if resuming while an SOS is active (e.g. after phone call is cut)
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val current = sosViewModel.activeSOSEvent.value
+                if (current != null && current.status == SOSStatus.ACTIVE) {
+                    onNavigateToAlert(current.id)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     // Confirmation Countdown Dialog
     if (showConfirmDialog) {
         LaunchedEffect(showConfirmDialog) {

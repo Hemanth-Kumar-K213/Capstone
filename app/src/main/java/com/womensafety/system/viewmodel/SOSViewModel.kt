@@ -36,6 +36,12 @@ class SOSViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _isResolvingSafe = MutableStateFlow(false)
+    val isResolvingSafe: StateFlow<Boolean> = _isResolvingSafe.asStateFlow()
+
+    private val _isResolvingFalseAlarm = MutableStateFlow(false)
+    val isResolvingFalseAlarm: StateFlow<Boolean> = _isResolvingFalseAlarm.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -66,15 +72,12 @@ class SOSViewModel(
 
         // 4. Launch background pipeline for simultaneous alarm & call, GPS, Firestore, and SMS
         viewModelScope.launch {
-            _isLoading.value = true
             _errorMessage.value = null
             try {
                 SOSManager.triggerSOS(context, method, customEventId = eventId)
             } catch (e: Exception) {
                 android.util.Log.e("SOSViewModel", "triggerSOS error", e)
                 _errorMessage.value = e.message ?: "Failed to trigger SOS alert"
-            } finally {
-                _isLoading.value = false
             }
         }
     }
@@ -91,32 +94,38 @@ class SOSViewModel(
     }
 
     fun markAsSafe(context: Context, eventId: String, onResolved: (() -> Unit)? = null) {
+        if (_isResolvingSafe.value) return
         viewModelScope.launch {
-            _isLoading.value = true
+            _isResolvingSafe.value = true
             try {
                 stopCountdown()
                 SOSManager.resolveSOS(context, eventId, SOSStatus.RESOLVED)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("SOSViewModel", "markAsSafe error", e)
                 _errorMessage.value = e.message ?: "Failed to resolve SOS"
             } finally {
-                _isLoading.value = false
+                _isResolvingSafe.value = false
                 onResolved?.invoke()
             }
         }
     }
 
     fun markAsFalseAlarm(context: Context, eventId: String, onCancelled: (() -> Unit)? = null) {
+        if (_isResolvingFalseAlarm.value) return
         viewModelScope.launch {
-            _isLoading.value = true
+            _isResolvingFalseAlarm.value = true
             try {
                 stopCountdown()
                 SOSManager.resolveSOS(context, eventId, SOSStatus.FALSE_ALARM)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("SOSViewModel", "markAsFalseAlarm error", e)
                 _errorMessage.value = e.message ?: "Failed to cancel false alarm"
             } finally {
-                _isLoading.value = false
+                _isResolvingFalseAlarm.value = false
                 onCancelled?.invoke()
             }
         }
@@ -144,26 +153,45 @@ class SOSViewModel(
     }
 
     fun loadSOSHistory() {
-        val uid = authManager.currentUserId ?: return
+        val uid = authManager.currentUserId
+        if (uid == null) {
+            _isLoading.value = false
+            return
+        }
+        if (_isLoading.value) return
+
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            val result = sosRepository.getSOSHistory(uid, limit = 50)
-            result.onSuccess {
-                _sosHistory.value = it
-            }.onFailure {
-                _errorMessage.value = it.message ?: "Failed to load SOS history"
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    sosRepository.getSOSHistory(uid, limit = 50)
+                } ?: Result.failure(Exception("Timed out loading SOS history"))
+
+                result.onSuccess {
+                    _sosHistory.value = it
+                }.onFailure {
+                    _errorMessage.value = it.message ?: "Failed to load SOS history"
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Failed to load SOS history"
+            } finally {
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 
     fun loadSOSDetail(eventId: String) {
         viewModelScope.launch {
             _isLoading.value = true
-            val event = _sosHistory.value.find { it.id == eventId }
-            _selectedDetail.value = event
-            _isLoading.value = false
+            try {
+                val event = _sosHistory.value.find { it.id == eventId }
+                _selectedDetail.value = event
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 

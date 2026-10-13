@@ -130,13 +130,23 @@ class TravelViewModel(
 
     fun loadHistory() {
         val userId = authManager.currentUserId ?: return
+        if (_isLoading.value) return
         viewModelScope.launch {
             _isLoading.value = true
-            val result = journeyRepository.getUserJourneys(userId)
-            if (result.isSuccess) {
-                _pastJourneys.value = result.getOrDefault(emptyList())
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    journeyRepository.getUserJourneys(userId)
+                }
+                if (result?.isSuccess == true) {
+                    _pastJourneys.value = result.getOrDefault(emptyList())
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Log or retain existing journeys
+            } finally {
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 }

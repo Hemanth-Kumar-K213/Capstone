@@ -722,6 +722,46 @@ class FirestoreManager {
     }
 
     /**
+     * Real-time listener for a User's relationships using callbackFlow.
+     * Fires immediately whenever a Trusted Contact sends, modifies, or deletes a request.
+     */
+    fun observeRelationshipsForUser(userId: String): Flow<List<Relationship>> = callbackFlow {
+        val listener = db.collection(RELATIONSHIPS_COLLECTION)
+            .whereEqualTo("userId", userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreManager", "observeRelationshipsForUser error: ${error.message}")
+                    return@addSnapshotListener
+                }
+                val relationships = snapshot?.documents?.mapNotNull { doc ->
+                    doc.data?.let { Relationship.fromMap(doc.id, it) }
+                } ?: emptyList()
+                trySend(relationships)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * Real-time listener for a Trusted Contact's relationships using callbackFlow.
+     * Fires immediately when monitored user approves, denies, or deletes a relationship.
+     */
+    fun observeRelationshipsForTrustedContact(trustedContactId: String): Flow<List<Relationship>> = callbackFlow {
+        val listener = db.collection(RELATIONSHIPS_COLLECTION)
+            .whereEqualTo("trustedContactId", trustedContactId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("FirestoreManager", "observeRelationshipsForTrustedContact error: ${error.message}")
+                    return@addSnapshotListener
+                }
+                val relationships = snapshot?.documents?.mapNotNull { doc ->
+                    doc.data?.let { Relationship.fromMap(doc.id, it) }
+                } ?: emptyList()
+                trySend(relationships)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /**
      * Checks if a relationship already exists between a User and TC.
      * Uses a direct document get with the deterministic ID.
      *

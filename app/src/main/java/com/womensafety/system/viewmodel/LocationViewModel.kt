@@ -69,16 +69,27 @@ class LocationViewModel(
     }
 
     fun loadLocationHistory(userId: String) {
+        if (_isLoading.value) return
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            val result = locationRepository.getLocationHistory(userId, limit = 50)
-            result.onSuccess {
-                _locationHistory.value = it
-            }.onFailure {
-                _errorMessage.value = it.message ?: "Failed to load location history"
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    locationRepository.getLocationHistory(userId, limit = 50)
+                } ?: Result.failure(Exception("Timed out loading location history"))
+
+                result.onSuccess {
+                    _locationHistory.value = it
+                }.onFailure {
+                    _errorMessage.value = it.message ?: "Failed to load location history"
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Failed to load location history"
+            } finally {
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 
@@ -101,15 +112,27 @@ class LocationViewModel(
     }
 
     fun clearHistory(userId: String, beforeTimestamp: Long) {
+        if (_isLoading.value) return
         viewModelScope.launch {
             _isLoading.value = true
-            val result = locationRepository.deleteOldLocations(userId, beforeTimestamp)
-            result.onSuccess {
-                loadLocationHistory(userId)
-            }.onFailure {
-                _errorMessage.value = it.message ?: "Failed to delete location history"
+            _errorMessage.value = null
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                    locationRepository.deleteOldLocations(userId, beforeTimestamp)
+                } ?: Result.failure(Exception("Timed out deleting location history"))
+
+                result.onSuccess {
+                    loadLocationHistory(userId)
+                }.onFailure {
+                    _errorMessage.value = it.message ?: "Failed to delete location history"
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Failed to delete location history"
+            } finally {
+                _isLoading.value = false
             }
-            _isLoading.value = false
         }
     }
 

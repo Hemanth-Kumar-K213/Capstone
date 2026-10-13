@@ -12,11 +12,14 @@ import com.womensafety.system.data.repository.DuplicateCheckResult
 import com.womensafety.system.data.repository.UidRepository
 import com.womensafety.system.data.repository.UserRepository
 import com.womensafety.system.utils.Validators
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Manages the User signup flow (6 steps) and login.
@@ -169,22 +172,32 @@ class AuthViewModel(
     }
 
     fun requestPhoneOTP(phoneNumber: String, userName: String) {
+        if (_signupState.value.isLoading) return
         val normalizedPhone = Validators.normalizePhone(phoneNumber)
         val now = System.currentTimeMillis()
 
         if (signupSessionPhone == normalizedPhone && (now - signupLastSent) < 60000) {
             val remainingSecs = ((60000 - (now - signupLastSent)) / 1000).toInt()
-            _signupState.value = _signupState.value.copy(
-                error = "Please wait $remainingSecs second(s) before requesting another OTP."
-            )
+            _signupState.update {
+                it.copy(error = "Please wait $remainingSecs second(s) before requesting another OTP.")
+            }
             return
         }
 
-        _signupState.value = _signupState.value.copy(isLoading = true, error = null)
+        _signupState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
             try {
-                val result = com.womensafety.system.data.sms.TwoFactorClient.sendOTP(normalizedPhone, userName = userName)
+                val result = withTimeoutOrNull(20000L) {
+                    com.womensafety.system.data.sms.TwoFactorClient.sendOTP(normalizedPhone, userName = userName)
+                }
+
+                if (result == null) {
+                    _signupState.update {
+                        it.copy(error = "SMS OTP request timed out. Please check your connection and retry.")
+                    }
+                    return@launch
+                }
 
                 if (result.isSuccess) {
                     val sessionId = result.getOrNull()
@@ -193,47 +206,51 @@ class AuthViewModel(
                     signupSessionExpiry = System.currentTimeMillis() + 10 * 60 * 1000
                     signupLastSent = System.currentTimeMillis()
 
-                    _signupState.value = _signupState.value.copy(
-                        isLoading = false,
-                        verificationId = sessionId ?: "2FACTOR_OTP",
-                        resendCooldown = 60,
-                        error = null
-                    )
+                    _signupState.update {
+                        it.copy(
+                            verificationId = sessionId ?: "2FACTOR_OTP",
+                            resendCooldown = 60,
+                            error = null
+                        )
+                    }
                 } else {
-                    val errMsg = result.exceptionOrNull()?.message ?: "Failed to dispatch SMS OTP via 2Factor."
-                    _signupState.value = _signupState.value.copy(
-                        isLoading = false,
-                        error = errMsg
-                    )
+                    val errMsg = result.exceptionOrNull()?.localizedMessage ?: "Failed to dispatch SMS OTP via 2Factor."
+                    _signupState.update { it.copy(error = errMsg) }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to dispatch verification OTP via 2Factor SMS."
-                )
+                _signupState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to dispatch verification OTP via 2Factor SMS.")
+                }
+            } finally {
+                _signupState.update { it.copy(isLoading = false) }
             }
         }
     }
 
     fun onPhoneOTPVerified() {
-        _signupState.value = _signupState.value.copy(
-            phoneVerified = true,
-            currentStep = 3,
-            error = null
-        )
+        _signupState.update {
+            it.copy(
+                phoneVerified = true,
+                currentStep = 3,
+                error = null
+            )
+        }
     }
 
     fun updateOtpCode(code: String) {
         val digitsOnly = code.filter { it.isDigit() }
         if (digitsOnly.length <= 6) {
-            _signupState.value = _signupState.value.copy(otpCode = digitsOnly, error = null)
+            _signupState.update { it.copy(otpCode = digitsOnly, error = null) }
         }
     }
 
     fun verifyOtp() {
+        if (_signupState.value.isLoading) return
         val state = _signupState.value
         if (!Validators.isValidOtp(state.otpCode)) {
-            _signupState.value = state.copy(error = "Please enter a valid 6-digit OTP.")
+            _signupState.update { it.copy(error = "Please enter a valid 6-digit OTP.") }
             return
         }
 
@@ -241,43 +258,55 @@ class AuthViewModel(
         val sessionId = signupSessionId
 
         if (sessionId == null || signupSessionPhone != normalizedPhone) {
-            _signupState.value = state.copy(error = "No active OTP request found. Please request an OTP first.")
+            _signupState.update { it.copy(error = "No active OTP request found. Please request an OTP first.") }
             return
         }
 
         if (System.currentTimeMillis() > signupSessionExpiry) {
-            _signupState.value = state.copy(error = "OTP expired. Please request a new code.")
+            _signupState.update { it.copy(error = "OTP expired. Please request a new code.") }
             return
         }
 
-        _signupState.value = state.copy(isLoading = true, error = null)
+        _signupState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
             try {
-                val verifyResult = com.womensafety.system.data.sms.TwoFactorClient.verifyOTP(
-                    sessionId,
-                    state.otpCode.trim()
-                )
+                val verifyResult = withTimeoutOrNull(20000L) {
+                    com.womensafety.system.data.sms.TwoFactorClient.verifyOTP(
+                        sessionId,
+                        state.otpCode.trim()
+                    )
+                }
+
+                if (verifyResult == null) {
+                    _signupState.update {
+                        it.copy(error = "OTP verification timed out. Please check your connection and retry.")
+                    }
+                    return@launch
+                }
 
                 if (verifyResult.isSuccess && verifyResult.getOrNull() == true) {
                     signupSessionId = null
-                    _signupState.value = _signupState.value.copy(
-                        isLoading = false,
-                        phoneVerified = true,
-                        currentStep = 3,
-                        error = null
-                    )
+                    _signupState.update {
+                        it.copy(
+                            phoneVerified = true,
+                            currentStep = 3,
+                            error = null
+                        )
+                    }
                 } else {
-                    _signupState.value = _signupState.value.copy(
-                        isLoading = false,
-                        error = "Invalid OTP code. Please check and try again."
-                    )
+                    _signupState.update {
+                        it.copy(error = "Invalid OTP code. Please check and try again.")
+                    }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "OTP verification failed. Please try again."
-                )
+                _signupState.update {
+                    it.copy(error = e.localizedMessage ?: "OTP verification failed. Please try again.")
+                }
+            } finally {
+                _signupState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -289,51 +318,108 @@ class AuthViewModel(
     // ─── Step 3: Email Verification ──────────────────────────────
 
     fun sendEmailVerification() {
+        if (_signupState.value.isLoading) return
         val state = _signupState.value
-        _signupState.value = state.copy(isLoading = true, error = null)
+        _signupState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            // First create a temporary email/password account to send verification
-            val createResult = authRepository.createUserWithEmailAndPassword(
-                state.email,
-                // Use a temporary password — will be updated in Step 5
-                "TempPass_${System.currentTimeMillis()}!"
-            )
-            if (createResult.isFailure) {
-                // Account might already exist — try to check
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = createResult.exceptionOrNull()?.message ?: "Failed to initiate email verification."
-                )
-                return@launch
-            }
+            try {
+                // If currentUser already exists with this email, reuse the session
+                val currentEmail = authRepository.currentUserEmail
+                val uid = if (currentEmail != null && currentEmail.equals(state.email, ignoreCase = true)) {
+                    authRepository.currentUserId
+                } else {
+                    val createResult = withTimeoutOrNull(15000L) {
+                        authRepository.createUserWithEmailAndPassword(
+                            state.email,
+                            // Use a temporary password — will be updated in Step 5
+                            "TempPass_${System.currentTimeMillis()}!"
+                        )
+                    }
+                    if (createResult == null) {
+                        _signupState.update {
+                            it.copy(error = "Request timed out. Please check your connection and retry.")
+                        }
+                        return@launch
+                    }
+                    if (createResult.isFailure) {
+                        _signupState.update {
+                            it.copy(
+                                error = createResult.exceptionOrNull()?.localizedMessage ?: "Failed to initiate email verification."
+                            )
+                        }
+                        return@launch
+                    }
+                    createResult.getOrNull()
+                }
 
-            val sendResult = authRepository.sendEmailVerification()
-            _signupState.value = _signupState.value.copy(
-                isLoading = false,
-                verificationEmailSent = sendResult.isSuccess,
-                authUserId = createResult.getOrNull(),
-                error = if (sendResult.isFailure) sendResult.exceptionOrNull()?.message else null
-            )
+                val sendResult = withTimeoutOrNull(15000L) {
+                    authRepository.sendEmailVerification()
+                }
+                if (sendResult == null) {
+                    _signupState.update {
+                        it.copy(error = "Email verification request timed out. Please retry.")
+                    }
+                    return@launch
+                }
+
+                _signupState.update {
+                    it.copy(
+                        verificationEmailSent = sendResult.isSuccess,
+                        authUserId = uid,
+                        error = if (sendResult.isFailure) sendResult.exceptionOrNull()?.localizedMessage else null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _signupState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to send email verification.")
+                }
+            } finally {
+                _signupState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
     fun checkEmailVerificationStatus() {
-        _signupState.value = _signupState.value.copy(isLoading = true, error = null)
+        if (_signupState.value.isLoading) return
+        _signupState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            val result = authRepository.checkEmailVerified()
-            if (result.isSuccess && result.getOrNull() == true) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    emailVerified = true,
-                    currentStep = 4
-                )
-            } else {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = "Email not yet verified. Please check your inbox and click the verification link."
-                )
+            try {
+                val result = withTimeoutOrNull(15000L) {
+                    authRepository.checkEmailVerified()
+                }
+                if (result == null) {
+                    _signupState.update {
+                        it.copy(error = "Verification check timed out. Please retry.")
+                    }
+                    return@launch
+                }
+                if (result.isSuccess && result.getOrNull() == true) {
+                    _signupState.update {
+                        it.copy(
+                            emailVerified = true,
+                            currentStep = 4,
+                            error = null
+                        )
+                    }
+                } else {
+                    _signupState.update {
+                        it.copy(
+                            error = "Email not yet verified. Please check your inbox and click the verification link."
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _signupState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to verify email status.")
+                }
+            } finally {
+                _signupState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -341,47 +427,71 @@ class AuthViewModel(
     // ─── Step 4: Duplicate Check ─────────────────────────────────
 
     fun performDuplicateCheck() {
+        if (_signupState.value.isLoading) return
         val state = _signupState.value
-        _signupState.value = state.copy(isLoading = true, error = null)
+        _signupState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            val result = authRepository.checkDuplicateAccount(
-                Validators.normalizePhone(state.phone),
-                state.email
-            )
-            if (result.isSuccess) {
-                val checkResult = result.getOrNull()!!
-                when (checkResult) {
-                    DuplicateCheckResult.NO_DUPLICATE -> {
-                        _signupState.value = _signupState.value.copy(
-                            isLoading = false,
-                            duplicateCheckDone = true,
-                            duplicateCheckResult = checkResult,
-                            currentStep = 5
-                        )
+            try {
+                val result = withTimeoutOrNull(15000L) {
+                    authRepository.checkDuplicateAccount(
+                        Validators.normalizePhone(state.phone),
+                        state.email
+                    )
+                }
+                if (result == null) {
+                    _signupState.update {
+                        it.copy(error = "Account verification check timed out. Please retry.")
                     }
-                    DuplicateCheckResult.PHONE_EXISTS -> {
-                        _signupState.value = _signupState.value.copy(
-                            isLoading = false,
-                            duplicateCheckDone = true,
-                            duplicateCheckResult = checkResult,
-                            error = "An account already exists with this phone number."
-                        )
+                    return@launch
+                }
+                if (result.isSuccess) {
+                    val checkResult = result.getOrNull()!!
+                    when (checkResult) {
+                        DuplicateCheckResult.NO_DUPLICATE -> {
+                            _signupState.update {
+                                it.copy(
+                                    duplicateCheckDone = true,
+                                    duplicateCheckResult = checkResult,
+                                    currentStep = 5,
+                                    error = null
+                                )
+                            }
+                        }
+                        DuplicateCheckResult.PHONE_EXISTS -> {
+                            _signupState.update {
+                                it.copy(
+                                    duplicateCheckDone = true,
+                                    duplicateCheckResult = checkResult,
+                                    error = "An account already exists with this phone number."
+                                )
+                            }
+                        }
+                        DuplicateCheckResult.EMAIL_EXISTS -> {
+                            _signupState.update {
+                                it.copy(
+                                    duplicateCheckDone = true,
+                                    duplicateCheckResult = checkResult,
+                                    error = "An account already exists with this email."
+                                )
+                            }
+                        }
                     }
-                    DuplicateCheckResult.EMAIL_EXISTS -> {
-                        _signupState.value = _signupState.value.copy(
-                            isLoading = false,
-                            duplicateCheckDone = true,
-                            duplicateCheckResult = checkResult,
-                            error = "An account already exists with this email."
+                } else {
+                    _signupState.update {
+                        it.copy(
+                            error = result.exceptionOrNull()?.localizedMessage ?: "Failed to check for existing accounts."
                         )
                     }
                 }
-            } else {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = result.exceptionOrNull()?.message ?: "Failed to check for existing accounts."
-                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _signupState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to perform security audit.")
+                }
+            } finally {
+                _signupState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -389,83 +499,123 @@ class AuthViewModel(
     // ─── Step 5: Create Password ─────────────────────────────────
 
     fun updatePassword(password: String) {
-        _signupState.value = _signupState.value.copy(password = password, error = null)
+        _signupState.update { it.copy(password = password, error = null) }
     }
 
     fun updateConfirmPassword(confirmPassword: String) {
-        _signupState.value = _signupState.value.copy(confirmPassword = confirmPassword, error = null)
+        _signupState.update { it.copy(confirmPassword = confirmPassword, error = null) }
     }
 
     fun createAccount() {
+        if (_signupState.value.isLoading) return
         val state = _signupState.value
 
         if (!Validators.isValidPassword(state.password)) {
-            _signupState.value = state.copy(
-                error = "Password must be at least 8 characters with uppercase, lowercase, number, and special character."
-            )
+            _signupState.update {
+                it.copy(
+                    error = "Password must be at least 8 characters with uppercase, lowercase, number, and special character."
+                )
+            }
             return
         }
         if (!Validators.doPasswordsMatch(state.password, state.confirmPassword)) {
-            _signupState.value = state.copy(error = "Passwords do not match.")
+            _signupState.update { it.copy(error = "Passwords do not match.") }
             return
         }
 
-        _signupState.value = state.copy(isLoading = true, error = null)
+        _signupState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            // The Firebase Auth account was already created in Step 3 with a temp password.
-            // Now we need to update it. Since Firebase doesn't have a direct "update password"
-            // without re-auth in this flow, we'll delete and recreate with proper password,
-            // or use the password reset approach. For simplicity in signup flow,
-            // we send a password reset email and let user set their password.
-            //
-            // Alternative approach: The account was created in Step 3. Now create the Firestore profile.
-            // The user can change their password later via password reset.
-            // For a better UX, we'll try to update the password directly.
+            try {
+                // Ensure we have a valid authenticated user ID
+                val uid = state.authUserId ?: authRepository.currentUserId
+                if (uid == null) {
+                    _signupState.update {
+                        it.copy(
+                            error = "Account session missing. Please restart signup from Step 1."
+                        )
+                    }
+                    return@launch
+                }
 
-            val uid = state.authUserId
-            if (uid == null) {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = "Account creation error. Please restart signup."
-                )
-                return@launch
-            }
+                // 1. Update the Firebase Auth password from temporary password to user's desired password
+                val passwordUpdateResult = withTimeoutOrNull(15000L) {
+                    authRepository.updatePassword(state.password)
+                }
+                if (passwordUpdateResult == null) {
+                    _signupState.update {
+                        it.copy(
+                            error = "Password update timed out. Please check your network connection and retry."
+                        )
+                    }
+                    return@launch
+                }
+                if (passwordUpdateResult.isFailure) {
+                    val passEx = passwordUpdateResult.exceptionOrNull()
+                    val passErr = passEx?.localizedMessage ?: "Failed to set account password."
+                    _signupState.update { it.copy(error = passErr) }
+                    return@launch
+                }
 
-            // Create user profile in Firestore
-            val profileResult = authRepository.createUserProfile(
-                authUserId = uid,
-                name = state.name,
-                email = state.email,
-                phone = Validators.normalizePhone(state.phone)
-            )
+                // 2. Create user profile in Firestore
+                val profileResult = withTimeoutOrNull(15000L) {
+                    authRepository.createUserProfile(
+                        authUserId = uid,
+                        name = state.name,
+                        email = state.email,
+                        phone = Validators.normalizePhone(state.phone)
+                    )
+                }
+                if (profileResult == null) {
+                    _signupState.update {
+                        it.copy(
+                            error = "Profile creation timed out. Please check your network connection and retry."
+                        )
+                    }
+                    return@launch
+                }
+                if (profileResult.isFailure) {
+                    _signupState.update {
+                        it.copy(
+                            error = profileResult.exceptionOrNull()?.localizedMessage ?: "Failed to create user profile."
+                        )
+                    }
+                    return@launch
+                }
 
-            if (profileResult.isSuccess) {
-                // Generate dev UID for this user (Spark plan fallback)
-                // This writes to devUidMappings and updates the user profile.
-                // On Blaze plan, Cloud Functions would handle this instead.
-                uidRepository.generateDevUid(uid)
+                // 3. Generate dev UID for this user (Spark plan fallback)
+                withTimeoutOrNull(10000L) {
+                    uidRepository.generateDevUid(uid, state.name)
+                }
 
-                // Send password reset to let user set their final password
-                authRepository.sendPasswordResetEmail(state.email)
+                // 4. Finalize state, safely clear sensitive credentials from UI memory
+                _signupState.update {
+                    it.copy(
+                        password = "",
+                        confirmPassword = "",
+                        accountCreated = true,
+                        authUserId = uid,
+                        currentStep = 6,
+                        error = null
+                    )
+                }
 
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    accountCreated = true,
-                    currentStep = 6
-                )
-
-                // Update session state
+                // 5. Update session state
                 _sessionState.value = SessionState(
                     isLoggedIn = true,
                     accountType = "USER",
                     isChecking = false
                 )
-            } else {
-                _signupState.value = _signupState.value.copy(
-                    isLoading = false,
-                    error = profileResult.exceptionOrNull()?.message ?: "Failed to create account."
-                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _signupState.update {
+                    it.copy(
+                        error = e.localizedMessage ?: "Failed to finalize account creation. Please try again."
+                    )
+                }
+            } finally {
+                _signupState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -473,105 +623,169 @@ class AuthViewModel(
     // ─── Login ───────────────────────────────────────────────────
 
     fun updateLoginEmail(email: String) {
-        _loginState.value = _loginState.value.copy(email = email, error = null)
+        _loginState.update { it.copy(email = email, error = null) }
     }
 
     fun updateLoginPassword(password: String) {
-        _loginState.value = _loginState.value.copy(password = password, error = null)
+        _loginState.update { it.copy(password = password, error = null) }
     }
 
     fun loginWithEmailAndPassword() {
+        if (_loginState.value.isLoading) return
         val state = _loginState.value
         val cleanEmail = state.email.trim()
         val cleanPassword = state.password.trim()
 
         if (!Validators.isValidEmail(cleanEmail)) {
-            _loginState.value = state.copy(error = "Please enter a valid email address.")
+            _loginState.update { it.copy(error = "Please enter a valid email address.") }
             return
         }
         if (cleanPassword.isBlank()) {
-            _loginState.value = state.copy(error = "Please enter your password.")
+            _loginState.update { it.copy(error = "Please enter your password.") }
             return
         }
 
-        _loginState.value = state.copy(isLoading = true, error = null)
+        _loginState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            val result = authRepository.loginWithEmailAndPassword(cleanEmail, cleanPassword)
-            if (result.isSuccess) {
-                val uid = result.getOrNull()
-                val profile = if (uid != null) userRepository.getUserProfile(uid).getOrNull() else null
-                val setupDone = profile?.setupCompleted ?: false
-
-                _loginState.value = _loginState.value.copy(
-                    isLoading = false,
-                    isLoggedIn = true,
-                    authUserId = uid
-                )
-                _sessionState.value = SessionState(
-                    isLoggedIn = true,
-                    accountType = "USER",
-                    setupCompleted = setupDone,
-                    isChecking = false
-                )
-            } else {
-                val rawMsg = result.exceptionOrNull()?.localizedMessage ?: ""
-                val friendlyError = when {
-                    rawMsg.contains("password", ignoreCase = true) -> "Incorrect password. Please try again or use Forgot Password."
-                    rawMsg.contains("no user record", ignoreCase = true) || rawMsg.contains("user-not-found", ignoreCase = true) -> "No account found with this email. Please check your email or sign up."
-                    rawMsg.contains("network", ignoreCase = true) -> "Network error. Please check your internet connection."
-                    rawMsg.isNotBlank() -> rawMsg
-                    else -> "Authentication failed. Please check your email and password."
+            try {
+                val result = withTimeoutOrNull(15000L) {
+                    authRepository.loginWithEmailAndPassword(cleanEmail, cleanPassword)
                 }
-                _loginState.value = _loginState.value.copy(
-                    isLoading = false,
-                    error = friendlyError
-                )
+                if (result == null) {
+                    _loginState.update {
+                        it.copy(error = "Login timed out. Please check your network connection and retry.")
+                    }
+                    return@launch
+                }
+                if (result.isSuccess) {
+                    val uid = result.getOrNull()
+                    val profile = if (uid != null) {
+                        withTimeoutOrNull(10000L) { userRepository.getUserProfile(uid).getOrNull() }
+                    } else null
+                    val setupDone = profile?.setupCompleted ?: false
+
+                    _loginState.update {
+                        it.copy(
+                            isLoggedIn = true,
+                            authUserId = uid,
+                            password = "", // Clear credential from memory
+                            error = null
+                        )
+                    }
+                    _sessionState.value = SessionState(
+                        isLoggedIn = true,
+                        accountType = "USER",
+                        setupCompleted = setupDone,
+                        isChecking = false
+                    )
+                } else {
+                    val rawMsg = result.exceptionOrNull()?.localizedMessage ?: ""
+                    val friendlyError = when {
+                        rawMsg.contains("password", ignoreCase = true) -> "Incorrect password. Please try again or use Forgot Password."
+                        rawMsg.contains("no user record", ignoreCase = true) || rawMsg.contains("user-not-found", ignoreCase = true) -> "No account found with this email. Please check your email or sign up."
+                        rawMsg.contains("network", ignoreCase = true) -> "Network error. Please check your internet connection."
+                        rawMsg.isNotBlank() -> rawMsg
+                        else -> "Authentication failed. Please check your email and password."
+                    }
+                    _loginState.update { it.copy(error = friendlyError) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _loginState.update {
+                    it.copy(error = e.localizedMessage ?: "Authentication failed.")
+                }
+            } finally {
+                _loginState.update { it.copy(isLoading = false) }
             }
         }
     }
 
     fun toggleEmailLinkLogin() {
-        _loginState.value = _loginState.value.copy(
-            showEmailLinkLogin = !_loginState.value.showEmailLinkLogin,
-            error = null
-        )
+        _loginState.update {
+            it.copy(
+                showEmailLinkLogin = !it.showEmailLinkLogin,
+                error = null
+            )
+        }
     }
 
     fun sendEmailLoginLink() {
+        if (_loginState.value.isLoading) return
         val state = _loginState.value
         if (!Validators.isValidEmail(state.email)) {
-            _loginState.value = state.copy(error = "Please enter your primary Gmail.")
+            _loginState.update { it.copy(error = "Please enter your primary Gmail.") }
             return
         }
 
-        _loginState.value = state.copy(isLoading = true, error = null)
+        _loginState.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            val result = authRepository.sendEmailSignInLink(state.email)
-            _loginState.value = _loginState.value.copy(
-                isLoading = false,
-                emailLinkSent = result.isSuccess,
-                error = if (result.isFailure) "Failed to send sign-in link. Please try again." else null
-            )
+            try {
+                val result = withTimeoutOrNull(15000L) {
+                    authRepository.sendEmailSignInLink(state.email)
+                }
+                if (result == null) {
+                    _loginState.update {
+                        it.copy(error = "Request timed out. Please check your connection and retry.")
+                    }
+                    return@launch
+                }
+                _loginState.update {
+                    it.copy(
+                        emailLinkSent = result.isSuccess,
+                        error = if (result.isFailure) "Failed to send sign-in link. Please try again." else null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _loginState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to send sign-in link.")
+                }
+            } finally {
+                _loginState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
     fun forgotPassword() {
+        if (_loginState.value.isLoading) return
         val state = _loginState.value
         if (!Validators.isValidEmail(state.email)) {
-            _loginState.value = state.copy(error = "Please enter your Gmail to reset password.")
+            _loginState.update { it.copy(error = "Please enter your Gmail to reset password.") }
             return
         }
 
+        _loginState.update { it.copy(isLoading = true, error = null) }
+
         viewModelScope.launch {
-            _loginState.value = _loginState.value.copy(isLoading = true, error = null)
-            val result = authRepository.sendPasswordResetEmail(state.email)
-            _loginState.value = _loginState.value.copy(
-                isLoading = false,
-                error = if (result.isFailure) "Failed to send reset email." else null,
-                successMessage = if (result.isSuccess) "Password reset link sent to ${state.email}" else null
-            )
+            try {
+                val result = withTimeoutOrNull(15000L) {
+                    authRepository.sendPasswordResetEmail(state.email)
+                }
+                if (result == null) {
+                    _loginState.update {
+                        it.copy(error = "Password reset request timed out. Please retry.")
+                    }
+                    return@launch
+                }
+                _loginState.update {
+                    it.copy(
+                        error = if (result.isFailure) "Failed to send reset email." else null,
+                        successMessage = if (result.isSuccess) "Password reset link sent to ${state.email}" else null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _loginState.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to send reset email.")
+                }
+            } finally {
+                _loginState.update { it.copy(isLoading = false) }
+            }
         }
     }
 

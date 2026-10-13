@@ -3,6 +3,7 @@ package com.womensafety.system.ui.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +77,29 @@ fun AppNavGraph(
                     launchSingleTop = true
                 }
             }
+        }
+    }
+
+    // Automatically navigate back to SOSAlertScreen when returning from an active call or background state
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, lifecycleEvent ->
+            if (lifecycleEvent == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val currentActive = com.womensafety.system.manager.SOSManager.activeEvent.value
+                if (currentActive != null && currentActive.status == com.womensafety.system.data.model.SOSStatus.ACTIVE) {
+                    val activeRoute = navController.currentBackStackEntry?.destination?.route
+                    if (activeRoute?.contains("SOSAlertScreen") != true) {
+                        navController.navigate(SOSAlertScreen(eventId = currentActive.id)) {
+                            popUpTo(UserHome) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -373,7 +397,10 @@ fun AppNavGraph(
                     sosViewModel = sharedSOSViewModel,
                     profileViewModel = profileViewModel,
                     onNavigateToAlert = { eventId ->
-                        navController.navigate(SOSAlertScreen(eventId = eventId))
+                        navController.navigate(SOSAlertScreen(eventId = eventId)) {
+                            popUpTo(UserHome) { inclusive = false }
+                            launchSingleTop = true
+                        }
                     },
                     onNavigateToHistory = { navController.navigate(SOSHistoryScreen) },
                     onNavigateToHistoryDetail = { eventId ->

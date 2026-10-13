@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.womensafety.system.data.model.EmergencyContact
 import com.womensafety.system.data.repository.UserRepository
 import com.womensafety.system.utils.Validators
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * ViewModel for the 5-screen Initial Setup Wizard.
@@ -104,34 +107,54 @@ class SetupWizardViewModel(
     }
 
     fun completeSetup(onSuccess: () -> Unit) {
+        if (_state.value.isLoading) return
         val currentState = _state.value
-        _state.value = currentState.copy(isLoading = true, error = null)
+        _state.update { it.copy(isLoading = true, error = null) }
 
         viewModelScope.launch {
-            val preferences = mapOf(
-                "locationTrackingEnabled" to currentState.locationTrackingEnabled,
-                "shakeDetectionEnabled" to currentState.shakeDetectionEnabled,
-                "shakeSensitivity" to currentState.shakeSensitivity,
-                "sosAutoCall" to currentState.sosAutoCall,
-                "emergencyContacts" to currentState.emergencyContactsList.map { it.toMap() }
-            )
-
-            val result = userRepository.updateSetupStatus(
-                setupCompleted = true,
-                preferences = preferences
-            )
-
-            if (result.isSuccess) {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isCompleted = true
+            try {
+                val preferences = mapOf(
+                    "locationTrackingEnabled" to currentState.locationTrackingEnabled,
+                    "shakeDetectionEnabled" to currentState.shakeDetectionEnabled,
+                    "shakeSensitivity" to currentState.shakeSensitivity,
+                    "sosAutoCall" to currentState.sosAutoCall,
+                    "emergencyContacts" to currentState.emergencyContactsList.map { it.toMap() }
                 )
-                onSuccess()
-            } else {
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    error = result.exceptionOrNull()?.message ?: "Failed to save setup configuration."
-                )
+
+                val result = withTimeoutOrNull(15000L) {
+                    userRepository.updateSetupStatus(
+                        setupCompleted = true,
+                        preferences = preferences
+                    )
+                }
+
+                if (result == null) {
+                    _state.update {
+                        it.copy(error = "Saving setup configuration timed out. Please check your network and retry.")
+                    }
+                    return@launch
+                }
+
+                if (result.isSuccess) {
+                    _state.update {
+                        it.copy(isCompleted = true)
+                    }
+                    onSuccess()
+                } else {
+                    _state.update {
+                        it.copy(
+                            error = result.exceptionOrNull()?.localizedMessage ?: "Failed to save setup configuration."
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(error = e.localizedMessage ?: "Failed to save setup configuration.")
+                }
+            } finally {
+                _state.update { it.copy(isLoading = false) }
             }
         }
     }

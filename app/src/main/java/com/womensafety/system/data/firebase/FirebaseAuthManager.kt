@@ -116,7 +116,20 @@ class FirebaseAuthManager {
         return auth.isSignInWithEmailLink(link)
     }
 
-    // ─── Password Reset ──────────────────────────────────────────
+    // ─── Password Reset & Update ────────────────────────────────
+
+    /**
+     * Updates the password of the currently signed-in user.
+     */
+    suspend fun updatePassword(password: String): Result<Unit> {
+        return try {
+            val user = auth.currentUser ?: return Result.failure(Exception("No user signed in"))
+            user.updatePassword(password).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     /**
      * Sends a password reset email to the given address.

@@ -173,28 +173,37 @@ object TrinetraLocationManager {
                 fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
             }
 
-            if (freshLocation != null) {
-                val addressStr = reverseGeocode(context, freshLocation.latitude, freshLocation.longitude)
+            val bestLocation = freshLocation ?: try {
+                fusedClient.lastLocation.await()
+            } catch (_: Exception) { null }
+
+            if (bestLocation != null) {
+                val addressStr = reverseGeocode(context, bestLocation.latitude, bestLocation.longitude)
                 UserLocation(
                     userId = userId,
-                    latitude = freshLocation.latitude,
-                    longitude = freshLocation.longitude,
-                    accuracy = freshLocation.accuracy,
+                    latitude = bestLocation.latitude,
+                    longitude = bestLocation.longitude,
+                    accuracy = bestLocation.accuracy,
                     timestamp = System.currentTimeMillis(),
-                    speed = if (freshLocation.hasSpeed()) freshLocation.speed else null,
+                    speed = if (bestLocation.hasSpeed()) bestLocation.speed else null,
                     address = addressStr,
                     isSOSLocation = true
                 )
             } else {
-                Log.w(TAG, "fusedClient.getCurrentLocation returned null or timed out. Falling back.")
-                locationRepository.getLatestLocation(userId).getOrNull()
+                val serviceLoc = LocationTrackingService.currentLocation.value
+                if (serviceLoc != null && serviceLoc.latitude != 0.0 && serviceLoc.longitude != 0.0) {
+                    serviceLoc
+                } else {
+                    Log.w(TAG, "fusedClient location returned null or timed out. Falling back to DB.")
+                    locationRepository.getLatestLocation(userId).getOrNull()
+                }
             }
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException: Permission revoked during location query", e)
-            locationRepository.getLatestLocation(userId).getOrNull()
+            LocationTrackingService.currentLocation.value ?: locationRepository.getLatestLocation(userId).getOrNull()
         } catch (e: Exception) {
             Log.e(TAG, "Unexpected error retrieving current location", e)
-            locationRepository.getLatestLocation(userId).getOrNull()
+            LocationTrackingService.currentLocation.value ?: locationRepository.getLatestLocation(userId).getOrNull()
         }
     }
 }

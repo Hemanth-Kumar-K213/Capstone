@@ -40,34 +40,56 @@ class UidViewModel(
      * Recovers from missing/expired UIDs via backend refresh if needed.
      */
     fun loadCurrentUid() {
-        val userId = authRepository.currentUserId ?: return
+        val userId = authRepository.currentUserId
+        if (userId == null) {
+            _uidState.value = _uidState.value.copy(
+                isLoading = false,
+                error = "User session not found. Please log in."
+            )
+            return
+        }
 
         viewModelScope.launch {
-            _uidState.value = _uidState.value.copy(isLoading = true)
+            _uidState.value = _uidState.value.copy(isLoading = true, error = null)
 
-            val result = uidRepository.getCurrentUid(userId)
-            var uid = result.getOrNull()
-
-            if (uid == null) {
-                // Attempt backend recovery/rotation from Cloud Functions
-                val refreshResult = uidRepository.refreshBackendUid()
-                if (refreshResult.isSuccess) {
-                    uid = refreshResult.getOrNull()
+            try {
+                val result = kotlinx.coroutines.withTimeoutOrNull(10000L) {
+                    uidRepository.getCurrentUid(userId)
                 }
-            }
+                var uid = result?.getOrNull()
 
-            if (uid != null) {
-                _uidState.value = UidState(
-                    currentUid = uid,
+                if (uid == null) {
+                    // Attempt backend recovery/rotation from Cloud Functions
+                    val refreshResult = kotlinx.coroutines.withTimeoutOrNull(10000L) {
+                        uidRepository.refreshBackendUid()
+                    }
+                    if (refreshResult?.isSuccess == true) {
+                        uid = refreshResult.getOrNull()
+                    }
+                }
+
+                if (uid != null) {
+                    _uidState.value = UidState(
+                        currentUid = uid,
+                        isLoading = false,
+                        expiryText = DateUtils.getTimeUntilExpiry(uid.expiresAt),
+                        isActive = uid.isCurrentlyActive
+                    )
+                } else {
+                    _uidState.value = UidState(
+                        isLoading = false,
+                        error = "Unable to load your Safety UID. It may not have been generated yet."
+                    )
+                }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uidState.value = _uidState.value.copy(
                     isLoading = false,
-                    expiryText = DateUtils.getTimeUntilExpiry(uid.expiresAt),
-                    isActive = uid.isCurrentlyActive
+                    error = e.message ?: "Failed to load Safety UID"
                 )
-            } else {
-                _uidState.value = UidState(
-                    isLoading = false,
-                    error = "Unable to load your Safety UID. It may not have been generated yet."
-                )
+            } finally {
+                _uidState.value = _uidState.value.copy(isLoading = false)
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.womensafety.system.data.repository
 
+import kotlinx.coroutines.flow.Flow
 import com.womensafety.system.data.firebase.FirestoreManager
 import com.womensafety.system.data.model.PermissionState
 import com.womensafety.system.data.model.Relationship
@@ -19,6 +20,20 @@ import com.womensafety.system.data.model.Relationship
 class RelationshipRepository(
     private val firestoreManager: FirestoreManager = FirestoreManager()
 ) {
+
+    /**
+     * Real-time flow of all relationships for a User.
+     */
+    fun observeRelationshipsForUser(userId: String): Flow<List<Relationship>> {
+        return firestoreManager.observeRelationshipsForUser(userId)
+    }
+
+    /**
+     * Real-time flow of all relationships for a Trusted Contact.
+     */
+    fun observeRelationshipsForTrustedContact(trustedContactId: String): Flow<List<Relationship>> {
+        return firestoreManager.observeRelationshipsForTrustedContact(trustedContactId)
+    }
 
     /**
      * Creates a new PENDING relationship request from a TC to a User.
@@ -138,75 +153,45 @@ class RelationshipRepository(
 
     /**
      * User denies a pending TC request.
+     * Completely deletes the relationship from Firestore so it never lingers or reappears.
      */
     suspend fun denyRelationship(relationshipId: String): Result<Unit> {
         val parts = relationshipId.split("_", limit = 2)
-        if (parts.size != 2) return Result.failure(Exception("Invalid relationship ID"))
-
-        val userId = parts[0]
-        val trustedContactId = parts[1]
-
-        return firestoreManager.updateRelationshipStatus(
-            relationshipId,
-            mapOf(
-                "userId" to userId,
-                "trustedContactId" to trustedContactId,
-                "status" to PermissionState.DENIED.name,
-                "respondedAt" to System.currentTimeMillis()
-            )
-        )
+        if (parts.size == 2) {
+            val userId = parts[0]
+            val trustedContactId = parts[1]
+            try { firestoreManager.removeTrustedContactIdFromUser(userId, trustedContactId) } catch (_: Exception) {}
+        }
+        return firestoreManager.deleteRelationship(relationshipId)
     }
 
     /**
      * User revokes an approved TC's access.
+     * Completely unlinks the user profile and deletes the relationship from Firestore.
      */
     suspend fun revokeRelationship(relationshipId: String): Result<Unit> {
         val parts = relationshipId.split("_", limit = 2)
-        if (parts.size != 2) return Result.failure(Exception("Invalid relationship ID"))
-
-        val userId = parts[0]
-        val trustedContactId = parts[1]
-
-        firestoreManager.removeTrustedContactIdFromUser(userId, trustedContactId)
-
-        return firestoreManager.updateRelationshipStatus(
-            relationshipId,
-            mapOf(
-                "userId" to userId,
-                "trustedContactId" to trustedContactId,
-                "status" to PermissionState.REVOKED.name,
-                "revokedAt" to System.currentTimeMillis()
-            )
-        )
+        if (parts.size == 2) {
+            val userId = parts[0]
+            val trustedContactId = parts[1]
+            try { firestoreManager.removeTrustedContactIdFromUser(userId, trustedContactId) } catch (_: Exception) {}
+        }
+        return firestoreManager.deleteRelationship(relationshipId)
     }
 
     /**
      * Trusted Contact removes a monitored user (Approved or Pending).
-     * Cleans up the TC's connectedUserIds list and deletes/revokes the relationship.
+     * Cleans up the TC's connectedUserIds list and completely deletes the relationship.
      */
     suspend fun removeRelationshipByTc(tcId: String, relationshipId: String): Result<Unit> {
         val parts = relationshipId.split("_", limit = 2)
         val userId = if (parts.size == 2) parts[0] else ""
 
         if (userId.isNotBlank()) {
-            firestoreManager.removeConnectedUserIdFromTc(tcId, userId)
+            try { firestoreManager.removeConnectedUserIdFromTc(tcId, userId) } catch (_: Exception) {}
         }
 
-        val deleteResult = firestoreManager.deleteRelationship(relationshipId)
-        if (deleteResult.isSuccess) {
-            return Result.success(Unit)
-        }
-
-        // Fallback: If delete was rejected by rule or temporary offline, mark REVOKED
-        return firestoreManager.updateRelationshipStatus(
-            relationshipId,
-            mapOf(
-                "userId" to userId,
-                "trustedContactId" to tcId,
-                "status" to PermissionState.REVOKED.name,
-                "revokedAt" to System.currentTimeMillis()
-            )
-        )
+        return firestoreManager.deleteRelationship(relationshipId)
     }
 
     /**
@@ -217,8 +202,7 @@ class RelationshipRepository(
         if (parts.size == 2) {
             val userId = parts[0]
             val tcId = parts[1]
-            firestoreManager.removeTrustedContactIdFromUser(userId, tcId)
-            firestoreManager.removeConnectedUserIdFromTc(tcId, userId)
+            try { firestoreManager.removeTrustedContactIdFromUser(userId, tcId) } catch (_: Exception) {}
         }
         return firestoreManager.deleteRelationship(relationshipId)
     }
