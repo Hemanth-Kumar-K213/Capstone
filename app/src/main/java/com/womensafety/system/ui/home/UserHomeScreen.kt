@@ -897,7 +897,7 @@ fun UserHomeScreen(
         }
 
         // Generous bottom clearance to prevent bottom nav bar from covering anything
-        Spacer(modifier = Modifier.height(64.dp))
+        Spacer(modifier = Modifier.height(84.dp))
     }
 }
 

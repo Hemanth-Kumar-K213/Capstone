@@ -1,5 +1,6 @@
 package com.womensafety.system.data.repository
 
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import com.womensafety.system.data.firebase.FirestoreManager
 import com.womensafety.system.data.model.PermissionState
@@ -153,58 +154,274 @@ class RelationshipRepository(
 
     /**
      * User denies a pending TC request.
-     * Completely deletes the relationship from Firestore so it never lingers or reappears.
+     * Marks status as DENIED, removes profile references, and deletes the relationship document.
      */
-    suspend fun denyRelationship(relationshipId: String): Result<Unit> {
-        val parts = relationshipId.split("_", limit = 2)
-        if (parts.size == 2) {
-            val userId = parts[0]
-            val trustedContactId = parts[1]
-            try { firestoreManager.removeTrustedContactIdFromUser(userId, trustedContactId) } catch (_: Exception) {}
+    suspend fun denyRelationship(
+        relationshipId: String,
+        knownUserId: String? = null,
+        knownTcId: String? = null
+    ): Result<Unit> {
+        val trimmedRelId = relationshipId.trim()
+        var resolvedUserId = knownUserId?.trim() ?: ""
+        var resolvedTcId = knownTcId?.trim() ?: ""
+
+        if ((resolvedUserId.isBlank() || resolvedTcId.isBlank()) && trimmedRelId.contains("_")) {
+            val parts = trimmedRelId.split("_", limit = 2)
+            if (parts.size == 2) {
+                if (resolvedUserId.isBlank()) resolvedUserId = parts[0]
+                if (resolvedTcId.isBlank()) resolvedTcId = parts[1]
+            }
         }
-        return firestoreManager.deleteRelationship(relationshipId)
+
+        if (resolvedUserId.isBlank() || resolvedTcId.isBlank()) {
+            val existing = firestoreManager.getRelationshipById(trimmedRelId).getOrNull()
+            if (existing != null) {
+                if (resolvedUserId.isBlank()) resolvedUserId = existing.userId
+                if (resolvedTcId.isBlank()) resolvedTcId = existing.trustedContactId
+            }
+        }
+
+        // Clean up arrays
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            try { firestoreManager.removeTrustedContactIdFromUser(resolvedUserId, resolvedTcId) } catch (e: Exception) {
+                Log.w("RelationshipRepo", "removeTrustedContactIdFromUser error: ${e.message}")
+            }
+            try { firestoreManager.removeConnectedUserIdFromTc(resolvedTcId, resolvedUserId) } catch (e: Exception) {
+                Log.w("RelationshipRepo", "removeConnectedUserIdFromTc error: ${e.message}")
+            }
+        }
+
+        // Update status to DENIED so queries and real-time listeners immediately ignore it
+        val statusFields = mutableMapOf<String, Any?>(
+            "status" to PermissionState.DENIED.name,
+            "respondedAt" to System.currentTimeMillis()
+        )
+        if (resolvedUserId.isNotBlank()) statusFields["userId"] = resolvedUserId
+        if (resolvedTcId.isNotBlank()) statusFields["trustedContactId"] = resolvedTcId
+
+        val updateResult = firestoreManager.updateRelationshipStatus(trimmedRelId, statusFields)
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            val deterministicId = FirestoreManager.relationshipDocId(resolvedUserId, resolvedTcId)
+            if (deterministicId != trimmedRelId) {
+                try { firestoreManager.updateRelationshipStatus(deterministicId, statusFields) } catch (_: Exception) {}
+            }
+        }
+
+        // Hard-delete document from collection
+        val deleteResult = firestoreManager.deleteRelationship(trimmedRelId)
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            val deterministicId = FirestoreManager.relationshipDocId(resolvedUserId, resolvedTcId)
+            if (deterministicId != trimmedRelId) {
+                try { firestoreManager.deleteRelationship(deterministicId) } catch (_: Exception) {}
+            }
+        }
+
+        return if (deleteResult.isSuccess || updateResult.isSuccess) {
+            Result.success(Unit)
+        } else {
+            deleteResult
+        }
     }
 
     /**
      * User revokes an approved TC's access.
-     * Completely unlinks the user profile and deletes the relationship from Firestore.
+     * Completely unlinks the user profile, sets status to REVOKED, and deletes the relationship.
      */
-    suspend fun revokeRelationship(relationshipId: String): Result<Unit> {
-        val parts = relationshipId.split("_", limit = 2)
-        if (parts.size == 2) {
-            val userId = parts[0]
-            val trustedContactId = parts[1]
-            try { firestoreManager.removeTrustedContactIdFromUser(userId, trustedContactId) } catch (_: Exception) {}
+    suspend fun revokeRelationship(
+        relationshipId: String,
+        targetTcId: String? = null,
+        currentUserId: String? = null
+    ): Result<Unit> {
+        val trimmedRelId = relationshipId.trim()
+        var resolvedUserId = currentUserId?.trim() ?: ""
+        var resolvedTcId = targetTcId?.trim() ?: ""
+
+        if ((resolvedUserId.isBlank() || resolvedTcId.isBlank()) && trimmedRelId.contains("_")) {
+            val parts = trimmedRelId.split("_", limit = 2)
+            if (parts.size == 2) {
+                if (resolvedUserId.isBlank()) resolvedUserId = parts[0]
+                if (resolvedTcId.isBlank()) resolvedTcId = parts[1]
+            }
         }
-        return firestoreManager.deleteRelationship(relationshipId)
+
+        if (resolvedUserId.isBlank() || resolvedTcId.isBlank()) {
+            val existing = firestoreManager.getRelationshipById(trimmedRelId).getOrNull()
+            if (existing != null) {
+                if (resolvedUserId.isBlank()) resolvedUserId = existing.userId
+                if (resolvedTcId.isBlank()) resolvedTcId = existing.trustedContactId
+            }
+        }
+
+        // Clean up arrays
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            try { firestoreManager.removeTrustedContactIdFromUser(resolvedUserId, resolvedTcId) } catch (e: Exception) {
+                Log.w("RelationshipRepo", "removeTrustedContactIdFromUser error: ${e.message}")
+            }
+            try { firestoreManager.removeConnectedUserIdFromTc(resolvedTcId, resolvedUserId) } catch (e: Exception) {
+                Log.w("RelationshipRepo", "removeConnectedUserIdFromTc error: ${e.message}")
+            }
+        }
+
+        // Update status to REVOKED so queries and real-time listeners immediately ignore it
+        val statusFields = mutableMapOf<String, Any?>(
+            "status" to PermissionState.REVOKED.name,
+            "revokedAt" to System.currentTimeMillis()
+        )
+        if (resolvedUserId.isNotBlank()) statusFields["userId"] = resolvedUserId
+        if (resolvedTcId.isNotBlank()) statusFields["trustedContactId"] = resolvedTcId
+
+        val updateResult = firestoreManager.updateRelationshipStatus(trimmedRelId, statusFields)
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            val deterministicId = FirestoreManager.relationshipDocId(resolvedUserId, resolvedTcId)
+            if (deterministicId != trimmedRelId) {
+                try { firestoreManager.updateRelationshipStatus(deterministicId, statusFields) } catch (_: Exception) {}
+            }
+        }
+
+        // Hard-delete document from collection
+        val deleteResult = firestoreManager.deleteRelationship(trimmedRelId)
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            val deterministicId = FirestoreManager.relationshipDocId(resolvedUserId, resolvedTcId)
+            if (deterministicId != trimmedRelId) {
+                try { firestoreManager.deleteRelationship(deterministicId) } catch (_: Exception) {}
+            }
+        }
+
+        return if (deleteResult.isSuccess || updateResult.isSuccess) {
+            Result.success(Unit)
+        } else {
+            deleteResult
+        }
     }
 
     /**
      * Trusted Contact removes a monitored user (Approved or Pending).
-     * Cleans up the TC's connectedUserIds list and completely deletes the relationship.
+     * Cleans up the TC's connectedUserIds list, marks status as REVOKED, and deletes the relationship.
      */
-    suspend fun removeRelationshipByTc(tcId: String, relationshipId: String): Result<Unit> {
-        val parts = relationshipId.split("_", limit = 2)
-        val userId = if (parts.size == 2) parts[0] else ""
+    suspend fun removeRelationshipByTc(
+        tcId: String,
+        relationshipId: String,
+        targetUserId: String? = null
+    ): Result<Unit> {
+        val trimmedRelId = relationshipId.trim()
+        var resolvedUserId = targetUserId?.trim() ?: ""
 
-        if (userId.isNotBlank()) {
-            try { firestoreManager.removeConnectedUserIdFromTc(tcId, userId) } catch (_: Exception) {}
+        if (resolvedUserId.isBlank() && trimmedRelId.contains("_")) {
+            val parts = trimmedRelId.split("_", limit = 2)
+            if (parts.size == 2) {
+                resolvedUserId = parts[0]
+            }
         }
 
-        return firestoreManager.deleteRelationship(relationshipId)
+        if (resolvedUserId.isBlank()) {
+            val existing = firestoreManager.getRelationshipById(trimmedRelId).getOrNull()
+            if (existing != null && existing.userId.isNotBlank()) {
+                resolvedUserId = existing.userId
+            }
+        }
+
+        // 1. Clean up TC's connectedUserIds array
+        if (resolvedUserId.isNotBlank()) {
+            try {
+                firestoreManager.removeConnectedUserIdFromTc(tcId, resolvedUserId)
+            } catch (e: Exception) {
+                Log.w("RelationshipRepo", "removeConnectedUserIdFromTc error: ${e.message}")
+            }
+        }
+
+        // 2. Soft-delete: update status in Firestore to REVOKED
+        val statusFields = mutableMapOf<String, Any?>(
+            "status" to PermissionState.REVOKED.name,
+            "revokedAt" to System.currentTimeMillis()
+        )
+        if (resolvedUserId.isNotBlank()) statusFields["userId"] = resolvedUserId
+        if (tcId.isNotBlank()) statusFields["trustedContactId"] = tcId
+
+        val updateResult = firestoreManager.updateRelationshipStatus(trimmedRelId, statusFields)
+        if (resolvedUserId.isNotBlank()) {
+            val deterministicId = FirestoreManager.relationshipDocId(resolvedUserId, tcId)
+            if (deterministicId != trimmedRelId) {
+                try {
+                    firestoreManager.updateRelationshipStatus(deterministicId, statusFields)
+                } catch (_: Exception) {}
+            }
+        }
+
+        // 3. Hard-delete document from collection
+        val deleteResult = firestoreManager.deleteRelationship(trimmedRelId)
+        if (resolvedUserId.isNotBlank()) {
+            val deterministicId = FirestoreManager.relationshipDocId(resolvedUserId, tcId)
+            if (deterministicId != trimmedRelId) {
+                try {
+                    firestoreManager.deleteRelationship(deterministicId)
+                } catch (_: Exception) {}
+            }
+        }
+
+        return if (deleteResult.isSuccess || updateResult.isSuccess) {
+            Result.success(Unit)
+        } else {
+            deleteResult
+        }
     }
 
     /**
      * Deletes a relationship completely from Firestore and unlinks both profiles.
      */
-    suspend fun deleteRelationship(relationshipId: String): Result<Unit> {
-        val parts = relationshipId.split("_", limit = 2)
-        if (parts.size == 2) {
-            val userId = parts[0]
-            val tcId = parts[1]
-            try { firestoreManager.removeTrustedContactIdFromUser(userId, tcId) } catch (_: Exception) {}
+    suspend fun deleteRelationship(
+        relationshipId: String,
+        knownUserId: String? = null,
+        knownTcId: String? = null
+    ): Result<Unit> {
+        val trimmedRelId = relationshipId.trim()
+        var resolvedUserId = knownUserId?.trim() ?: ""
+        var resolvedTcId = knownTcId?.trim() ?: ""
+
+        if ((resolvedUserId.isBlank() || resolvedTcId.isBlank()) && trimmedRelId.contains("_")) {
+            val parts = trimmedRelId.split("_", limit = 2)
+            if (parts.size == 2) {
+                if (resolvedUserId.isBlank()) resolvedUserId = parts[0]
+                if (resolvedTcId.isBlank()) resolvedTcId = parts[1]
+            }
         }
-        return firestoreManager.deleteRelationship(relationshipId)
+
+        if (resolvedUserId.isBlank() || resolvedTcId.isBlank()) {
+            val existing = firestoreManager.getRelationshipById(trimmedRelId).getOrNull()
+            if (existing != null) {
+                if (resolvedUserId.isBlank()) resolvedUserId = existing.userId
+                if (resolvedTcId.isBlank()) resolvedTcId = existing.trustedContactId
+            }
+        }
+
+        // Clean up both arrays
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            try { firestoreManager.removeTrustedContactIdFromUser(resolvedUserId, resolvedTcId) } catch (_: Exception) {}
+            try { firestoreManager.removeConnectedUserIdFromTc(resolvedTcId, resolvedUserId) } catch (_: Exception) {}
+        }
+
+        // Update status to REVOKED
+        val statusFields = mutableMapOf<String, Any?>(
+            "status" to PermissionState.REVOKED.name,
+            "revokedAt" to System.currentTimeMillis()
+        )
+        if (resolvedUserId.isNotBlank()) statusFields["userId"] = resolvedUserId
+        if (resolvedTcId.isNotBlank()) statusFields["trustedContactId"] = resolvedTcId
+        val updateResult = firestoreManager.updateRelationshipStatus(trimmedRelId, statusFields)
+
+        // Hard-delete document from collection
+        val deleteResult = firestoreManager.deleteRelationship(trimmedRelId)
+        if (resolvedUserId.isNotBlank() && resolvedTcId.isNotBlank()) {
+            val deterministicId = FirestoreManager.relationshipDocId(resolvedUserId, resolvedTcId)
+            if (deterministicId != trimmedRelId) {
+                try { firestoreManager.deleteRelationship(deterministicId) } catch (_: Exception) {}
+            }
+        }
+
+        return if (deleteResult.isSuccess || updateResult.isSuccess) {
+            Result.success(Unit)
+        } else {
+            deleteResult
+        }
     }
 
     /**

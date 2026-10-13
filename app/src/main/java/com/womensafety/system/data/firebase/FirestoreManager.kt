@@ -68,12 +68,15 @@ class FirestoreManager {
 
     suspend fun createUserProfile(profile: UserProfile): Result<Unit> {
         return try {
+            val data = profile.toMap().filterValues { it != null }
             db.collection(USERS_COLLECTION)
                 .document(profile.authUserId)
-                .set(profile.toMap())
+                .set(data, SetOptions.merge())
                 .await()
+            Log.d("FirestoreManager", "User profile successfully created/merged for ${profile.authUserId}")
             Result.success(Unit)
         } catch (e: Exception) {
+            Log.e("FirestoreManager", "Failed to create user profile for ${profile.authUserId}", e)
             Result.failure(e)
         }
     }
@@ -644,14 +647,28 @@ class FirestoreManager {
         relationshipId: String,
         fields: Map<String, Any?>
     ): Result<Unit> {
+        val trimmedId = relationshipId.trim()
+        if (trimmedId.isBlank()) return Result.failure(IllegalArgumentException("Empty relationship ID"))
         return try {
             db.collection(RELATIONSHIPS_COLLECTION)
-                .document(relationshipId)
+                .document(trimmedId)
                 .set(fields, SetOptions.merge())
                 .await()
+            Log.d("FirestoreManager", "updateRelationshipStatus succeeded via set(merge) for $trimmedId")
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            Log.w("FirestoreManager", "set(merge) failed for $trimmedId: ${e.message}. Trying update()...")
+            try {
+                db.collection(RELATIONSHIPS_COLLECTION)
+                    .document(trimmedId)
+                    .update(fields)
+                    .await()
+                Log.d("FirestoreManager", "update() succeeded for $trimmedId")
+                Result.success(Unit)
+            } catch (e2: Exception) {
+                Log.e("FirestoreManager", "updateRelationshipStatus completely failed for $trimmedId: ${e2.message}", e2)
+                Result.failure(e2)
+            }
         }
     }
 
@@ -659,13 +676,40 @@ class FirestoreManager {
      * Deletes a relationship document.
      */
     suspend fun deleteRelationship(relationshipId: String): Result<Unit> {
+        val trimmedId = relationshipId.trim()
+        if (trimmedId.isBlank()) return Result.failure(IllegalArgumentException("Empty relationship ID"))
         return try {
             db.collection(RELATIONSHIPS_COLLECTION)
-                .document(relationshipId)
+                .document(trimmedId)
                 .delete()
                 .await()
+            Log.d("FirestoreManager", "deleteRelationship succeeded for doc: $trimmedId")
             Result.success(Unit)
         } catch (e: Exception) {
+            Log.e("FirestoreManager", "deleteRelationship failed for doc $trimmedId: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Retrieves a single relationship by document ID.
+     */
+    suspend fun getRelationshipById(relationshipId: String): Result<Relationship?> {
+        val trimmedId = relationshipId.trim()
+        if (trimmedId.isBlank()) return Result.success(null)
+        return try {
+            val doc = db.collection(RELATIONSHIPS_COLLECTION)
+                .document(trimmedId)
+                .get()
+                .await()
+            if (doc.exists()) {
+                val data = doc.data ?: return Result.success(null)
+                Result.success(Relationship.fromMap(doc.id, data))
+            } else {
+                Result.success(null)
+            }
+        } catch (e: Exception) {
+            Log.w("FirestoreManager", "getRelationshipById failed for $trimmedId: ${e.message}")
             Result.failure(e)
         }
     }
@@ -819,6 +863,34 @@ class FirestoreManager {
                 .set(locationToSave.toMap())
                 .await()
 
+            // Also mirror latest coordinates to child_locations for instantaneous trusted-contact & web access
+            val data = locationToSave.toMap().toMutableMap().apply {
+                put("lastUpdated", FieldValue.serverTimestamp())
+                put("status", "ONLINE")
+                put("lat", location.latitude)
+                put("lng", location.longitude)
+                put("name", location.userName)
+                put("childName", location.userName)
+            }
+            try {
+                db.collection(CHILD_LOCATIONS_COLLECTION)
+                    .document(userId)
+                    .set(data, SetOptions.merge())
+                    .await()
+            } catch (e: Exception) {
+                Log.w("FirestoreManager", "Mirroring to child_locations/$userId skipped: ${e.message}")
+            }
+            if (location.uid.isNotBlank() && location.uid != userId) {
+                try {
+                    db.collection(CHILD_LOCATIONS_COLLECTION)
+                        .document(location.uid)
+                        .set(data, SetOptions.merge())
+                        .await()
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "Mirroring to child_locations/${location.uid} skipped: ${e.message}")
+                }
+            }
+
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirestoreManager", "saveUserLocation failed", e)
@@ -955,6 +1027,18 @@ class FirestoreManager {
                 .set(data)
                 .await()
 
+            // Also mirror under userId so lookups by auth userId find it directly
+            if (location.userId.isNotBlank() && location.userId != docId) {
+                try {
+                    db.collection(CHILD_LOCATIONS_COLLECTION)
+                        .document(location.userId)
+                        .set(data, SetOptions.merge())
+                        .await()
+                } catch (e: Exception) {
+                    Log.w("FirestoreManager", "Mirroring child location under userId skipped: ${e.message}")
+                }
+            }
+
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e("FirestoreManager", "saveUidLocation failed for uid: $uid", e)
@@ -963,23 +1047,73 @@ class FirestoreManager {
     }
 
     /**
-     * Retrieves the latest known location by UID from child_locations.
+     * Retrieves the latest known location by UID or userId from child_locations.
      */
     suspend fun getLatestUidLocation(uid: String): Result<UserLocation?> {
         if (uid.isBlank()) return Result.success(null)
+        val target = uid.trim()
         return try {
+            // 1. Check child_locations/{target}
             val snapshot = db.collection(CHILD_LOCATIONS_COLLECTION)
-                .document(uid.trim())
+                .document(target)
                 .get()
                 .await()
 
             if (snapshot.exists()) {
                 val data = snapshot.data
                 val loc = data?.let { UserLocation.fromMap(snapshot.id, it) }
-                Result.success(loc)
-            } else {
-                Result.success(null)
+                if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                    return Result.success(loc)
+                }
             }
+
+            // 2. Check child_locations where userId == target
+            val querySnap = db.collection(CHILD_LOCATIONS_COLLECTION)
+                .whereEqualTo("userId", target)
+                .limit(1)
+                .get()
+                .await()
+
+            if (!querySnap.isEmpty) {
+                val doc = querySnap.documents.first()
+                val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                    return Result.success(loc)
+                }
+            }
+
+            // 3. Check uid_locations/{target}
+            val uidSnap = db.collection(UID_LOCATIONS_COLLECTION)
+                .document(target)
+                .get()
+                .await()
+
+            if (uidSnap.exists()) {
+                val data = uidSnap.data
+                val loc = data?.let { UserLocation.fromMap(uidSnap.id, it) }
+                if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                    return Result.success(loc)
+                }
+            }
+
+            // 4. Fallback: check userLocations/{target}/locations subcollection
+            val userLocSnap = db.collection(USER_LOCATIONS_COLLECTION)
+                .document(target)
+                .collection(LOCATIONS_SUBCOLLECTION)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(1)
+                .get()
+                .await()
+
+            if (!userLocSnap.isEmpty) {
+                val doc = userLocSnap.documents.first()
+                val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                    return Result.success(loc)
+                }
+            }
+
+            Result.success(null)
         } catch (e: Exception) {
             Log.e("FirestoreManager", "getLatestUidLocation failed for uid: $uid", e)
             Result.failure(e)
@@ -1019,8 +1153,8 @@ class FirestoreManager {
     }
 
     /**
-     * Dual-mode listener that observes location by UID (from child_locations)
-     * or by auth userId (from userLocations).
+     * Multi-path real-time listener that observes location by UID (from child_locations/uid_locations)
+     * or by auth userId (from child_locations query, userLocations subcollection, and weeklyUid resolution).
      */
     fun listenToLocationByUserIdOrUid(identifier: String): Flow<UserLocation?> = callbackFlow {
         if (identifier.isBlank()) {
@@ -1029,38 +1163,125 @@ class FirestoreManager {
             return@callbackFlow
         }
         val target = identifier.trim()
+        val listeners = mutableListOf<com.google.firebase.firestore.ListenerRegistration>()
 
-        // 1. Try child_locations/{target}
+        // 1. Direct child_locations/{target}
         val childDocRef = db.collection(CHILD_LOCATIONS_COLLECTION).document(target)
-        val childListener = childDocRef.addSnapshotListener { childSnap, error ->
-            if (error == null && childSnap != null && childSnap.exists()) {
-                val data = childSnap.data
-                if (data != null) {
-                    val loc = UserLocation.fromMap(childSnap.id, data)
-                    trySend(loc)
-                }
-            }
-        }
-
-        // 2. Also listen to userLocations/{target}/locations (subcollection)
-        val userListener = db.collection(USER_LOCATIONS_COLLECTION)
-            .document(target)
-            .collection(LOCATIONS_SUBCOLLECTION)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
-            .limit(1)
-            .addSnapshotListener { userSnap, error ->
-                if (error == null && userSnap != null && !userSnap.isEmpty) {
-                    val doc = userSnap.documents.first()
-                    val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
-                    if (loc != null) {
-                        trySend(loc)
+        listeners.add(
+            childDocRef.addSnapshotListener { childSnap, error ->
+                if (error == null && childSnap != null && childSnap.exists()) {
+                    val data = childSnap.data
+                    if (data != null) {
+                        val loc = UserLocation.fromMap(childSnap.id, data)
+                        if (loc.latitude != 0.0 || loc.longitude != 0.0) {
+                            trySend(loc)
+                        }
                     }
                 }
             }
+        )
+
+        // 2. Query child_locations where userId == target (when target is auth UID)
+        listeners.add(
+            db.collection(CHILD_LOCATIONS_COLLECTION)
+                .whereEqualTo("userId", target)
+                .limit(1)
+                .addSnapshotListener { querySnap, error ->
+                    if (error == null && querySnap != null && !querySnap.isEmpty) {
+                        val doc = querySnap.documents.first()
+                        val data = doc.data
+                        if (data != null) {
+                            val loc = UserLocation.fromMap(doc.id, data)
+                            if (loc.latitude != 0.0 || loc.longitude != 0.0) {
+                                trySend(loc)
+                            }
+                        }
+                    }
+                }
+        )
+
+        // 3. Direct uid_locations/{target}
+        listeners.add(
+            db.collection(UID_LOCATIONS_COLLECTION).document(target)
+                .addSnapshotListener { uidSnap, error ->
+                    if (error == null && uidSnap != null && uidSnap.exists()) {
+                        val data = uidSnap.data
+                        if (data != null) {
+                            val loc = UserLocation.fromMap(uidSnap.id, data)
+                            if (loc.latitude != 0.0 || loc.longitude != 0.0) {
+                                trySend(loc)
+                            }
+                        }
+                    }
+                }
+        )
+
+        // 4. Query uid_locations where userId == target
+        listeners.add(
+            db.collection(UID_LOCATIONS_COLLECTION)
+                .whereEqualTo("userId", target)
+                .limit(1)
+                .addSnapshotListener { querySnap, error ->
+                    if (error == null && querySnap != null && !querySnap.isEmpty) {
+                        val doc = querySnap.documents.first()
+                        val data = doc.data
+                        if (data != null) {
+                            val loc = UserLocation.fromMap(doc.id, data)
+                            if (loc.latitude != 0.0 || loc.longitude != 0.0) {
+                                trySend(loc)
+                            }
+                        }
+                    }
+                }
+        )
+
+        // 5. Also listen to userLocations/{target}/locations (subcollection)
+        listeners.add(
+            db.collection(USER_LOCATIONS_COLLECTION)
+                .document(target)
+                .collection(LOCATIONS_SUBCOLLECTION)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(1)
+                .addSnapshotListener { userSnap, error ->
+                    if (error == null && userSnap != null && !userSnap.isEmpty) {
+                        val doc = userSnap.documents.first()
+                        val loc = doc.data?.let { UserLocation.fromMap(doc.id, it) }
+                        if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                            trySend(loc)
+                        }
+                    }
+                }
+        )
+
+        // 6. Look up currentWeeklyUid from users collection (if target is auth UID)
+        var weeklyListener: com.google.firebase.firestore.ListenerRegistration? = null
+        val userProfileListener = db.collection(USERS_COLLECTION).document(target)
+            .addSnapshotListener { userDoc, error ->
+                if (error == null && userDoc != null && userDoc.exists()) {
+                    val weeklyUid = userDoc.getString("currentWeeklyUid")
+                    if (!weeklyUid.isNullOrBlank() && weeklyUid != target) {
+                        weeklyListener?.remove()
+                        weeklyListener = db.collection(CHILD_LOCATIONS_COLLECTION)
+                            .document(weeklyUid.trim())
+                            .addSnapshotListener { snap, err ->
+                                if (err == null && snap != null && snap.exists()) {
+                                    val data = snap.data
+                                    if (data != null) {
+                                        val loc = UserLocation.fromMap(snap.id, data)
+                                        if (loc.latitude != 0.0 || loc.longitude != 0.0) {
+                                            trySend(loc)
+                                        }
+                                    }
+                                }
+                            }
+                    }
+                }
+            }
+        listeners.add(userProfileListener)
 
         awaitClose {
-            childListener.remove()
-            userListener.remove()
+            weeklyListener?.remove()
+            listeners.forEach { it.remove() }
         }
     }
 

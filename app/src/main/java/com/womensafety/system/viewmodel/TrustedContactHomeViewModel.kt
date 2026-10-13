@@ -3,10 +3,13 @@ package com.womensafety.system.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.womensafety.system.data.firebase.FirestoreManager
 import com.womensafety.system.data.model.PermissionState
 import com.womensafety.system.data.model.Relationship
 import com.womensafety.system.data.model.TrustedContactProfile
+import com.womensafety.system.data.model.UserLocation
 import com.womensafety.system.data.repository.AuthRepository
+import com.womensafety.system.data.repository.LocationRepository
 import com.womensafety.system.data.repository.RelationshipRepository
 import com.womensafety.system.data.repository.TrustedContactRepository
 import com.womensafety.system.data.repository.UidRepository
@@ -32,7 +35,8 @@ class TrustedContactHomeViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
     private val tcRepository: TrustedContactRepository = TrustedContactRepository(),
     private val relationshipRepository: RelationshipRepository = RelationshipRepository(),
-    private val uidRepository: UidRepository = UidRepository()
+    private val uidRepository: UidRepository = UidRepository(),
+    private val locationRepository: LocationRepository = LocationRepository()
 ) : ViewModel() {
 
     data class TCHomeState(
@@ -43,7 +47,9 @@ class TrustedContactHomeViewModel(
     )
 
     data class ConnectedUser(
-        val relationship: Relationship
+        val relationship: Relationship,
+        val userUid: String = "",
+        val latestLocation: UserLocation? = null
     )
 
     private val _homeState = MutableStateFlow(TCHomeState())
@@ -61,7 +67,43 @@ class TrustedContactHomeViewModel(
     private val _addUserState = MutableStateFlow(AddUserState())
     val addUserState: StateFlow<AddUserState> = _addUserState.asStateFlow()
 
+    private val deletedRelationshipIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val deletedUserIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     private var observeJob: kotlinx.coroutines.Job? = null
+
+    private fun enrichConnectedUsers(users: List<ConnectedUser>) {
+        viewModelScope.launch {
+            val updated = users.map { cu ->
+                var uid = cu.userUid
+                var loc = cu.latestLocation
+
+                if (uid.isBlank()) {
+                    val weeklyUidResult = uidRepository.getCurrentUid(cu.relationship.userId).getOrNull()
+                    if (weeklyUidResult != null && weeklyUidResult.uid.isNotBlank()) {
+                        uid = weeklyUidResult.uid
+                    }
+                }
+
+                if (loc == null || uid.isBlank()) {
+                    val latest = locationRepository.getLatestUidLocation(cu.relationship.userId).getOrNull()
+                        ?: locationRepository.getLatestLocation(cu.relationship.userId).getOrNull()
+                    if (latest != null) {
+                        loc = latest
+                        if (uid.isBlank() && latest.uid.isNotBlank()) {
+                            uid = latest.uid
+                        }
+                    }
+                }
+
+                cu.copy(userUid = uid, latestLocation = loc)
+            }
+
+            _homeState.update { current ->
+                current.copy(connectedUsers = updated)
+            }
+        }
+    }
 
     fun loadHomeData() {
         val tcId = authRepository.currentUserId
@@ -76,14 +118,24 @@ class TrustedContactHomeViewModel(
             relationshipRepository.observeRelationshipsForTrustedContact(tcId).collect { relationships ->
                 val activeList = relationships
                     .filter { rel ->
-                        rel.permissionState == PermissionState.APPROVED || rel.permissionState == PermissionState.PENDING
+                        !deletedRelationshipIds.contains(rel.id) &&
+                        !deletedUserIds.contains(rel.userId) &&
+                        (rel.permissionState == PermissionState.APPROVED || rel.permissionState == PermissionState.PENDING)
                     }
-                    .map { ConnectedUser(relationship = it) }
+                    .map { rel ->
+                        val existing = _homeState.value.connectedUsers.find { it.relationship.id == rel.id }
+                        ConnectedUser(
+                            relationship = rel,
+                            userUid = existing?.userUid ?: "",
+                            latestLocation = existing?.latestLocation
+                        )
+                    }
 
                 _homeState.value = _homeState.value.copy(
                     connectedUsers = activeList,
                     isLoading = false
                 )
+                enrichConnectedUsers(activeList)
             }
         }
 
@@ -108,13 +160,20 @@ class TrustedContactHomeViewModel(
                 Log.d("TCHomeVM", "Loaded ${relationships.size} relationships for TC $tcId")
 
                 // Use denormalized userName from the relationship document
-                // Filter only genuine ACTIVE or PENDING relationships
+                // Filter only genuine ACTIVE or PENDING relationships, excluding deleted users
                 val connectedUsers = relationships
                     .filter { rel ->
-                        rel.permissionState == PermissionState.APPROVED || rel.permissionState == PermissionState.PENDING
+                        !deletedRelationshipIds.contains(rel.id) &&
+                        !deletedUserIds.contains(rel.userId) &&
+                        (rel.permissionState == PermissionState.APPROVED || rel.permissionState == PermissionState.PENDING)
                     }
                     .map { rel ->
-                        ConnectedUser(relationship = rel)
+                        val existing = _homeState.value.connectedUsers.find { it.relationship.id == rel.id }
+                        ConnectedUser(
+                            relationship = rel,
+                            userUid = existing?.userUid ?: "",
+                            latestLocation = existing?.latestLocation
+                        )
                     }
 
                 _homeState.update {
@@ -124,6 +183,7 @@ class TrustedContactHomeViewModel(
                         error = if (relResult?.isFailure == true) relResult.exceptionOrNull()?.localizedMessage else null
                     )
                 }
+                enrichConnectedUsers(connectedUsers)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -140,16 +200,32 @@ class TrustedContactHomeViewModel(
      * Removes a user from the Guardian's monitored list.
      * Works for both APPROVED users (unpairing/disconnecting) and PENDING requests (canceling).
      */
-    fun removeUser(relationshipId: String) {
+    fun removeUser(relationshipId: String, targetUserId: String? = null) {
         val tcId = authRepository.currentUserId ?: return
-        viewModelScope.launch {
-            // Optimistic UI update: instantly remove from screen
-            val currentList = _homeState.value.connectedUsers
-            _homeState.value = _homeState.value.copy(
-                connectedUsers = currentList.filterNot { it.relationship.id == relationshipId }
-            )
+        val currentList = _homeState.value.connectedUsers
+        val matchingUser = currentList.find { it.relationship.id == relationshipId }
+        val resolvedUserId = targetUserId ?: matchingUser?.relationship?.userId ?: ""
 
-            val result = relationshipRepository.removeRelationshipByTc(tcId, relationshipId)
+        // Instantly add to deletion blacklist so this user never flickers or re-appears
+        deletedRelationshipIds.add(relationshipId)
+        if (resolvedUserId.isNotBlank()) {
+            deletedUserIds.add(resolvedUserId)
+        }
+
+        // Optimistic UI update: instantly remove from screen
+        _homeState.update { state ->
+            state.copy(
+                connectedUsers = state.connectedUsers.filterNot {
+                    it.relationship.id == relationshipId || (resolvedUserId.isNotBlank() && it.relationship.userId == resolvedUserId)
+                }
+            )
+        }
+
+        viewModelScope.launch {
+            val result = withTimeoutOrNull(15000L) {
+                relationshipRepository.removeRelationshipByTc(tcId, relationshipId, resolvedUserId)
+            } ?: Result.failure(Exception("Operation timed out"))
+
             if (result.isFailure) {
                 Log.e("TCHomeVM", "Failed to remove user $relationshipId: ${result.exceptionOrNull()?.message}")
             } else {
@@ -262,6 +338,8 @@ class TrustedContactHomeViewModel(
                 }
 
                 if (relResult.isSuccess) {
+                    deletedUserIds.remove(userId)
+                    deletedRelationshipIds.remove(FirestoreManager.relationshipDocId(userId, tcId))
                     _addUserState.update {
                         it.copy(
                             success = true,

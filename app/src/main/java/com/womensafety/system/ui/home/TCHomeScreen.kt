@@ -82,7 +82,7 @@ fun TCHomeScreen(
             },
             title = {
                 Text(
-                    text = if (isApproved) "Remove Monitored User?" else "Cancel Connection Request?",
+                    text = if (isApproved) "Delete Monitored User?" else "Cancel Connection Request?",
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -90,7 +90,7 @@ fun TCHomeScreen(
             text = {
                 Text(
                     text = if (isApproved) {
-                        "Are you sure you want to stop monitoring $displayName? You will no longer receive their emergency alerts or radar location updates."
+                        "Are you sure you want to delete and stop monitoring $displayName? You will no longer receive their emergency alerts or radar location updates."
                     } else {
                         "Are you sure you want to cancel the pending connection request sent to $displayName?"
                     },
@@ -103,14 +103,15 @@ fun TCHomeScreen(
                 Button(
                     onClick = {
                         val relId = user.relationship.id
+                        val userId = user.relationship.userId
                         userToRemove = null
-                        viewModel.removeUser(relId)
+                        viewModel.removeUser(relId, userId)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = EmergencyRed),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        text = if (isApproved) "Remove User" else "Cancel Request",
+                        text = if (isApproved) "Delete User" else "Cancel Request",
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -200,6 +201,7 @@ fun TCHomeScreen(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 88.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(state.connectedUsers, key = { it.relationship.id }) { connectedUser ->
@@ -239,6 +241,54 @@ fun TCHomeScreen(
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
+
+                                        val displayUid = connectedUser.userUid.ifBlank {
+                                            connectedUser.latestLocation?.uid?.ifBlank { null }
+                                                ?: connectedUser.relationship.userId
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(vertical = 2.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Fingerprint,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "UID: $displayUid",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.secondary
+                                            )
+                                        }
+
+                                        if (connectedUser.latestLocation != null && (connectedUser.latestLocation.latitude != 0.0 || connectedUser.latestLocation.longitude != 0.0)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(bottom = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Place,
+                                                    contentDescription = null,
+                                                    tint = StatusApproved,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = connectedUser.latestLocation.address?.ifBlank { null }
+                                                        ?: "Coordinates: ${String.format("%.4f", connectedUser.latestLocation.latitude)}, ${String.format("%.4f", connectedUser.latestLocation.longitude)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+
                                         Spacer(modifier = Modifier.height(2.dp))
                                         StatusBadge(
                                             text = connectedUser.relationship.permissionState.name,
@@ -256,7 +306,7 @@ fun TCHomeScreen(
                                     ) {
                                         Icon(
                                             Icons.Filled.DeleteOutline,
-                                            contentDescription = "Remove User",
+                                            contentDescription = "Delete User",
                                             tint = EmergencyRed,
                                             modifier = Modifier.size(20.dp)
                                         )
@@ -269,7 +319,10 @@ fun TCHomeScreen(
                                     Spacer(modifier = Modifier.height(12.dp))
 
                                     Button(
-                                        onClick = { onNavigateToLiveMap(connectedUser.relationship.userId) },
+                                        onClick = {
+                                            val targetId = connectedUser.userUid.ifBlank { connectedUser.relationship.userId }
+                                            onNavigateToLiveMap(targetId)
+                                        },
                                         modifier = Modifier.fillMaxWidth().height(44.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                                         shape = RoundedCornerShape(10.dp)

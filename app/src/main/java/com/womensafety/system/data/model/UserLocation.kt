@@ -40,13 +40,27 @@ data class UserLocation(
 
     companion object {
         fun fromMap(id: String, map: Map<String, Any?>): UserLocation {
+            val lat = (map["latitude"] as? Number)?.toDouble()
+                ?: (map["lat"] as? Number)?.toDouble()
+                ?: 0.0
+            val lng = (map["longitude"] as? Number)?.toDouble()
+                ?: (map["lng"] as? Number)?.toDouble()
+                ?: 0.0
+            val parsedUid = (map["uid"] as? String)?.ifBlank { null }
+                ?: (map["weeklyUid"] as? String)?.ifBlank { null }
+                ?: if (id.isNotBlank() && !id.contains("/")) id else ""
+            val name = (map["userName"] as? String)?.ifBlank { null }
+                ?: (map["childName"] as? String)?.ifBlank { null }
+                ?: (map["name"] as? String)?.ifBlank { null }
+                ?: ""
+
             return UserLocation(
                 id = id,
                 userId = map["userId"] as? String ?: "",
-                uid = map["uid"] as? String ?: "",
-                userName = map["userName"] as? String ?: "",
-                latitude = (map["latitude"] as? Number)?.toDouble() ?: 0.0,
-                longitude = (map["longitude"] as? Number)?.toDouble() ?: 0.0,
+                uid = parsedUid,
+                userName = name,
+                latitude = lat,
+                longitude = lng,
                 accuracy = (map["accuracy"] as? Number)?.toFloat() ?: 0f,
                 bearing = (map["bearing"] as? Number)?.toFloat(),
                 altitude = (map["altitude"] as? Number)?.toDouble(),

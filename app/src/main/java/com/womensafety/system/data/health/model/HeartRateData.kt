@@ -62,3 +62,50 @@ data class HealthRiskSignal(
     val isAnomalousSpike: Boolean = false,
     val isObservationOnly: Boolean = true // Defaults to true (observation only; does not affect live risk score)
 )
+
+/**
+ * Diagnostic summary of a completed Health Connect query operation.
+ */
+data class HealthConnectQueryResult(
+    val samples: List<HeartRateMeasurement>,
+    val windowHours: Long,
+    val queryTimestamp: Long,
+    val distinctOriginPackages: Set<String>
+)
+
+/**
+ * Detailed representation of a BLE GATT service discovered on a connected wearable.
+ */
+data class BleDiscoveredService(
+    val uuid: String,
+    val name: String,
+    val isStandardHeartRateService: Boolean = false,
+    val characteristics: List<String> = emptyList()
+)
+
+/**
+ * Truthful, granular lifecycle state of Direct BLE connectivity.
+ */
+sealed class BleConnectionState {
+    object Disconnected : BleConnectionState()
+    object Scanning : BleConnectionState()
+    data class Connecting(val deviceName: String, val deviceAddress: String) : BleConnectionState()
+    data class ConnectedDiscovering(val deviceName: String, val deviceAddress: String) : BleConnectionState()
+    data class ConnectedUnsupported(
+        val deviceName: String,
+        val deviceAddress: String,
+        val reason: String
+    ) : BleConnectionState()
+    data class ConnectedSubscribedWaiting(
+        val deviceName: String,
+        val deviceAddress: String
+    ) : BleConnectionState()
+    data class Streaming(
+        val deviceName: String,
+        val deviceAddress: String,
+        val bpm: Int,
+        val lastPacketTimestamp: Long
+    ) : BleConnectionState()
+    data class Error(val message: String) : BleConnectionState()
+}
+

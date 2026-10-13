@@ -528,8 +528,10 @@ class AuthViewModel(
         viewModelScope.launch {
             try {
                 // Ensure we have a valid authenticated user ID
-                val uid = state.authUserId ?: authRepository.currentUserId
-                if (uid == null) {
+                val currentUser = authRepository.currentUser
+                val uid = state.authUserId ?: currentUser?.uid
+                if (uid == null || currentUser == null) {
+                    android.util.Log.e("AuthViewModel", "Cannot create account: uid=$uid, currentUser=$currentUser")
                     _signupState.update {
                         it.copy(
                             error = "Account session missing. Please restart signup from Step 1."
@@ -538,7 +540,54 @@ class AuthViewModel(
                     return@launch
                 }
 
-                // 1. Update the Firebase Auth password from temporary password to user's desired password
+                // Force refresh token to ensure Firestore has valid auth credentials
+                try {
+                    currentUser.getIdToken(true).await()
+                } catch (e: Exception) {
+                    android.util.Log.w("AuthViewModel", "Pre-profile token refresh warning: ${e.message}")
+                }
+
+                val finalEmail = state.email.ifBlank { currentUser.email ?: "" }
+                val finalName = state.name.ifBlank { currentUser.displayName?.ifBlank { "User" } ?: "User" }
+                val finalPhone = if (state.phone.isNotBlank()) Validators.normalizePhone(state.phone) else (currentUser.phoneNumber ?: "")
+
+                // 1. Create/merge user profile in Firestore FIRST while the session token is active and verified
+                val profileResult = withTimeoutOrNull(15000L) {
+                    authRepository.createUserProfile(
+                        authUserId = uid,
+                        name = finalName,
+                        email = finalEmail,
+                        phone = finalPhone
+                    )
+                }
+                if (profileResult == null) {
+                    _signupState.update {
+                        it.copy(
+                            error = "Profile creation timed out. Please check your network connection and retry."
+                        )
+                    }
+                    return@launch
+                }
+                if (profileResult.isFailure) {
+                    val ex = profileResult.exceptionOrNull()
+                    android.util.Log.e("AuthViewModel", "Profile creation failed", ex)
+                    val rawErr = ex?.localizedMessage ?: ex?.message ?: "Failed to create user profile."
+                    _signupState.update {
+                        it.copy(error = "Profile creation error: $rawErr")
+                    }
+                    return@launch
+                }
+
+                // 2. Generate dev UID mapping for local/demo functionality
+                try {
+                    withTimeoutOrNull(10000L) {
+                        uidRepository.generateDevUid(uid, finalName)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("AuthViewModel", "Dev UID generation warning: ${e.message}")
+                }
+
+                // 3. Update the Firebase Auth password from temporary password to user's desired password
                 val passwordUpdateResult = withTimeoutOrNull(15000L) {
                     authRepository.updatePassword(state.password)
                 }
@@ -552,40 +601,10 @@ class AuthViewModel(
                 }
                 if (passwordUpdateResult.isFailure) {
                     val passEx = passwordUpdateResult.exceptionOrNull()
-                    val passErr = passEx?.localizedMessage ?: "Failed to set account password."
+                    android.util.Log.e("AuthViewModel", "Password update failed", passEx)
+                    val passErr = passEx?.localizedMessage ?: passEx?.message ?: "Failed to set account password."
                     _signupState.update { it.copy(error = passErr) }
                     return@launch
-                }
-
-                // 2. Create user profile in Firestore
-                val profileResult = withTimeoutOrNull(15000L) {
-                    authRepository.createUserProfile(
-                        authUserId = uid,
-                        name = state.name,
-                        email = state.email,
-                        phone = Validators.normalizePhone(state.phone)
-                    )
-                }
-                if (profileResult == null) {
-                    _signupState.update {
-                        it.copy(
-                            error = "Profile creation timed out. Please check your network connection and retry."
-                        )
-                    }
-                    return@launch
-                }
-                if (profileResult.isFailure) {
-                    _signupState.update {
-                        it.copy(
-                            error = profileResult.exceptionOrNull()?.localizedMessage ?: "Failed to create user profile."
-                        )
-                    }
-                    return@launch
-                }
-
-                // 3. Generate dev UID for this user (Spark plan fallback)
-                withTimeoutOrNull(10000L) {
-                    uidRepository.generateDevUid(uid, state.name)
                 }
 
                 // 4. Finalize state, safely clear sensitive credentials from UI memory
@@ -609,6 +628,7 @@ class AuthViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                android.util.Log.e("AuthViewModel", "createAccount unexpected error", e)
                 _signupState.update {
                     it.copy(
                         error = e.localizedMessage ?: "Failed to finalize account creation. Please try again."

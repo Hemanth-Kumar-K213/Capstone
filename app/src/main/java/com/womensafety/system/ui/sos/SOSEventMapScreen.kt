@@ -125,6 +125,7 @@ fun SOSEventMapScreen(
                                         userLongitude = event.longitude!!,
                                         zoomLevel = 16.5,
                                         markerTitle = "🚨 SOS Incident (${event.userName.ifBlank { "User" }})",
+                                        uid = event.userId,
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 } else {

@@ -39,14 +39,14 @@ import androidx.compose.ui.unit.sp
 import com.womensafety.system.ui.theme.*
 
 /**
- * Reusable Glass / Modern Surface Card adapting cleanly to Light and Dark modes.
+ * Reusable Modern Surface Card adapting cleanly to Light and Dark modes.
  * Uses a Column container with default internal padding so that children are
  * laid out sequentially from top to bottom, completely preventing accidental overlap.
  */
 @Composable
 fun AppCard(
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 16.dp,
+    cornerRadius: Dp = 18.dp,
     accentGradient: Brush? = null,
     onClick: (() -> Unit)? = null,
     contentPadding: PaddingValues = PaddingValues(16.dp),
@@ -54,7 +54,7 @@ fun AppCard(
 ) {
     val isDark = LocalDarkTheme.current
     val surfaceColor = if (isDark) SurfaceDark else SurfaceLight
-    val borderColor = if (isDark) OutlineDark else OutlineLight
+    val borderColor = if (isDark) OutlineDark.copy(alpha = 0.8f) else OutlineLight
     val shape = RoundedCornerShape(cornerRadius)
 
     val cardModifier = modifier
@@ -63,7 +63,7 @@ fun AppCard(
         .border(
             width = 1.dp,
             brush = Brush.linearGradient(
-                colors = listOf(borderColor, borderColor.copy(alpha = 0.5f))
+                colors = listOf(borderColor, borderColor.copy(alpha = 0.4f))
             ),
             shape = shape
         )
@@ -77,7 +77,8 @@ fun AppCard(
             containerColor = surfaceColor
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isDark) 0.dp else 2.dp
+            defaultElevation = if (isDark) 0.dp else 2.dp,
+            pressedElevation = if (isDark) 2.dp else 4.dp
         )
     ) {
         Column(
@@ -113,30 +114,41 @@ fun ScreenHeader(
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(42.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                            shape = CircleShape
+                        )
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(14.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (subtitle != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -151,29 +163,34 @@ fun LoadingOverlay(isLoading: Boolean) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f)),
+                .background(Color.Black.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
+                tonalElevation = 8.dp,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                ),
                 modifier = Modifier.padding(24.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     CircularProgressIndicator(
                         color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 3.dp
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(36.dp)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
                     Text(
                         text = "Please wait...",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -187,10 +204,10 @@ fun ErrorMessage(message: String?, modifier: Modifier = Modifier) {
         Card(
             modifier = modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
             ),
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, EmergencyRed.copy(alpha = 0.4f))
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, EmergencyRed.copy(alpha = 0.5f))
         ) {
             Row(
                 modifier = Modifier.padding(14.dp),
@@ -222,8 +239,8 @@ fun SuccessMessage(message: String?, modifier: Modifier = Modifier) {
             colors = CardDefaults.cardColors(
                 containerColor = StatusApproved.copy(alpha = 0.12f)
             ),
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, StatusApproved.copy(alpha = 0.35f))
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, StatusApproved.copy(alpha = 0.4f))
         ) {
             Row(
                 modifier = Modifier.padding(14.dp),
@@ -283,7 +300,7 @@ fun AppTextField(
             singleLine = singleLine,
             leadingIcon = leadingIcon,
             trailingIcon = trailingIcon,
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -292,8 +309,8 @@ fun AppTextField(
                 cursorColor = MaterialTheme.colorScheme.primary,
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
             )
         )
         if (isError && errorMessage != null) {
@@ -348,7 +365,7 @@ fun PasswordTextField(
             },
             isError = isError,
             singleLine = true,
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -357,8 +374,8 @@ fun PasswordTextField(
                 cursorColor = MaterialTheme.colorScheme.primary,
                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
             )
         )
         if (isError && errorMessage != null) {
@@ -400,15 +417,15 @@ fun OtpInputField(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         ),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = MaterialTheme.colorScheme.primary,
             unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             focusedLabelColor = MaterialTheme.colorScheme.primary,
             unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
             cursorColor = MaterialTheme.colorScheme.primary,
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
         )
     )
 }
@@ -422,44 +439,65 @@ fun PrimaryButton(
     isLoading: Boolean = false,
     icon: ImageVector? = null
 ) {
+    val buttonShape = RoundedCornerShape(16.dp)
+    val gradientBrush = Brush.horizontalGradient(
+        colors = listOf(GradientIndigoStart, GradientIndigoEnd)
+    )
+
     Button(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp),
         enabled = enabled && !isLoading,
-        shape = RoundedCornerShape(14.dp),
+        shape = buttonShape,
         colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
+            containerColor = Color.Transparent,
+            contentColor = Color.White,
+            disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
         ),
+        contentPadding = PaddingValues(0.dp),
         elevation = ButtonDefaults.buttonElevation(
-            defaultElevation = 2.dp,
-            pressedElevation = 4.dp
+            defaultElevation = 3.dp,
+            pressedElevation = 6.dp
         )
     ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
-                strokeWidth = 2.5.dp
-            )
-        } else {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                if (icon != null) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    letterSpacing = 0.5.sp
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (enabled && !isLoading) Modifier.background(gradientBrush)
+                    else Modifier.background(
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    color = Color.White,
+                    strokeWidth = 2.5.dp
                 )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    if (icon != null) {
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        letterSpacing = 0.5.sp,
+                        color = if (enabled) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
             }
         }
     }
@@ -479,8 +517,11 @@ fun SecondaryButton(
             .fillMaxWidth()
             .height(52.dp),
         enabled = enabled,
-        shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.2.dp,
+            MaterialTheme.colorScheme.outline
+        ),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = MaterialTheme.colorScheme.onSurface
         )
@@ -512,41 +553,58 @@ fun EmergencyActionButton(
     isLoading: Boolean = false,
     icon: ImageVector? = null
 ) {
+    val buttonShape = RoundedCornerShape(16.dp)
+    val redGradient = Brush.horizontalGradient(
+        colors = listOf(EmergencyRed, EmergencyRedDark)
+    )
+
     Button(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp),
+            .height(54.dp),
         enabled = enabled && !isLoading,
-        shape = RoundedCornerShape(14.dp),
+        shape = buttonShape,
         colors = ButtonDefaults.buttonColors(
-            containerColor = EmergencyRed,
+            containerColor = Color.Transparent,
             contentColor = Color.White
+        ),
+        contentPadding = PaddingValues(0.dp),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 4.dp,
+            pressedElevation = 8.dp
         )
     ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                color = Color.White,
-                strokeWidth = 2.5.dp
-            )
-        } else {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                if (icon != null) {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 15.sp,
-                    letterSpacing = 0.5.sp,
-                    color = Color.White
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(redGradient),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    color = Color.White,
+                    strokeWidth = 2.5.dp
                 )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    if (icon != null) {
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        letterSpacing = 0.5.sp,
+                        color = Color.White
+                    )
+                }
             }
         }
     }
@@ -938,3 +996,106 @@ fun EmptyStateCard(
         }
     }
 }
+
+/**
+ * Modern KPI / Editorial Metric Card for Dashboards and Telemetry.
+ */
+@Composable
+fun EditorialStatCard(
+    title: String,
+    value: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    statusText: String? = null,
+    statusColor: Color = StatusApproved,
+    onClick: (() -> Unit)? = null
+) {
+    AppCard(
+        modifier = modifier,
+        onClick = onClick,
+        contentPadding = PaddingValues(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (statusText != null) {
+                Surface(
+                    color = statusColor.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, statusColor.copy(alpha = 0.3f))
+                ) {
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Elegant selectable pill for filtering or tabs.
+ */
+@Composable
+fun CategoryPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        contentColor = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        border = if (selected) null else androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+        ),
+        modifier = modifier
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}
+

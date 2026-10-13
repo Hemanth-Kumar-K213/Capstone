@@ -163,24 +163,26 @@ private fun RoleCard(
     val surfaceColor = if (isDark) SurfaceDark else SurfaceLight
     val borderColor = if (isDark) OutlineDark else OutlineLight
 
+    val shape = RoundedCornerShape(20.dp)
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(shape)
             .border(
                 width = 1.dp,
                 brush = Brush.linearGradient(
-                    colors = listOf(borderColor, accentColor.copy(alpha = 0.35f))
+                    colors = listOf(borderColor, accentColor.copy(alpha = 0.45f))
                 ),
-                shape = RoundedCornerShape(16.dp)
+                shape = shape
             ),
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = surfaceColor
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isDark) 0.dp else 2.dp
+            defaultElevation = if (isDark) 0.dp else 3.dp,
+            pressedElevation = if (isDark) 2.dp else 6.dp
         )
     ) {
         Row(

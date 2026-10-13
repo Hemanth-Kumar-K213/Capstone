@@ -125,8 +125,15 @@ class FirebaseAuthManager {
         return try {
             val user = auth.currentUser ?: return Result.failure(Exception("No user signed in"))
             user.updatePassword(password).await()
+            try {
+                user.getIdToken(true).await()
+            } catch (e: Exception) {
+                android.util.Log.w("FirebaseAuthManager", "Token refresh after password update warning: ${e.message}")
+            }
+            android.util.Log.d("FirebaseAuthManager", "Password successfully updated for user ${user.uid}")
             Result.success(Unit)
         } catch (e: Exception) {
+            android.util.Log.e("FirebaseAuthManager", "Failed to update password", e)
             Result.failure(e)
         }
     }

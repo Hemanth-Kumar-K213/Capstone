@@ -745,7 +745,7 @@ fun UserProfileScreen(
             }
         }
 
-        // Generous bottom clearance
-        Spacer(modifier = Modifier.height(64.dp))
+        // Generous bottom clearance above UserBottomNavBar
+        Spacer(modifier = Modifier.height(84.dp))
     }
 }

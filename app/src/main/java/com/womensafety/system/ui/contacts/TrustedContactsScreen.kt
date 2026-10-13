@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -284,6 +285,7 @@ fun TrustedContactsScreen(
 
                     items(approvedContacts) { rel ->
                         var showRevokeDialog by remember { mutableStateOf(false) }
+                        var showDeleteDialog by remember { mutableStateOf(false) }
                         val tcName = rel.trustedContactName.ifBlank { "Guardian Contact" }
 
                         if (showRevokeDialog) {
@@ -313,6 +315,44 @@ fun TrustedContactsScreen(
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { showRevokeDialog = false }) {
+                                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                },
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                        }
+
+                        if (showDeleteDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteDialog = false },
+                                title = {
+                                    Text(
+                                        "Delete Trusted Contact?",
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                text = {
+                                    Text(
+                                        "Are you sure you want to delete and permanently remove $tcName from your trusted contacts?",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            showDeleteDialog = false
+                                            viewModel.deleteRelationship(rel.id)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = EmergencyRed),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("Delete Contact", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteDialog = false }) {
                                         Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 },
@@ -369,11 +409,30 @@ fun TrustedContactsScreen(
                                     }
                                 }
 
-                                TextButton(
-                                    onClick = { showRevokeDialog = true },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = EmergencyRed)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text("REVOKE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    TextButton(
+                                        onClick = { showRevokeDialog = true },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = EmergencyRed)
+                                    ) {
+                                        Text("REVOKE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                    }
+                                    IconButton(
+                                        onClick = { showDeleteDialog = true },
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(EmergencyRed.copy(alpha = 0.1f))
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.DeleteOutline,
+                                            contentDescription = "Delete Contact",
+                                            tint = EmergencyRed,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -439,17 +498,20 @@ fun TrustedContactsScreen(
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
-                                    IconButton(
-                                        onClick = { viewModel.deleteRelationship(rel.id) },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.DeleteOutline,
-                                            contentDescription = "Remove Contact",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.deleteRelationship(rel.id) },
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(EmergencyRed.copy(alpha = 0.1f))
+                                ) {
+                                    Icon(
+                                        Icons.Filled.DeleteOutline,
+                                        contentDescription = "Remove Contact",
+                                        tint = EmergencyRed,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                         }

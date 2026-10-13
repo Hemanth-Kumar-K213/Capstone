@@ -209,7 +209,14 @@ class EmergencyContactViewModel(
     fun deleteContact(contactId: String, onSuccess: () -> Unit = {}) {
         if (_state.value.isLoading) return
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null, actionSuccess = null) }
+            _state.update { current ->
+                current.copy(
+                    contacts = current.contacts.filterNot { it.id == contactId },
+                    isLoading = true,
+                    error = null,
+                    actionSuccess = null
+                )
+            }
             try {
                 val result = withTimeoutOrNull(15000L) {
                     userRepository.deleteEmergencyContact(contactId)

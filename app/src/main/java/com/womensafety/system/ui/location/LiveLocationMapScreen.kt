@@ -27,7 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.womensafety.system.data.model.AccountType
 import com.womensafety.system.data.model.UserLocation
+import com.womensafety.system.data.repository.AuthRepository
+import com.womensafety.system.data.repository.UidRepository
 import com.womensafety.system.manager.TrinetraLocationManager
 import com.womensafety.system.service.LocationTrackingService
 import com.womensafety.system.ui.components.AppCard
@@ -37,14 +41,19 @@ import com.womensafety.system.ui.map.SafetyMapTracker
 import com.womensafety.system.ui.theme.*
 import com.womensafety.system.utils.DateUtils
 import com.womensafety.system.utils.MapUtils
+import com.womensafety.system.utils.Validators
 import com.womensafety.system.viewmodel.LocationViewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Live Location Map Screen using OpenStreetMap (OSMDroid).
  * 100% Free & Open-Source (No Google Maps API keys or billing needed).
- * Renders the live map immediately, handles runtime permissions and GPS enablement,
- * and streams coordinates every 10 seconds.
+ *
+ * For Trusted Contacts viewing a protected user:
+ * - Fetches real-time GPS coordinates directly and strictly from Firebase.
+ * - Displays the protected user's active UID prominently.
+ * - NEVER tracks or shows the Trusted Contact's local device GPS.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,16 +64,64 @@ fun LiveLocationMapScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val authRepository = remember { AuthRepository() }
+    val uidRepository = remember { UidRepository() }
 
+    val currentAuthUserId = remember { FirebaseAuth.getInstance().currentUser?.uid }
+    var isViewingSelf by remember { mutableStateOf(currentAuthUserId != null && currentAuthUserId == userId) }
+    var resolvedUid by remember(userId) { mutableStateOf<String?>(null) }
+
+    // Stream coordinates directly from Firebase for this specific user / UID
     val liveLocation by viewModel.observeLocationByUserIdOrUid(userId).collectAsState(initial = null)
     val localServiceLocation by LocationTrackingService.currentLocation.collectAsState()
     var immediateFix by remember { mutableStateOf<UserLocation?>(null) }
-    var isGpsOff by remember { mutableStateOf(!TrinetraLocationManager.isGpsEnabled(context)) }
+    var isGpsOff by remember { mutableStateOf(false) }
 
-    // Launcher for runtime location permissions
+    // Resolve whether the viewer is viewing their own phone or monitoring a protected user (Trusted Contact)
+    LaunchedEffect(userId, currentAuthUserId) {
+        val currentUid = currentAuthUserId
+        if (currentUid == null) {
+            isViewingSelf = false
+            return@LaunchedEffect
+        }
+        if (currentUid == userId) {
+            isViewingSelf = true
+            return@LaunchedEffect
+        }
+
+        val accountType = withTimeoutOrNull(3000L) {
+            authRepository.getCurrentAccountType().getOrNull()
+        }
+        if (accountType == AccountType.TRUSTED_CONTACT) {
+            isViewingSelf = false
+            return@LaunchedEffect
+        }
+
+        val ownUid = withTimeoutOrNull(3000L) {
+            uidRepository.getCurrentUid(currentUid).getOrNull()
+        }
+        isViewingSelf = (ownUid != null && ownUid.uid.isNotBlank() && ownUid.uid == userId)
+    }
+
+    // Resolve the protected user's active Safety UID if userId was provided as an Auth UID
+    LaunchedEffect(userId) {
+        if (Validators.isValidUidFormat(userId) || userId.startsWith("TRN-", ignoreCase = true)) {
+            resolvedUid = userId
+        } else {
+            val fetched = withTimeoutOrNull(5000L) {
+                uidRepository.getCurrentUid(userId).getOrNull()
+            }
+            if (fetched != null && fetched.uid.isNotBlank()) {
+                resolvedUid = fetched.uid
+            }
+        }
+    }
+
+    // Launcher for runtime location permissions (ONLY invoked when user is viewing their OWN location)
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
+        if (!isViewingSelf) return@rememberLauncherForActivityResult
         val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (fineGranted || coarseGranted) {
@@ -76,40 +133,50 @@ fun LiveLocationMapScreen(
         }
     }
 
-    // Check permissions and acquire instant location fix on mount
-    LaunchedEffect(Unit) {
-        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    // Local device hardware GPS: ONLY active when viewing self!
+    LaunchedEffect(isViewingSelf) {
+        if (isViewingSelf) {
+            val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-        if (!hasFine && !hasCoarse) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
+            if (!hasFine && !hasCoarse) {
+                permissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
                 )
-            )
+            } else {
+                if (!LocationTrackingService.isRunning) {
+                    LocationTrackingService.startTracking(context)
+                }
+                val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
+                if (fix != null) {
+                    immediateFix = fix
+                }
+            }
+            isGpsOff = !TrinetraLocationManager.isGpsEnabled(context)
         } else {
-            if (!LocationTrackingService.isRunning) {
-                LocationTrackingService.startTracking(context)
-            }
-            val fix = TrinetraLocationManager.getImmediateLocationFix(context, userId)
-            if (fix != null) {
-                immediateFix = fix
-            }
+            isGpsOff = false
         }
     }
 
-    // Refresh GPS status periodically
-    LaunchedEffect(Unit) {
-        isGpsOff = !TrinetraLocationManager.isGpsEnabled(context)
+    // Coordinate resolution:
+    // If viewing self: can fall back to local service coordinates
+    // If viewing remote user (Trusted Contact mode): STRICTLY from Firebase liveLocation! Never local device GPS!
+    val effectiveLocation = if (isViewingSelf) {
+        liveLocation ?: localServiceLocation ?: immediateFix
+    } else {
+        liveLocation
     }
 
-    // Determine the most accurate available coordinate fix
-    val effectiveLocation = liveLocation ?: localServiceLocation ?: immediateFix
     val hasFix = effectiveLocation != null && (effectiveLocation.latitude != 0.0 || effectiveLocation.longitude != 0.0)
-
     val lat = if (hasFix) effectiveLocation!!.latitude else 12.9716
     val lng = if (hasFix) effectiveLocation!!.longitude else 77.5946
+
+    val displayUid = effectiveLocation?.uid?.ifBlank { null }
+        ?: resolvedUid
+        ?: userId
 
     Scaffold(
         topBar = {
@@ -117,13 +184,14 @@ fun LiveLocationMapScreen(
                 title = {
                     Column {
                         Text(
-                            text = effectiveLocation?.userName?.ifBlank { "Live Radar Map" } ?: "Live Radar Map",
+                            text = effectiveLocation?.userName?.ifBlank { if (isViewingSelf) "My Radar Map" else "Protected User Location" }
+                                ?: if (isViewingSelf) "My Radar Map" else "Protected User Location",
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold,
                             fontSize = 17.sp
                         )
                         Text(
-                            text = if (hasFix) "10s GPS Sync Active" else "Acquiring satellite fix...",
+                            text = if (hasFix) "UID: $displayUid • 10s GPS Sync Active" else "UID: $displayUid • Fetching from Firebase...",
                             color = if (hasFix) StatusApproved else AmberWarning,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
@@ -153,18 +221,18 @@ fun LiveLocationMapScreen(
         ) {
             // OpenStreetMap (OSMDroid) Live Map Tracker
             SafetyMapTracker(
-                userLatitude = lat,
-                userLongitude = lng,
-                markerTitle = "${effectiveLocation?.userName?.ifBlank { "User" } ?: "Child"} (Live)",
-                uid = effectiveLocation?.uid?.ifBlank { userId } ?: userId,
+                userLatitude = if (hasFix) lat else 0.0,
+                userLongitude = if (hasFix) lng else 0.0,
+                markerTitle = "${effectiveLocation?.userName?.ifBlank { "Protected User" } ?: "Protected User"} (Live)",
+                uid = displayUid,
                 bearing = effectiveLocation?.bearing,
                 accuracy = effectiveLocation?.accuracy ?: 0f,
                 isLive = true,
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Warning Banner if Device Location / GPS is toggled OFF
-            if (isGpsOff) {
+            // Warning Banner if Device Location / GPS is toggled OFF (ONLY shown when viewing self)
+            if (isViewingSelf && isGpsOff) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -194,7 +262,7 @@ fun LiveLocationMapScreen(
                     }
                 }
             } else if (!hasFix) {
-                // Top Status Pill while acquiring satellite coordinate lock
+                // Top Status Pill while acquiring satellite coordinate lock from Firebase
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -215,7 +283,7 @@ fun LiveLocationMapScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Acquiring GPS fix (updates every 10s)...",
+                            text = "Fetching live coordinates for UID: $displayUid from Firebase...",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Medium
@@ -251,13 +319,14 @@ fun LiveLocationMapScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = effectiveLocation?.userName?.ifBlank { "Live Tracker" } ?: "Live Tracker",
+                                text = effectiveLocation?.userName?.ifBlank { if (isViewingSelf) "My Location" else "Protected User" }
+                                    ?: if (isViewingSelf) "My Location" else "Protected User",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "UID: ${effectiveLocation?.uid?.ifBlank { userId } ?: userId} • Streaming every 10s",
+                                text = "UID: $displayUid • Streaming every 10s",
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
@@ -288,7 +357,7 @@ fun LiveLocationMapScreen(
                         text = if (hasFix) {
                             "Coordinates: ${String.format("%.5f", lat)}, ${String.format("%.5f", lng)} (±${effectiveLocation?.accuracy?.toInt() ?: 0}m)"
                         } else {
-                            "Acquiring satellite coordinate fix..."
+                            "Connecting to Firebase satellite feed for UID: $displayUid..."
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -302,13 +371,16 @@ fun LiveLocationMapScreen(
                     ) {
                         Button(
                             onClick = {
-                                MapUtils.openExternalMap(
-                                    context = context,
-                                    latitude = lat,
-                                    longitude = lng,
-                                    label = effectiveLocation?.userName?.ifBlank { "User Location" } ?: "User Location"
-                                )
+                                if (hasFix) {
+                                    MapUtils.openExternalMap(
+                                        context = context,
+                                        latitude = lat,
+                                        longitude = lng,
+                                        label = effectiveLocation?.userName?.ifBlank { "User Location" } ?: "User Location"
+                                    )
+                                }
                             },
+                            enabled = hasFix,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(46.dp),
@@ -324,7 +396,11 @@ fun LiveLocationMapScreen(
 
                         OutlinedButton(
                             onClick = {
-                                val shareText = "Live location of ${effectiveLocation?.userName ?: "Child"}: https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng"
+                                val shareText = if (hasFix) {
+                                    "Live location of ${effectiveLocation?.userName ?: "Protected User"} (UID: $displayUid): https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng"
+                                } else {
+                                    "Protected User UID: $displayUid (Awaiting live GPS coordinates from Firebase)"
+                                }
                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)

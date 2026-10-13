@@ -156,19 +156,20 @@ service cloud.firestore {
                     && request.resource.data.status
                        in ['APPROVED', 'DENIED', 'REVOKED', 'PENDING']
 
-                    // Relationship ID remains deterministic.
-                    && relationshipId ==
-                       request.resource.data.userId + "_" +
-                       request.resource.data.trustedContactId;
+                    // Relationship ID matches deterministic format or resource ID.
+                    && (
+                      relationshipId == request.resource.data.userId + "_" + request.resource.data.trustedContactId
+                      || (resource != null && resource.id == relationshipId)
+                    );
 
 
 
       // User or trusted contact can delete their own relationship.
       allow delete: if isSignedIn()
                     && (
-                      (resource != null && resource.data != null && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid))
-                      || relationshipId.matches('^' + request.auth.uid + '_.*')
-                      || relationshipId.matches('.*_' + request.auth.uid + '$')
+                      (resource != null && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid))
+                      || relationshipId.matches(request.auth.uid + '_.*')
+                      || relationshipId.matches('.*_' + request.auth.uid)
                     );
     }
 

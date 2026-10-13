@@ -44,7 +44,7 @@ fun SOSReceivedScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val liveLocation by locationViewModel.observeUserLocation(userId).collectAsState(initial = null)
+    val liveLocation by locationViewModel.observeLocationByUserIdOrUid(userId).collectAsState(initial = null)
     val activeSOSEvent by sosViewModel.observeActiveSOS(userId).collectAsState(initial = null)
 
     Scaffold(
@@ -152,6 +152,7 @@ fun SOSReceivedScreen(
                         userLongitude = liveLocation!!.longitude,
                         zoomLevel = 16.5,
                         markerTitle = "🚨 ${liveLocation!!.userName.ifBlank { "User" }} (SOS)",
+                        uid = liveLocation?.uid?.ifBlank { userId } ?: userId,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

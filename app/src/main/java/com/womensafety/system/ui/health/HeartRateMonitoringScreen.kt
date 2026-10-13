@@ -127,6 +127,12 @@ fun HeartRateMonitoringScreen(
                     onRequestPermission = {
                         healthConnectPermissionLauncher.launch(setOf(HealthConnectManager.HEART_RATE_PERMISSION))
                     },
+                    onOpenSettings = {
+                        HealthConnectManager.openHealthConnectSettings(context)
+                    },
+                    onSelectTimeWindow = { hours ->
+                        viewModel.setQueryWindowHours(hours, context)
+                    },
                     onRefreshNow = { viewModel.refreshNow(context) },
                     onToggleMonitoring = {
                         if (uiState.isMonitoring) viewModel.stopMonitoring()
@@ -148,6 +154,8 @@ fun HeartRateMonitoringScreen(
 private fun LiveDiagnosticsTab(
     uiState: com.womensafety.system.viewmodel.HeartRateUiState,
     onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onSelectTimeWindow: (Long) -> Unit,
     onRefreshNow: () -> Unit,
     onToggleMonitoring: () -> Unit
 ) {
@@ -157,6 +165,42 @@ private fun LiveDiagnosticsTab(
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Query Window Selector
+        item {
+            Column {
+                Text(
+                    text = "QUERY TIME WINDOW",
+                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(4L to "Past 4 Hours", 24L to "Past 24 Hours", 168L to "Past 7 Days").forEach { (hours, label) ->
+                        val isSelected = uiState.queryWindowHours == hours
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onSelectTimeWindow(hours) },
+                            label = {
+                                Text(
+                                    label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
         // 1. Health Connect Status & Permission Card
         item {
             AppCard {
@@ -214,6 +258,17 @@ private fun LiveDiagnosticsTab(
                             Text("Grant Health Connect Permission", fontWeight = FontWeight.Bold)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Open Health Connect Settings", fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -239,12 +294,29 @@ private fun LiveDiagnosticsTab(
 
                     SyncTraceBadge("Trinetra ← Health Connect SDK", "Active", StatusApproved)
                     SyncTraceBadge(
-                        "Health Connect Data Origin",
-                        uiState.latestMeasurement?.dataOriginPackage ?: "Waiting for Record",
-                        if (uiState.latestMeasurement != null) StatusApproved else MaterialTheme.colorScheme.onSurfaceVariant
+                        "Queried Time Window",
+                        "${uiState.queryWindowHours} Hours",
+                        MaterialTheme.colorScheme.primary
                     )
-                    SyncTraceBadge("Companion App Sync", "External Pathway", AmberWarning)
-                    SyncTraceBadge("Smartwatch BLE Sensor", "Bluetooth Sensor", AmberWarning)
+                    SyncTraceBadge(
+                        "Query Summary",
+                        uiState.queryStatusSummary ?: if (uiState.lastQueryTimestamp != null) "Completed" else "Ready",
+                        if ((uiState.lastQueryRecordCount ?: 0) > 0) StatusApproved else AmberWarning
+                    )
+
+                    if (uiState.distinctDataOrigins.isNotEmpty()) {
+                        uiState.distinctDataOrigins.forEach { origin ->
+                            SyncTraceBadge("Data Origin Package", origin, StatusApproved)
+                        }
+                    } else {
+                        SyncTraceBadge(
+                            "Health Connect Data Origin",
+                            if (uiState.lastQueryTimestamp != null) "0 records in queried window" else "Waiting for Query",
+                            if (uiState.lastQueryTimestamp != null) AmberWarning else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    SyncTraceBadge("Companion App Sync", "External Pathway (boAt / Fit)", AmberWarning)
                 }
             }
         }
@@ -299,6 +371,11 @@ private fun LiveDiagnosticsTab(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
+                            text = "Sample Age: ${formatAge(latest.timestamp)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
                             text = "Source Origin: ${latest.dataOriginPackage}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -318,15 +395,49 @@ private fun LiveDiagnosticsTab(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "No heart rate records available",
+                                "No heart-rate records found in past ${uiState.queryWindowHours} hours",
                                 style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Ensure your watch companion app / Google Fit writes records to Health Connect.",
+                                "Android Health Connect only contains data that smartwatch companion apps (boAt Crest, Noise, Samsung Health, Google Fit) have written.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        "Recommended Next Actions:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "1. Open your smartwatch companion app (e.g. boAt Crest) to sync your watch.\n" +
+                                        "2. In Health Connect Settings, confirm the companion app has 'Write' permission granted.\n" +
+                                        "3. If your watch synced earlier, tap 'Past 7 Days' above to check for historical records.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                            if (uiState.queryWindowHours < 168L) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                OutlinedButton(
+                                    onClick = { onSelectTimeWindow(168L) },
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Expand Search Range to 7 Days", fontSize = 12.sp)
+                                }
+                            }
                         }
                     }
 
@@ -411,7 +522,7 @@ private fun LiveDiagnosticsTab(
         if (uiState.recentMeasurements.isEmpty()) {
             item {
                 Text(
-                    text = "No recorded heart rate samples found in bounded time window.",
+                    text = "No recorded heart rate samples found in the selected time window (${uiState.queryWindowHours}h).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 8.dp)
@@ -436,6 +547,8 @@ private fun DirectBleWatchTab() {
     val serviceStatus by BleHeartRateManager.serviceStatus.collectAsState()
     val heartRateBpm by BleHeartRateManager.heartRateBpm.collectAsState()
     val lastReadTime by BleHeartRateManager.lastReadTime.collectAsState()
+    val detailedState by BleHeartRateManager.detailedState.collectAsState()
+    val discoveredServices by BleHeartRateManager.discoveredServices.collectAsState()
 
     var hasBlePermission by remember {
         mutableStateOf(
@@ -457,6 +570,14 @@ private fun DirectBleWatchTab() {
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            if (BleHeartRateManager.isScanning.value) {
+                BleHeartRateManager.stopScan()
+            }
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -475,46 +596,131 @@ private fun DirectBleWatchTab() {
                     )
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    if (heartRateBpm != null) {
-                        Row(
-                            verticalAlignment = Alignment.Bottom,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                    when (val state = detailedState) {
+                        is com.womensafety.system.data.health.model.BleConnectionState.Streaming -> {
+                            Row(
+                                verticalAlignment = Alignment.Bottom,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "${state.bpm}",
+                                    style = MaterialTheme.typography.displayLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = EmergencyRed
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "BPM",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "$heartRateBpm",
-                                style = MaterialTheme.typography.displayLarge,
-                                fontWeight = FontWeight.Black,
-                                color = EmergencyRed
+                                text = "Device: ${state.deviceName} (${state.deviceAddress})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "BPM",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 8.dp)
+                                text = "Last Packet: ${DateUtils.formatDateTime(state.lastPacketTimestamp)} (${formatAge(state.lastPacketTimestamp)})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusApproved,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Last Packet: ${lastReadTime?.let { DateUtils.formatDateTime(it) } ?: "Just now"}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusApproved,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    } else {
-                        Text(
-                            text = "-- BPM",
-                            style = MaterialTheme.typography.displayMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Connect a BLE smartwatch to view real-time pulse",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        is com.womensafety.system.data.health.model.BleConnectionState.ConnectedSubscribedWaiting -> {
+                            Text(
+                                text = "-- BPM",
+                                style = MaterialTheme.typography.displayMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = AmberWarning
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Connected to ${state.deviceName}: Subscribed to 0x2A37.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Waiting for smartwatch sensor to transmit first telemetry packet...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AmberWarning
+                            )
+                        }
+                        is com.womensafety.system.data.health.model.BleConnectionState.ConnectedUnsupported -> {
+                            Text(
+                                text = "-- BPM",
+                                style = MaterialTheme.typography.displayMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Connected to ${state.deviceName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = AmberWarning.copy(alpha = 0.12f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        "Standard Heart Rate Service (0x180D) Not Available",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AmberWarning
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        "This watch model does not expose public standard BLE 0x180D GATT heart-rate notifications. It uses proprietary vendor characteristics managed by its companion app (e.g., boAt Crest).",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        lineHeight = 16.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "To view heart rate in Trinetra, sync the watch via its companion app to Health Connect.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                        is com.womensafety.system.data.health.model.BleConnectionState.Connecting,
+                        is com.womensafety.system.data.health.model.BleConnectionState.ConnectedDiscovering -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = connectionStatus,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        else -> {
+                            Text(
+                                text = "-- BPM",
+                                style = MaterialTheme.typography.displayMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Connect a BLE smartwatch to view real-time pulse",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -530,6 +736,73 @@ private fun DirectBleWatchTab() {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                    }
+                }
+            }
+        }
+
+        // Discovered GATT Services List (if connected)
+        if (discoveredServices.isNotEmpty()) {
+            item {
+                AppCard {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Text(
+                            text = "DISCOVERED GATT SERVICES (${discoveredServices.size})",
+                            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Truthful GATT inventory from connected device:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        discoveredServices.forEach { srv ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = srv.name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (srv.isStandardHeartRateService) StatusApproved else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = srv.uuid,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(
+                                            if (srv.isStandardHeartRateService) StatusApproved.copy(alpha = 0.15f)
+                                            else MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (srv.isStandardHeartRateService) "0x180D HR" else "${srv.characteristics.size} chars",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (srv.isStandardHeartRateService) StatusApproved else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -633,7 +906,7 @@ private fun DirectBleWatchTab() {
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = deviceAddress,
+                                text = "$deviceAddress (RSSI: ${result.rssi} dBm)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -655,6 +928,7 @@ private fun DirectBleWatchTab() {
         item { Spacer(modifier = Modifier.height(24.dp)) }
     }
 }
+
 
 @Composable
 private fun SampleItemRow(sample: HeartRateMeasurement) {

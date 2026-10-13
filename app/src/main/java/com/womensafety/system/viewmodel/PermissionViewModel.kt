@@ -36,6 +36,7 @@ class PermissionViewModel(
     val state: StateFlow<PermissionListState> = _state.asStateFlow()
 
     private var observeJob: kotlinx.coroutines.Job? = null
+    private val deletedRelationshipIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     init {
         authRepository.currentUserId?.let { userId ->
@@ -47,9 +48,10 @@ class PermissionViewModel(
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             relationshipRepository.observeRelationshipsForUser(userId).collect { relationships ->
-                Log.d("PermissionVM", "Real-time snapshot: ${relationships.size} relationships for user $userId")
+                val activeList = relationships.filterNot { deletedRelationshipIds.contains(it.id) }
+                Log.d("PermissionVM", "Real-time snapshot: ${activeList.size} relationships for user $userId")
                 _state.value = _state.value.copy(
-                    relationships = relationships,
+                    relationships = activeList,
                     isLoading = false
                 )
             }
@@ -76,9 +78,10 @@ class PermissionViewModel(
 
                 if (result.isSuccess) {
                     val relationships = result.getOrNull() ?: emptyList()
-                    Log.d("PermissionVM", "Loaded ${relationships.size} relationships for user $userId")
+                    val filtered = relationships.filterNot { deletedRelationshipIds.contains(it.id) }
+                    Log.d("PermissionVM", "Loaded ${filtered.size} relationships for user $userId")
                     _state.value = _state.value.copy(
-                        relationships = relationships,
+                        relationships = filtered,
                         isLoading = false
                     )
                 } else {
@@ -131,9 +134,13 @@ class PermissionViewModel(
     }
 
     fun denyRequest(relationshipId: String) {
-        if (_state.value.isLoading) return
+        deletedRelationshipIds.add(relationshipId)
+        _state.value = _state.value.copy(
+            relationships = _state.value.relationships.filterNot { it.id == relationshipId },
+            actionSuccess = null,
+            error = null
+        )
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, actionSuccess = null, error = null)
             try {
                 val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
                     relationshipRepository.denyRelationship(relationshipId)
@@ -143,6 +150,7 @@ class PermissionViewModel(
                     _state.value = _state.value.copy(actionSuccess = "Request denied.")
                     loadRelationships()
                 } else {
+                    Log.e("PermissionVM", "denyRequest error: ${result.exceptionOrNull()?.message}")
                     _state.value = _state.value.copy(
                         isLoading = false,
                         error = result.exceptionOrNull()?.message ?: "Failed to deny request."
@@ -160,9 +168,13 @@ class PermissionViewModel(
     }
 
     fun revokeAccess(relationshipId: String) {
-        if (_state.value.isLoading) return
+        deletedRelationshipIds.add(relationshipId)
+        _state.value = _state.value.copy(
+            relationships = _state.value.relationships.filterNot { it.id == relationshipId },
+            actionSuccess = null,
+            error = null
+        )
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, actionSuccess = null, error = null)
             try {
                 val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
                     relationshipRepository.revokeRelationship(relationshipId)
@@ -172,6 +184,7 @@ class PermissionViewModel(
                     _state.value = _state.value.copy(actionSuccess = "Access revoked.")
                     loadRelationships()
                 } else {
+                    Log.e("PermissionVM", "revokeAccess error: ${result.exceptionOrNull()?.message}")
                     _state.value = _state.value.copy(
                         isLoading = false,
                         error = result.exceptionOrNull()?.message ?: "Failed to revoke access."
@@ -189,9 +202,13 @@ class PermissionViewModel(
     }
 
     fun deleteRelationship(relationshipId: String) {
-        if (_state.value.isLoading) return
+        deletedRelationshipIds.add(relationshipId)
+        _state.value = _state.value.copy(
+            relationships = _state.value.relationships.filterNot { it.id == relationshipId },
+            actionSuccess = null,
+            error = null
+        )
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, actionSuccess = null, error = null)
             try {
                 val result = kotlinx.coroutines.withTimeoutOrNull(15000L) {
                     relationshipRepository.deleteRelationship(relationshipId)
@@ -201,6 +218,7 @@ class PermissionViewModel(
                     _state.value = _state.value.copy(actionSuccess = "Contact removed.")
                     loadRelationships()
                 } else {
+                    Log.e("PermissionVM", "deleteRelationship error: ${result.exceptionOrNull()?.message}")
                     _state.value = _state.value.copy(
                         isLoading = false,
                         error = result.exceptionOrNull()?.message ?: "Failed to remove contact."

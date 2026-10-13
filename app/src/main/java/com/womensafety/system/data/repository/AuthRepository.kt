@@ -22,6 +22,9 @@ class AuthRepository(
     val currentUserId: String?
         get() = authManager.currentUserId
 
+    val currentUser: com.google.firebase.auth.FirebaseUser?
+        get() = authManager.currentUser
+
     val currentUserEmail: String?
         get() = authManager.currentUser?.email
 

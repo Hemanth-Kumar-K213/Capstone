@@ -28,12 +28,16 @@ data class HeartRateUiState(
     val hasPermission: Boolean = false,
     val isQuerying: Boolean = false,
     val isMonitoring: Boolean = false,
+    val queryWindowHours: Long = 24L, // Default 24 hours (1 day)
     val latestMeasurement: HeartRateMeasurement? = null,
     val recentMeasurements: List<HeartRateMeasurement> = emptyList(),
     val lastQueryTimestamp: Long? = null,
+    val lastQueryRecordCount: Int? = null,
+    val queryStatusSummary: String? = null,
+    val distinctDataOrigins: Set<String> = emptySet(),
     val isWaitingForNewerRecord: Boolean = false,
     val errorMessage: String? = null,
-    val activeTab: Int = 0, // 0: Live Diagnostics, 1: Risk Scenario & Test Harness, 2: Direct BLE Watch
+    val activeTab: Int = 0, // 0: Health Connect, 1: Direct BLE Watch, 2: Test Harness
 
     // Test Harness state
     val isTestMode: Boolean = true,
@@ -49,7 +53,7 @@ class HeartRateMonitoringViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "HeartRateVM"
-        private const val POLLING_INTERVAL_MS = 3_000L // Fast 3-second polling for responsive heart rate sync
+        private const val POLLING_INTERVAL_MS = 15_000L // 15-second diagnostic polling
     }
 
     private val authManager = FirebaseAuthManager()
@@ -67,7 +71,27 @@ class HeartRateMonitoringViewModel : ViewModel() {
     }
 
     fun setActiveTab(tabIndex: Int) {
+        val previousTab = _uiState.value.activeTab
         _uiState.update { it.copy(activeTab = tabIndex) }
+
+        // Clean up or pause background operations when switching away from tabs
+        if (previousTab == 0 && tabIndex != 0) {
+            // Left Health Connect tab: stop continuous polling to preserve battery
+            stopMonitoring()
+        } else if (previousTab == 1 && tabIndex != 1) {
+            // Left BLE tab: stop active scanning if running
+            if (com.womensafety.system.manager.BleHeartRateManager.isScanning.value) {
+                com.womensafety.system.manager.BleHeartRateManager.stopScan()
+            }
+        }
+    }
+
+    /**
+     * Updates the query time window (e.g. 4, 24, 168 hours) and immediately refreshes.
+     */
+    fun setQueryWindowHours(hours: Long, context: Context) {
+        _uiState.update { it.copy(queryWindowHours = hours) }
+        refreshNow(context)
     }
 
     /**
@@ -89,7 +113,7 @@ class HeartRateMonitoringViewModel : ViewModel() {
             }
 
             if (hasPerm) {
-                startMonitoring(context)
+                refreshNow(context)
             }
         }
     }
@@ -97,7 +121,7 @@ class HeartRateMonitoringViewModel : ViewModel() {
     fun onPermissionResult(granted: Boolean, context: Context) {
         _uiState.update { it.copy(hasPermission = granted) }
         if (granted) {
-            startMonitoring(context)
+            refreshNow(context)
         }
     }
 
@@ -108,48 +132,64 @@ class HeartRateMonitoringViewModel : ViewModel() {
         if (_uiState.value.isQuerying) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isQuerying = true, errorMessage = null) }
+            executeQueryInternal(context)
+        }
+    }
 
-            try {
-                val result = kotlinx.coroutines.withTimeoutOrNull(10000L) {
-                    HealthConnectManager.queryHeartRateRecords(context)
-                } ?: Result.failure(Exception("Health Connect query timed out"))
+    private suspend fun executeQueryInternal(context: Context) {
+        _uiState.update { it.copy(isQuerying = true, errorMessage = null) }
 
-                result.onSuccess { samples ->
-                    val latest = samples.firstOrNull()
-                    val isUnchanged = latest != null && latest.timestamp == lastObservedTimestamp
+        try {
+            val window = _uiState.value.queryWindowHours
+            val result = kotlinx.coroutines.withTimeoutOrNull(10000L) {
+                HealthConnectManager.queryHeartRateRecords(context, window)
+            } ?: Result.failure(Exception("Health Connect query timed out"))
 
-                    lastObservedTimestamp = latest?.timestamp
+            result.onSuccess { samples ->
+                val latest = samples.firstOrNull()
+                val isUnchanged = latest != null && latest.timestamp == lastObservedTimestamp
+                lastObservedTimestamp = latest?.timestamp
 
-                    _uiState.update {
-                        it.copy(
-                            latestMeasurement = latest,
-                            recentMeasurements = samples,
-                            lastQueryTimestamp = System.currentTimeMillis(),
-                            isWaitingForNewerRecord = isUnchanged && samples.isNotEmpty(),
-                            errorMessage = null
-                        )
-                    }
-                }.onFailure { ex ->
-                    Log.e(TAG, "Refresh failed", ex)
-                    _uiState.update {
-                        it.copy(
-                            errorMessage = ex.message ?: "Failed querying Health Connect"
-                        )
-                    }
+                val origins = samples.map { it.dataOriginPackage }.filter { it.isNotBlank() }.toSet()
+                val summary = if (samples.isEmpty()) {
+                    "Query completed: 0 records found in the last $window hours."
+                } else {
+                    "Found ${samples.size} records across ${origins.size} source(s) in past $window hours."
                 }
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "Refresh unexpected error", e)
+
                 _uiState.update {
                     it.copy(
-                        errorMessage = e.message ?: "Error querying Health Connect"
+                        latestMeasurement = latest,
+                        recentMeasurements = samples,
+                        lastQueryTimestamp = System.currentTimeMillis(),
+                        lastQueryRecordCount = samples.size,
+                        queryStatusSummary = summary,
+                        distinctDataOrigins = origins,
+                        isWaitingForNewerRecord = isUnchanged && samples.isNotEmpty(),
+                        errorMessage = null
                     )
                 }
-            } finally {
-                _uiState.update { it.copy(isQuerying = false) }
+            }.onFailure { ex ->
+                Log.e(TAG, "Refresh failed", ex)
+                _uiState.update {
+                    it.copy(
+                        errorMessage = ex.message ?: "Failed querying Health Connect",
+                        queryStatusSummary = "Query error: ${ex.message}"
+                    )
+                }
             }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Refresh unexpected error", e)
+            _uiState.update {
+                it.copy(
+                    errorMessage = e.message ?: "Error querying Health Connect",
+                    queryStatusSummary = "Query error: ${e.message}"
+                )
+            }
+        } finally {
+            _uiState.update { it.copy(isQuerying = false) }
         }
     }
 
@@ -160,13 +200,12 @@ class HeartRateMonitoringViewModel : ViewModel() {
         if (monitoringJob != null && monitoringJob?.isActive == true) return
 
         _uiState.update { it.copy(isMonitoring = true) }
-        refreshNow(context)
 
         monitoringJob = viewModelScope.launch {
             Log.i(TAG, "Started diagnostic monitoring (polling every ${POLLING_INTERVAL_MS / 1000}s)")
             while (isActive) {
+                executeQueryInternal(context)
                 delay(POLLING_INTERVAL_MS)
-                refreshNow(context)
             }
         }
     }

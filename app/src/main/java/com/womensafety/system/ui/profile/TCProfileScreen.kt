@@ -161,7 +161,7 @@ fun TCProfileScreen(
             icon = Icons.AutoMirrored.Filled.Logout
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(84.dp))
     }
 }
 
