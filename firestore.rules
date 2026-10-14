@@ -338,6 +338,53 @@ service cloud.firestore {
 
 
     // ============================================================
+    // ROUTINES & ANOMALIES (REGULAR MODE)
+    // ============================================================
+
+    match /routines/{routineId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /anomalies/{anomalyId} {
+      allow read, write: if isSignedIn();
+    }
+
+
+    // ============================================================
+    // COLLEAGUES & LATE-STAY (WORKING MODE)
+    // ============================================================
+
+    match /colleagues/{colleagueId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /safetyBuddies/{buddyId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /lateStayAlerts/{alertId} {
+      allow read, write: if isSignedIn();
+    }
+
+
+    // ============================================================
+    // SLEEP SESSIONS & EMERGENCY OVERRIDES (SLEEPING MODE)
+    // ============================================================
+
+    match /sleepSessions/{sessionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /emergencyOverrideConfig/{configId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /fallDetections/{fallId} {
+      allow read, write: if isSignedIn();
+    }
+
+
+    // ============================================================
     // HELPER FUNCTIONS
     // ============================================================
 

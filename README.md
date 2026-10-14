@@ -1,6 +1,6 @@
 # Women Safety System (Android App) — Trinetra
 
-A modern, native Android application built with Kotlin, Jetpack Compose, OpenStreetMap (OSMDroid), Firebase, and the **2Factor SMS API** that provides an intelligent, proactive safety network for women and their trusted contacts — 100% Free & Open-Source with zero Google Maps billing or international gateway fees.
+A modern, native Android application built with Kotlin, Jetpack Compose, OpenStreetMap (OSMDroid), Firebase, the **2Factor SMS API**, and **Bluetooth Low Energy (BLE) Smartwatch / Health Connect** telemetry that provides an intelligent, proactive safety network for women and their trusted contacts — 100% Free & Open-Source with zero Google Maps billing or international gateway fees.
 
 ---
 
@@ -9,7 +9,7 @@ A modern, native Android application built with Kotlin, Jetpack Compose, OpenStr
 A pre-built, ready-to-test debug APK is committed directly in this repository:
 
 - **File Path**: `apk/WomenSafety-debug.apk`
-- **File Size**: ~28.14 MB
+- **File Size**: ~31.28 MB
 - **Package Name**: `com.womensafety.system`
 - **Target SDK**: Android 14 (API 34) | **Min SDK**: Android 8.0 (API 26)
 - **App Version**: `v1.0.1` (versionCode `2`)
@@ -157,29 +157,75 @@ Backend & Cloud Functions (Firebase Auth, Cloud Firestore, 2Factor SMS REST API)
   - `TravelHistoryScreen`: Trip logs and journey archives.
 - **Persistence**: Firestore collection `/journeys/{journeyId}` with `JourneyRecord` data model and `JourneyRepository`.
 
-### 10. Trinetra Safety Modes & Risk Assessment Engine (Phase 6)
+### 10. Trinetra Safety Modes & Risk Assessment Engine (Phase 6 & Enhanced Safety Modes)
 - **Four Distinct Safety Modes**:
-  1. 🏠 **REGULAR**: Balanced everyday monitoring.
+  1. 🏠 **REGULAR**: Routine-based spatiotemporal anomaly detection, auto-learning daily patterns, and proactive deviation alerting.
   2. 🚗 **TRAVELLING**: Active route deviation monitoring, stop detection, and high shake sensitivity.
-  3. 💼 **WORKING / COLLEGE**: Context-aware monitoring near saved workplace/college with reduced false-alarm sensitivity.
-  4. 😴 **SLEEPING**: Silent mode disabling passive GPS broadcasts and shake triggers while preserving SOS and contact accessibility.
+  3. 💼 **WORKING / COLLEGE**: Colleague awareness, peer safety partnerships (Safety Buddy), and automated late-stay transport protection.
+  4. 😴 **SLEEPING**: Smart emergency override system allowing critical calls and SOS through while protecting sleep, with 10-second grace-period fall detection.
+
+- **Feature Deep Dive: Strategic Enhanced Safety Modes**:
+  - **1. Routine-Based Anomaly Detection (REGULAR Mode)**:
+    - **Zero-Setup Auto-Learning**: Employs spatial clustering and time-window indexing (`DailyRoutine.kt`, `LocationPattern.kt`) to automatically learn typical weekly locations (Home, Office, Cafe, Gym) from historical trajectories without requiring manual configuration.
+    - **Intelligent Deviation Detection**: Evaluates current GPS fix against expected spatial radius and time boundaries (`RoutineAnalyzer.kt`), calculating Bayesian-style confidence scores factoring nighttime penalties and distance thresholds (>5 km).
+    - **Confidence-Filtered Alerting**: Logs low/medium concerns silently while immediately alerting on high-confidence (>0.70) deviations (`UNUSUAL_LOCATION`, `UNUSUAL_TIME`, `UNUSUAL_BOTH`).
+    - **Adaptive Learning Feedback**: Captures user responses ("Safe", "Regular", "Emergency"); automatically absorbs recurring confirmed locations into the permanent daily routine after 3 confirmations.
+    - **UI & Navigation**: Dedicated `RoutineMonitoringScreen` with routine pattern explorer, anomaly history, and interactive Capstone Simulator tab; embedded live tile on `UserHomeScreen`.
+  - **2. Colleague Awareness & Late-Stay Protection (WORKING Mode)**:
+    - **Real-Time Workplace Presence**: Automatically queries and displays verified trusted contacts and coworkers at the same workplace (`ColleagueAwareness.kt`, `ColleagueRepository.kt`).
+    - **Safety Buddy Pairing**: Mutual one-tap buddy agreement (`SafetyBuddyAgreement`) establishing shared departure check-ins and mutual automated alerts.
+    - **Automated Late-Stay Detection**: Flags when a user remains at work past 6:30 PM (or >30 minutes after standard shift end), triggering an automated check-in and dispatching alerts to emergency contacts.
+    - **Multi-Modal Safe Transport Engine**: Suggests verified transit solutions (sharing ride with safety buddy, coworkers leaving at similar times, company cab, or Ola/Uber rideshare) with one-tap booking simulation and automated SMS tracking dispatch via `TwoFactorClient`.
+    - **UI Integration**: `ColleagueAwarenessCard` embedded seamlessly inside the Working Mode home dashboard (`SafetyModeViews.kt`).
+  - **3. Smart Emergency Override System (SLEEPING Mode)**:
+    - **Sleep Sanctuary with Emergency Safeguards**: Pauses continuous GPS broadcasts and disables motion/shake alarms to eliminate false alarms during sleep (`SleepSession.kt`, `EmergencyOverrideManager.kt`).
+    - **Multiple-Call Emergency Override**: Monitors incoming calls from configured emergency contacts (`PhoneCallManager.kt`); detects 3 incoming calls within 60 seconds and overrides device silent/DND mode with a high-decibel pulsing alarm and haptic feedback.
+    - **Trusted Contact SOS Wakeup**: Instantly wakes the sleeping user with critical audio-visual alerts if any trusted contact triggers an SOS emergency.
+    - **Sleep Fall Detection with 10s Grace Period**: Uses accelerometer drop and sudden inactivity thresholds to detect falls during nighttime; displays a 10-second countdown prompt before auto-escalating to emergency contacts with exact location coordinates.
+    - **Sleep Quality Diagnostics**: Categorizes sleep sessions (`DEEP`, `LIGHT`, `RESTLESS`, `POOR`) based on duration and disruption count upon waking.
+    - **UI Integration**: Full-screen `CriticalEmergencyAlertDialog`, `FallDetectionCountdownDialog`, and `SleepModeCard` in `SafetyModeViews.kt`.
+
 - **Automatic Mode Suggestions**: Suggests mode changes based on saved workplace/home geofences, nighttime hours, and transit speed.
 - **RiskAssessmentEngine**: Transparent, rule-based 0-100 risk scoring algorithm evaluating:
   - Route deviation (+30 to +35 pts)
   - No response to deviation alerts (+50 pts)
   - Unexpected prolonged stops (+40 pts)
+  - Routine spatiotemporal anomalies (+15 to +40 pts depending on severity)
   - Sensor shake events (+30 pts)
   - Late-night hours 10 PM – 5 AM (+15 pts)
   - Safety Mode sensitivity multiplier (`NORMAL` = 1.0x, `CAUTIOUS` = 1.3x, `HIGH_RISK` = 1.6x)
 - **AreYouSafeScreen**: Proactive check-in overlay with pulsating alert glow, detected anomaly breakdown, 30-second audio countdown timer, "I'm Safe" verification, and instant SOS escalation.
-- **Persistence**: Firestore collection `/riskEvents/{eventId}` with `RiskEvent` data model and `RiskRepository`.
+- **Persistence**: Firestore collections `/routines`, `/anomalies`, `/colleagues`, `/safetyBuddies`, `/lateStayAlerts`, `/sleepSessions`, `/emergencyOverrideConfig`, `/fallDetections`, and `/riskEvents`.
 
-### 11. Diagnostic & Testing Tools
+### 11. Phase 7: BLE Smartwatch Integration & Heart Rate Panic Telemetry
+- **Direct BLE Smartwatch GATT Manager (`BleHeartRateManager.kt`)**:
+  - Scans, connects, and streams live heart-rate measurements from smartwatches and fitness bands exposing the standard Bluetooth SIG Heart Rate Service (`0x180D`) and Measurement Characteristic (`0x2A37`).
+  - Low-latency BLE scanning (`SCAN_MODE_LOW_LATENCY`) with 15-second auto-stop battery optimization.
+  - Truthful, diagnosable GATT service and characteristic discovery explorer.
+  - Safe disconnect and reconnect handling with automatic state updates (`BleConnectionState`).
+- **Google Health Connect Integration (`HealthConnectManager.kt`)**:
+  - Dual-source architecture reading continuous resting and background heart rate records via Android Health Connect API (`READ_HEART_RATE`).
+  - Data freshness classification: `FRESH` (<10 minutes old) vs. `STALE` (≥10 minutes old).
+  - Deduplication and origin attribution across installed health providers (e.g., Google Fit, Samsung Health, Zepp Life).
+- **Interactive Health Screen (`HeartRateMonitoringScreen.kt`)**:
+  - 3-tab Material 3 design:
+    - **Tab 0: Health Connect**: Permission rationale launcher, historical query window selectors (4h, 24h, 7d), query summaries, and recent measurement timeline.
+    - **Tab 1: Direct BLE Watch**: Real-time scanner, Bluetooth device list, live connection status, animated pulsating heart indicator, live BPM telemetry card, and discovered GATT services viewer.
+    - **Tab 2: Test Harness / Capstone Simulator**: Interactive scenario testing demonstrating panic/tachycardia response.
+- **Risk Assessment Integration**:
+  - `RiskAssessmentEngine` factors tachycardia and sudden panic heart rate spikes (>120 BPM or abnormal surge) as a high-risk indicator (+4 pts in Capstone scenario), escalating composite risk alongside route deviation and late-night context.
+- **Home Screen Telemetry Card**:
+  - Dedicated live tile on `UserHomeScreen.kt` displaying current watch connection status, live BPM pulse indicator, and one-tap shortcut to the Health Monitoring Screen.
+- **Automated Unit Testing (`HeartRateMonitoringTest.kt`)**:
+  - Comprehensive unit test suite covering health data freshness boundaries, deduplication, panic threshold classification, and risk engine scenario evaluations.
+
+### 12. Diagnostic & Testing Tools
 - **LocationTestScreen**: Real-time GPS diagnostics showing latitude, longitude, altitude, accuracy, speed, bearing, provider status, OpenStreetMap readiness, and live map preview fix.
 - **MapTestScreen**: OpenStreetMap (OSMDroid) rendering validation for markers, camera controls, and zoom levels.
+- **Capstone Scenario Simulator**: In-app test harness simulating composite risk conditions (Route Deviation + Late Night + Heart Rate Panic Spike) to verify automated safety escalation.
 
-### 12. User Profile & Home UI Enhancements
-- **UserHomeScreen**: Integrated Safety Mode quick-selector card, active journey banner, quick-action tiles (Safe Travel, Shake Settings, Contacts, SOS History), live status indicators, risk score pill.
+### 13. User Profile & Home UI Enhancements
+- **UserHomeScreen**: Integrated Safety Mode quick-selector card, active journey banner, Smartwatch / BLE Heart Rate telemetry tile, quick-action tiles (Safe Travel, Shake Settings, Contacts, SOS History), live status indicators, risk score pill.
 - **UserProfileScreen**:
   - Workplace/College saved coordinates & address configuration.
   - Automatic mode suggestions toggle.
@@ -308,9 +354,11 @@ service cloud.firestore {
 - **Async & State**: Kotlin Coroutines, StateFlow, Flow
 - **Navigation**: Jetpack Navigation Compose (Type-Safe Routes)
 - **Backend & Database**: Firebase Auth, Cloud Firestore, Cloud Functions (Node.js 18 TypeScript with `axios`)
-- **SMS Gateway**: 2Factor SMS REST API (Indian Telecom Gateway)
+- **SMS Gateway**: 2Factor SMS REST API (Indian Telecom Gateway with dedicated V1 & R1 transactional endpoints)
 - **Mapping & Routing**: OpenStreetMap (`org.osmdroid:osmdroid-android:6.1.18`), OSRM Driving Engine, Google Play Services Location (`play-services-location` for device GPS fix)
-- **Permissions**: Accompanist Permissions
+- **Health & Wearables**: Bluetooth Low Energy (BLE GATT SIG Heart Rate Service `0x180D`), Android Health Connect API (`androidx.health.connect:connect-client:1.1.0-alpha11`)
+- **Permissions**: Accompanist Permissions & Android 14 Health Permissions Controller
+- **Testing & Tooling**: JUnit 4, Kotlinx Coroutines Test, Automated Build & Diagnostics (`rebuild.bat`, `verify.bat`, `diagnose.ps1`)
 
 ---
 
@@ -421,19 +469,31 @@ Capstone/
 │   └── src/main/java/com/womensafety/system/
 │       ├── data/
 │       │   ├── firebase/ (FirebaseAuthManager, FirestoreManager)
+│       │   ├── health/ (HealthConnectManager, HeartRateData models)
 │       │   ├── model/ (User, TrustedContact, SOSEvent, JourneyRecord, etc.)
-│       │   └── repository/ (AuthRepository, LocationRepository, etc.)
+│       │   ├── repository/ (AuthRepository, LocationRepository, RelationshipRepository, etc.)
+│       │   └── sms/ (TwoFactorClient direct REST fallback & SIM dispatcher)
+│       ├── manager/
+│       │   ├── BleHeartRateManager (BLE GATT SIG Heart Rate 0x180D scanner & telemetry)
+│       │   ├── DirectionsApiHelper (OSRM road routing & GeoJSON decoding)
+│       │   ├── RiskAssessmentEngine (Composite 0-100 risk scoring & Capstone scenarios)
+│       │   ├── SafetyMonitoringManager (Background watchdog & anomaly coordinator)
+│       │   ├── SOSManager (SOS siren, GPS lock, 2Factor SMS dispatch, auto-call)
+│       │   ├── TravelModeManager (Journey state machine & deviation monitor)
+│       │   └── TrinetraLocationManager (High-accuracy GPS provider)
+│       ├── receiver/ (SafetyNotificationActionReceiver)
 │       ├── service/ (LocationTrackingService, ShakeDetectionService)
 │       ├── ui/
 │       │   ├── auth/ (UserSignupStep*, TCAuthScreen, OTPVerificationScreen)
-│       │   ├── home/ (UserHomeScreen, TCHomeScreen)
+│       │   ├── health/ (HeartRateMonitoringScreen 3-tab UI)
+│       │   ├── home/ (UserHomeScreen with HR telemetry card, TCHomeScreen)
 │       │   ├── map/ (SafetyMapTracker OSM wrapper, LiveLocationMapScreen)
 │       │   ├── navigation/ (NavGraph, Screen destinations)
 │       │   ├── setup/ (5-step Setup Wizard)
 │       │   ├── sos/ (SOSAlertScreen, SOSReceivedScreen, SOSEventMapScreen)
 │       │   └── travel/ (TravelModeScreen, ActiveJourneyScreen)
-│       ├── utils/ (MapUtils, DirectionsApiHelper, RiskAssessmentEngine, Validators)
-│       └── viewmodel/ (AuthViewModel, OTPViewModel, LocationViewModel, SOSViewModel)
+│       ├── utils/ (MapUtils, DateUtils, NotificationChannelManager, Validators)
+│       └── viewmodel/ (AuthViewModel, OTPViewModel, HeartRateMonitoringViewModel, LocationViewModel, SOSViewModel)
 ├── firebase/
 │   └── functions/
 │       ├── src/
@@ -446,6 +506,9 @@ Capstone/
 │       └── README-2Factor.md
 ├── apk/
 │   └── WomenSafety-debug.apk (pre-built testing APK)
+├── rebuild.bat / rebuild.sh (automated APK rebuild & verification)
+├── verify.bat / verify.sh (syntax & structure verifier)
+├── diagnose.ps1 / diagnose.sh (diagnostic scripts)
 ├── firestore.rules (security rules)
 └── README.md
 ```
@@ -454,16 +517,22 @@ Capstone/
 
 ## 📂 Git Branch Reference
 
-- **`otp-update`** *(Current Active Branch)*:
-  - Full 2Factor SMS API integration (replacing Twilio & FCM).
-  - Phone OTP verification screen & ViewModel (`OTPVerificationScreen`, `OTPViewModel`).
-  - Cloud Functions: `sendOTPFunction`, `verifyOTPFunction`, `onSOSEventCreated`.
-  - OpenStreetMap (OSMDroid) migration.
+- **`feature/ble-integration-fix`** *(Current Active Branch)*:
+  - Direct Bluetooth Low Energy (BLE) Smartwatch & Fitness Band Heart Rate integration (`BleHeartRateManager.kt`).
+  - Google Health Connect API integration (`HealthConnectManager.kt`).
+  - Interactive 3-tab Health Monitoring UI (`HeartRateMonitoringScreen.kt`) with live BPM pulse, GATT explorer, and Capstone Scenario test harness.
+  - Integration with `RiskAssessmentEngine` for composite panic/tachycardia escalation (+4 pts).
+  - OpenStreetMap (OSMDroid) & OSRM road routing (100% free, zero Google Maps API key or billing required).
+  - 2Factor SMS API Gateway integration (dedicated V1 & R1 transactional endpoints with dual-SIM local fallback).
   - Pre-built debug APK included at `apk/WomenSafety-debug.apk`.
+- **`otp-update`**:
+  - 2Factor SMS OTP verification & Cloud Functions deployment baseline.
 - **`map-update`**:
   - OpenStreetMap (OSMDroid) migration baseline without Google Maps billing.
+- **`trail2`**:
+  - Clean Architecture consolidation and merged collaborator modules.
 - **`main`**:
-  - Baseline project branch.
+  - Baseline production branch.
 
 ---
 

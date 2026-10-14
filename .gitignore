@@ -20,7 +20,7 @@ app/build/
 
 # Keep pre-built testing APK in apk/ directory tracked
 *.apk
-!apk/WomenSafety-debug.apk
+!apk/*.apk
 
 # OS files
 .DS_Store

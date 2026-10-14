@@ -74,7 +74,8 @@ object RiskAssessmentEngine {
         isRouteDeviated: Boolean = false,
         isNoResponseToDeviation: Boolean = false,
         activeOperatingMode: SafetyMode = SafetyMode.REGULAR,
-        healthSignal: HealthRiskSignal? = null
+        healthSignal: HealthRiskSignal? = null,
+        routineAnomaly: com.womensafety.system.data.model.AnomalyDetected? = null
     ): AssessmentResult {
         val anomalies = mutableListOf<String>()
         var score = 0
@@ -156,6 +157,24 @@ object RiskAssessmentEngine {
                     // Evaluated physiological anomaly
                     anomalies.add("Abnormal Physiological Heart-Rate Spike")
                     score += (25 * weightMultiplier).toInt()
+                }
+            }
+        }
+
+        // 4.8. Routine-Based Behavioral Anomaly (Active in Regular / Working Modes)
+        if (routineAnomaly != null && activeOperatingMode != SafetyMode.SLEEPING) {
+            when (routineAnomaly.severity) {
+                com.womensafety.system.data.model.AnomalySeverity.HIGH -> {
+                    anomalies.add("High Risk Routine Anomaly (${routineAnomaly.anomalyType.displayName})")
+                    score += (40 * weightMultiplier).toInt()
+                }
+                com.womensafety.system.data.model.AnomalySeverity.MEDIUM -> {
+                    anomalies.add("Moderate Routine Anomaly (${routineAnomaly.anomalyType.displayName})")
+                    score += (25 * weightMultiplier).toInt()
+                }
+                com.womensafety.system.data.model.AnomalySeverity.LOW -> {
+                    anomalies.add("Unusual Activity (${routineAnomaly.anomalyType.displayName})")
+                    score += (15 * weightMultiplier).toInt()
                 }
             }
         }

@@ -32,6 +32,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ChangePhone
 @Serializable object PermissionRequests
 @Serializable object HeartRateMonitoringScreen
+@Serializable object RoutineMonitoringScreen
 
 // ─── User Setup Wizard Routes ────────────────────────────────────
 @Serializable object WelcomeSetupScreen

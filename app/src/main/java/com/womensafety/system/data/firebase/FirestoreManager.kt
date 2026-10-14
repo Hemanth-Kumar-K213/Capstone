@@ -1625,5 +1625,38 @@ class FirestoreManager {
             Result.failure(lastError ?: Exception("Unable to write feedback document to Firestore"))
         }
     }
+
+    /**
+     * Generic helper to save or merge data into a document.
+     */
+    suspend fun saveDocument(collection: String, documentId: String, data: Map<String, Any?>): Result<Unit> {
+        return try {
+            db.collection(collection)
+                .document(documentId)
+                .set(data, SetOptions.merge())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "saveDocument failed for $collection/$documentId", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Generic helper to retrieve a document as a Map.
+     */
+    suspend fun getDocument(collection: String, documentId: String): Result<Map<String, Any>?> {
+        return try {
+            val snapshot = db.collection(collection).document(documentId).get().await()
+            if (snapshot.exists()) {
+                Result.success(snapshot.data)
+            } else {
+                Result.success(null)
+            }
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getDocument failed for $collection/$documentId", e)
+            Result.failure(e)
+        }
+    }
 }
 

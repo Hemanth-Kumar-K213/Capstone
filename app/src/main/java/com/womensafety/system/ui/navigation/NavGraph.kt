@@ -379,6 +379,9 @@ fun AppNavGraph(
                     onNavigateToHeartRate = {
                         navController.navigate(HeartRateMonitoringScreen)
                     },
+                    onNavigateToRoutine = {
+                        navController.navigate(RoutineMonitoringScreen)
+                    },
                     onNavigateToContacts = {
                         navController.navigate(UserContacts) {
                             popUpTo(navController.graph.startDestinationId) {
@@ -454,6 +457,17 @@ fun AppNavGraph(
                 com.womensafety.system.ui.health.HeartRateMonitoringScreen(
                     viewModel = hrViewModel,
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<RoutineMonitoringScreen> {
+                val routineViewModel: RoutineMonitoringViewModel = viewModel()
+                com.womensafety.system.ui.safety.RoutineMonitoringScreen(
+                    viewModel = routineViewModel,
+                    onBack = { navController.popBackStack() },
+                    onTriggerSOS = {
+                        navController.navigate(UserSafety)
+                    }
                 )
             }
 

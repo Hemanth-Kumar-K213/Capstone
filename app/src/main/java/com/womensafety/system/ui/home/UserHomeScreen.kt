@@ -37,6 +37,9 @@ import com.womensafety.system.service.LocationTrackingService
 import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.components.TelemetryPill
 import com.womensafety.system.ui.theme.*
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.womensafety.system.ui.safety.RoutineMonitoringCard
+import com.womensafety.system.viewmodel.RoutineMonitoringViewModel
 import com.womensafety.system.utils.Constants
 import com.womensafety.system.viewmodel.UserHomeViewModel
 import java.util.Calendar
@@ -66,7 +69,9 @@ fun UserHomeScreen(
     onNavigateToTravelMode: () -> Unit = {},
     onNavigateToLiveMap: (String) -> Unit = {},
     onNavigateToHeartRate: () -> Unit = {},
-    onNavigateToContacts: () -> Unit = {}
+    onNavigateToContacts: () -> Unit = {},
+    onNavigateToRoutine: () -> Unit = {},
+    routineViewModel: RoutineMonitoringViewModel = viewModel()
 ) {
     val state by viewModel.homeState.collectAsState()
     val context = LocalContext.current
@@ -563,7 +568,12 @@ fun UserHomeScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
             SafetyMode.REGULAR -> {
-                // Handled in regular hardware and network cards below
+                RoutineMonitoringCard(
+                    viewModel = routineViewModel,
+                    onNavigateToDetails = onNavigateToRoutine,
+                    onTriggerSOS = onNavigateToSafety
+                )
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
 

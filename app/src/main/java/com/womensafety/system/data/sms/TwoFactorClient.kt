@@ -256,4 +256,54 @@ object TwoFactorClient {
             Result.failure(e)
         }
     }
+
+    /**
+     * Sends custom transactional SMS (e.g. Late-Stay, Emergency Ride, Fall Alert).
+     */
+    suspend fun sendTransactionalSms(
+        phoneNumber: String,
+        message: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val normalized = normalizePhone(phoneNumber)
+            val params = "module=" + URLEncoder.encode("TRANS_SMS", "UTF-8") +
+                    "&apikey=" + URLEncoder.encode(apiKey, "UTF-8") +
+                    "&to=" + URLEncoder.encode(normalized, "UTF-8") +
+                    "&from=" + URLEncoder.encode(senderId, "UTF-8") +
+                    "&msg=" + URLEncoder.encode(message, "UTF-8")
+
+            Log.d(TAG, "Dispatching transactional SMS to $normalized...")
+
+            val url = URL(API_URL)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 10000
+                readTimeout = 10000
+                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            }
+
+            OutputStreamWriter(conn.outputStream).use { writer ->
+                writer.write(params)
+                writer.flush()
+            }
+
+            val responseCode = conn.responseCode
+            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+            val responseText = BufferedReader(InputStreamReader(stream)).use { it.readText() }
+
+            val json = JSONObject(responseText)
+            val status = json.optString("Status", "")
+            val details = json.optString("Details", "")
+
+            if (status.equals("Success", ignoreCase = true)) {
+                Result.success(details)
+            } else {
+                Result.failure(Exception(if (details.isNotBlank()) details else "2Factor error: $responseText"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Direct 2Factor transactional dispatch exception", e)
+            Result.failure(e)
+        }
+    }
 }

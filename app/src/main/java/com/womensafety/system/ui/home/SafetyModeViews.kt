@@ -27,12 +27,19 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.womensafety.system.ui.safety.ColleagueAwarenessCard
+import com.womensafety.system.ui.safety.SleepModeCard
+import com.womensafety.system.viewmodel.ColleagueAwarenessViewModel
+import com.womensafety.system.viewmodel.SleepModeViewModel
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun WorkingModeView(
     userProfile: UserProfile?,
     viewModel: UserHomeViewModel,
-    onNavigateToSafety: () -> Unit
+    onNavigateToSafety: () -> Unit,
+    colleagueViewModel: ColleagueAwarenessViewModel = viewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val permissionState = rememberMultiplePermissionsState(
@@ -252,6 +259,9 @@ fun WorkingModeView(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        ColleagueAwarenessCard(viewModel = colleagueViewModel)
     }
 }
 
@@ -260,7 +270,8 @@ fun WorkingModeView(
 fun SleepingModeView(
     userProfile: UserProfile?,
     viewModel: UserHomeViewModel,
-    onNavigateToSafety: () -> Unit
+    onNavigateToSafety: () -> Unit,
+    sleepViewModel: SleepModeViewModel = viewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val permissionState = rememberMultiplePermissionsState(
@@ -480,6 +491,12 @@ fun SleepingModeView(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        SleepModeCard(
+            viewModel = sleepViewModel,
+            onTriggerSOS = onNavigateToSafety
+        )
     }
 }
 
