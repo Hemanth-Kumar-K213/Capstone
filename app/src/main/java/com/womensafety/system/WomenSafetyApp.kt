@@ -15,5 +15,8 @@ class WomenSafetyApp : Application() {
         com.womensafety.system.manager.SafetyMonitoringManager.initialize(this)
         com.womensafety.system.manager.TravelModeManager.initialize(this)
         com.womensafety.system.manager.SOSManager.initialize(this)
+        com.womensafety.system.manager.EmergencyOverrideManager.initialize(this)
+        com.womensafety.system.manager.RoutineAnalyzer.initialize(this)
+        com.womensafety.system.manager.ColleagueAwarenessManager.initialize(this)
     }
 }

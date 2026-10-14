@@ -33,6 +33,7 @@ import kotlinx.serialization.Serializable
 @Serializable object PermissionRequests
 @Serializable object HeartRateMonitoringScreen
 @Serializable object RoutineMonitoringScreen
+@Serializable object AccelerometerDiagnosticScreen
 
 // ─── User Setup Wizard Routes ────────────────────────────────────
 @Serializable object WelcomeSetupScreen

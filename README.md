@@ -165,30 +165,42 @@ Backend & Cloud Functions (Firebase Auth, Cloud Firestore, 2Factor SMS REST API)
   4. 😴 **SLEEPING**: Smart emergency override system allowing critical calls and SOS through while protecting sleep, with 10-second grace-period fall detection.
 
 - **Feature Deep Dive: Strategic Enhanced Safety Modes**:
-  - **1. Routine-Based Anomaly Detection (REGULAR Mode)**:
-    - **Zero-Setup Auto-Learning**: Employs spatial clustering and time-window indexing (`DailyRoutine.kt`, `LocationPattern.kt`) to automatically learn typical weekly locations (Home, Office, Cafe, Gym) from historical trajectories without requiring manual configuration.
-    - **Intelligent Deviation Detection**: Evaluates current GPS fix against expected spatial radius and time boundaries (`RoutineAnalyzer.kt`), calculating Bayesian-style confidence scores factoring nighttime penalties and distance thresholds (>5 km).
-    - **Confidence-Filtered Alerting**: Logs low/medium concerns silently while immediately alerting on high-confidence (>0.70) deviations (`UNUSUAL_LOCATION`, `UNUSUAL_TIME`, `UNUSUAL_BOTH`).
-    - **Adaptive Learning Feedback**: Captures user responses ("Safe", "Regular", "Emergency"); automatically absorbs recurring confirmed locations into the permanent daily routine after 3 confirmations.
-    - **UI & Navigation**: Direct navigation route from `UserHomeScreen` via `RoutineMonitoringCard` linking to `RoutineMonitoringScreen` (Tab 1: Routine Patterns, Tab 2: Deviation History, Tab 3: Capstone Simulator).
-  - **2. Colleague Awareness & Late-Stay Protection (WORKING Mode)**:
-    - **Multi-Tiered Detection Hierarchy**:
-      - **Tier 1 (BLE Beacon Discovery)**: Low-latency BLE advertising (`WorkplaceBeaconManager`) and scanning (`WorkplaceColleagueScannerManager`) on service UUID `0000180A-0000-1000-8000-00805F9B34FB` with RSSI distance estimation ($< 150\text{m}$, confidence 0.95).
-      - **Tier 2 (Workplace Geofence)**: FusedLocationProviderClient geofence validation (`WorkplaceGeofenceManager`) confirming workplace presence ($< 500\text{m}$, confidence 0.70) when BLE signals are obstructed.
-      - **Tier 3 (Firestore Cloud Presence)**: Queries trusted contacts' recent cloud locations (`ColleagueDetectionManager`) for real-time fallback ($< 5\text{ min}$ old, confidence 0.80).
-    - **Bilateral Safety Buddy Pairing**: Mutual pairing workflow (`SafetyBuddyRepository`, `BuddyRequest`) with request and acceptance states (`PENDING_ACCEPTANCE`, `ACTIVE`, `DECLINED`) stored in Firestore (`safetyBuddies/{userId}/agreements` and `buddyRequests/{userId}/incoming`).
-    - **Automated Late-Stay Detection**: Flags presence past 6:30 PM, triggers check-ins, and dispatches automated alerts to emergency contacts.
-    - **Multi-Modal Safe Transport Engine**: Suggests verified transit solutions (coworker carpooling, corporate cab, Ola/Uber rideshare) with one-tap simulated booking and SMS tracking dispatch via `TwoFactorClient`.
-    - **UI Integration & Evaluator Harness**: `ColleagueAwarenessCard` in `SafetyModeViews.kt` with live detection source badges (`BLE`, `Geofence`, `Location History`), direct call shortcuts, pair actions, and Capstone Evaluator Simulator buttons ("Simulate Late Stay", "Set Buddy (Demo)").
-  - **3. Smart Emergency Override System (SLEEPING Mode)**:
-    - **Sleep Sanctuary with Emergency Safeguards**: Pauses continuous GPS broadcasts and disables motion/shake alarms to eliminate false alarms during sleep (`SleepSession.kt`, `EmergencyOverrideManager.kt`).
-    - **Hardware 3-Call Emergency Override (`EmergencyCallOverrideManager.kt`)**: Telephony state listener monitoring incoming calls from configured emergency contacts; detects 3 incoming calls within a 60-second sliding window, bypassing silent/DND mode to trigger max-volume `STREAM_ALARM` audio and full-screen critical wakeup dialog.
-    - **Trusted Contact SOS Wakeup**: Instantly wakes the sleeping user with critical audio-visual alerts if any trusted contact triggers an SOS emergency.
-    - **Hybrid Kinematic + Acoustic Fall Detection (`HybridFallDetectionManager.kt`)**:
-      - **Kinematic Stage**: Accelerometer detecting free-fall weightlessness ($< 3.0\text{ m/s}^2$) followed by high-G impact ($> 25.0\text{ m/s}^2$) within 500ms.
-      - **Acoustic Stage**: Ambient microphone monitoring detecting crash transients ($> 68\text{ dB}$) to prevent false alarms.
-      - **10-Second Grace Period**: Countdown dialog allowing safe cancellation before auto-dispatching SOS with exact coordinates.
-    - **UI Integration & Evaluator Harness**: Full-screen `CriticalEmergencyAlertDialog`, `FallDetectionCountdownDialog`, and `SleepModeCard` in `SafetyModeViews.kt` with evaluator test harness buttons ("Simulate 3 Calls", "Simulate Fall (10s)").
+  - **1. Routine-Based Anomaly Detection (REGULAR Mode — Hybrid Auto-Learn + Manual Entry)**:
+    - **30-Day GPS History Auto-Learning Engine (`RoutineAutoLearner.kt`)**: Automatically queries GPS trajectories from `userLocations/{userId}/locations/{timestamp}` for the past 30 days. Uses a spatial proximity clustering algorithm (<100m threshold) to identify recurring anchor locations.
+    - **Time Window & Confidence Scoring**: Calculates arrival/departure windows, frequency of visits in 30 days, reverse-geocodes addresses via Android Geocoder, and assigns confidence scores (0.0 to 1.0) based on historical consistency.
+    - **Firestore Routine Storage**: Persists learned routines to `routines/{userId}/{dayOfWeek}/{locationId}`.
+    - **Daily 06:00 AM Background Execution**: Automatically re-learns and refines routines once per day at 06:00 AM using `AlarmManager` and `RoutineAutoLearnReceiver`.
+    - **Manual Routine Entry Form (`RoutineManualEntryDialog.kt`)**: Allows users to manually add, edit, or delete custom anchor locations with GPS auto-fill, radius slider (50–500m), arrival/departure time pickers, and Mon–Sun day checkboxes with immediate Firestore persistence.
+    - **3-Tab Production UI (`RoutineMonitoringScreen.kt`)**:
+      - **Tab 1: Your Routine**: Real-time list of today's learned/manual locations with confidence, frequency, edit/delete actions, and "+ Add Custom Location" button.
+      - **Tab 2: Anomaly History**: Chronological log of detected spatial/temporal deviations with severity badges and response history.
+      - **Tab 3: Auto-Learn Status**: Engine status, collection day count, last updated timestamp, next scheduled update, and manual refresh trigger.
+    - **Intelligent Anomaly Detection**: Real-time evaluation against today's routine radius and typical time window, alerting only when unexpected deviations occur.
+
+  - **2. Colleague Awareness & Mutual Safety Buddy Pairing (WORKING Mode — Mobile-to-Mobile BLE & Geofence)**:
+    - **Hardware BLE Broadcasting (`WorkplaceBeaconManager.kt`)**: Advertises user presence using `BluetoothLeAdvertiser` with service UUID `0000180A-0000-1000-8000-00805F9B34FB`. Automatically checks Bluetooth hardware availability and prompts when disabled.
+    - **Continuous BLE Scanning (`WorkplaceColleagueScannerManager.kt`)**: Scans for neighboring colleagues running Trinetra. Decodes payloads and cross-verifies against Firestore `trustedContacts/{currentUserId}/{discoveredUserId}` for strict privacy protection (unapproved beacons are discarded).
+    - **Path-Loss Distance Estimation**: Computes precise proximity using the log-distance path loss formula:
+      $$\text{Distance} = 10^{\frac{\text{txPower} - \text{RSSI}}{10 \cdot n}}$$
+      (where $\text{txPower} = -59\text{ dBm}$ and $n = 2.0$).
+    - **Workplace Geofence Fallback (`WorkplaceGeofenceManager.kt`)**: When BLE signals are obstructed, evaluates the colleague's last known location against the user's configured workplace coordinates (<500m geofence) with periodic 30-second re-verification.
+    - **Tiered Presence Resolution (`ColleagueDetectionManager.kt`)**: Combines detection layers (Tier 1: BLE 0.95 confidence $\rightarrow$ Tier 2: Firestore Cloud History 0.80 confidence $\rightarrow$ Tier 3: Geofence 0.70 confidence).
+    - **Mutual Safety Buddy Bilateral Pairing (`SafetyBuddyRepository.kt`)**:
+      - Dispatches buddy requests to `buddyRequests/{targetUserId}/incoming/{requestingUserId}` with real-time Firestore listeners.
+      - Target colleague receives in-app pairing card with Accept and Decline actions.
+      - Acceptance establishes bilateral active agreements in `safetyBuddies/{userId}/agreements/{buddyId}` with instant status badges ("Paired ✓") and direct calling shortcuts.
+    - **Zero Mock Data**: Purged all hardcoded test names (Priya, Ananya, Sneha, Vikram) and removed simulator buttons.
+
+  - **3. Smart Emergency Override System & Fall Detection (SLEEPING Mode)**:
+    - **Sensor Manager Application Startup**: Initialized `EmergencyOverrideManager`, `RoutineAnalyzer`, and `ColleagueAwarenessManager` directly in `WomenSafetyApp.kt` upon process creation, ensuring sensor listeners and telephony receivers are always active.
+    - **Hardware Accelerometer Diagnostic Screen (`AccelerometerDiagnosticScreen.kt`)**: Live diagnostic tool streaming real-time X/Y/Z acceleration, raw magnitude $\sqrt{X^2 + Y^2 + Z^2}$, gravity-adjusted acceleration $\sqrt{X^2+Y^2+Z^2} - 9.8$, 10-second rolling waveform canvas, and 50ms throttled logcat output.
+    - **3-Phase Fall Detection Engine (`HybridFallDetectionManager.kt`)**:
+      - **Phase A (Free-Fall)**: Detects near-weightlessness (gravity-adjusted acceleration $< 3.0\text{ m/s}^2$) for 0.5–1.0s.
+      - **Phase B (Impact Spike)**: Detects violent impact deceleration ($> 25.0\text{ m/s}^2$) occurring within 800ms of free-fall.
+      - **Phase C (Immobility)**: Confirms post-impact resting state ($< 2.0\text{ m/s}^2$).
+      - **10-Second Countdown Grace Period**: Triggers an urgent alert dialog with 10-second audible countdown before auto-dispatching SOS with GPS coordinates.
+    - **Telephony 3-Call Emergency Override (`EmergencyCallOverrideManager.kt`)**: Hardware `PhoneStateListener` / telephony callback monitoring incoming calls from configured emergency contacts. Detects 3 calls within a 5-minute sliding window, automatically overriding DND/silent mode to `AudioManager.RINGER_MODE_NORMAL` with maximum volume and launching a full-screen wakeup alert.
+    - **Trusted Contact Emergency SOS Wakeup**: Listens for active SOS alerts triggered by paired contacts and immediately awakens the sleeping user.
 
 - **Automatic Mode Suggestions**: Suggests mode changes based on saved workplace/home geofences, nighttime hours, and transit speed.
 - **RiskAssessmentEngine**: Transparent, rule-based 0-100 risk scoring algorithm evaluating:

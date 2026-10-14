@@ -9,20 +9,38 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.util.Log
+import kotlinx.coroutines.*
 import kotlin.math.log10
 import kotlin.math.sqrt
 
 /**
- * Hybrid Nocturnal Fall Detection combining hardware accelerometer dynamics
- * (free-fall drop + high impact spike) with acoustic impact verification.
+ * Requirement 3B: Hybrid Nocturnal Fall Detection Manager.
+ *
+ * Implements 3-phase fall detection:
+ * PHASE A: FREE-FALL (0.5–1.0 sec)
+ *   Condition: Gravity-adjusted < 3.0 m/s² or Raw magnitude < 3.0 m/s²
+ *   Meaning: Phone is weightless in air
+ *   Action: Record freeFallStartTime
+ *
+ * PHASE B: IMPACT (within 500-800ms of Phase A)
+ *   Condition: Sudden spike, gravity-adjusted > 25.0 m/s²
+ *   Meaning: Collision with ground/bed
+ *   Action: Confirm impact window (< 800ms)
+ *
+ * PHASE C: IMMOBILITY (1–2 sec after impact)
+ *   Condition: Acceleration returns to < 2.0 m/s²
+ *   Meaning: Phone came to rest
+ *   Action: Confirm fall alert and trigger EmergencyOverrideManager.detectFall()
  */
 class HybridFallDetectionManager(private val context: Context) {
 
     companion object {
         private const val TAG = "HybridFallDetector"
-        private const val FALL_FREE_FALL_THRESHOLD = 3.0f // m/s^2
-        private const val FALL_IMPACT_THRESHOLD = 25.0f // m/s^2
-        private const val IMPACT_WINDOW_MS = 600L
+        private const val FREE_FALL_RAW_THRESHOLD = 3.0f // m/s²
+        private const val FREE_FALL_ADJ_THRESHOLD = -6.8f // m/s²
+        private const val IMPACT_SPIKE_THRESHOLD = 25.0f // m/s² (gravity-adjusted)
+        private const val IMPACT_TIMEOUT_MS = 800L
+        private const val IMMOBILITY_THRESHOLD = 2.5f // m/s² (gravity-adjusted)
         private const val CRASH_AUDIO_THRESHOLD_DB = 68.0 // dB
     }
 
@@ -31,7 +49,13 @@ class HybridFallDetectionManager(private val context: Context) {
 
     private var isMonitoring = false
     private var isAudioMonitoring = false
-    private var lastFreeFallTime = 0L
+
+    private var freeFallStartTime: Long? = null
+    private var impactTime: Long? = null
+    private var impactMagnitude: Float = 0f
+
+    private val scope = CoroutineScope(Dispatchers.Default)
+    private var immobilityJob: Job? = null
     private var audioRecordThread: Thread? = null
 
     private val sensorListener = object : SensorEventListener {
@@ -42,29 +66,77 @@ class HybridFallDetectionManager(private val context: Context) {
             val y = event.values[1]
             val z = event.values[2]
 
-            val rawMagnitude = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
-            val dynamicAcceleration = rawMagnitude
-
-            val now = System.currentTimeMillis()
-
-            // Phase 1: Free fall condition (< 3.0 m/s^2)
-            if (dynamicAcceleration < FALL_FREE_FALL_THRESHOLD) {
-                lastFreeFallTime = now
-            }
-
-            // Phase 2: Violent impact spike (> 25.0 m/s^2) within 600ms of free fall
-            if (dynamicAcceleration > FALL_IMPACT_THRESHOLD && (now - lastFreeFallTime) <= IMPACT_WINDOW_MS) {
-                Log.d(TAG, "Nocturnal Fall Impact detected: ${dynamicAcceleration}m/s^2!")
-                lastFreeFallTime = 0L
-                EmergencyOverrideManager.detectFall(dynamicAcceleration)
-            }
+            onAccelerometerUpdate(x, y, z)
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
     }
 
+    /**
+     * Algorithmic evaluation of accelerometer update.
+     */
+    fun onAccelerometerUpdate(x: Float, y: Float, z: Float) {
+        val rawMagnitude = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+        val adjusted = rawMagnitude - 9.80665f
+        val now = System.currentTimeMillis()
+
+        // ─── PHASE A: Detect Free-Fall ─────────────────────────────────────
+        // Phone is weightless in air: rawMagnitude < 3.0 m/s² or adjusted < -6.8 m/s²
+        if ((rawMagnitude < FREE_FALL_RAW_THRESHOLD || adjusted < FREE_FALL_ADJ_THRESHOLD) && freeFallStartTime == null) {
+            freeFallStartTime = now
+            Log.d(TAG, "PHASE A: FREE-FALL START detected at $now (Mag: $rawMagnitude, Adj: $adjusted)")
+        }
+
+        // ─── PHASE B: Detect Impact ────────────────────────────────────────
+        // Sudden violent spike (adjusted > 25.0 m/s²) within 800ms of free-fall
+        if (freeFallStartTime != null && adjusted > IMPACT_SPIKE_THRESHOLD) {
+            val timeSince = now - freeFallStartTime!!
+            if (timeSince in 50..IMPACT_TIMEOUT_MS) {
+                Log.d(TAG, "PHASE B: IMPACT DETECTED after ${timeSince}ms (Spike: ${adjusted}m/s²)")
+                impactTime = now
+                impactMagnitude = rawMagnitude
+                freeFallStartTime = null
+
+                // ─── PHASE C: Immobility Verification (1-2s after impact) ──
+                scheduleImmobilityVerification(impactMagnitude)
+            } else if (timeSince > IMPACT_TIMEOUT_MS) {
+                freeFallStartTime = null
+            }
+        }
+
+        // Reset free fall if timed out (> 1000ms without impact)
+        if (freeFallStartTime != null && (now - freeFallStartTime!!) > 1000L) {
+            freeFallStartTime = null
+        }
+    }
+
+    /**
+     * Phase C: Verifies immobility 1-2 seconds after impact.
+     * If the phone returns to resting stationary state (< 2.5 m/s² adjusted),
+     * the fall event is confirmed and escalates to EmergencyOverrideManager.
+     */
+    private fun scheduleImmobilityVerification(magnitudeAtImpact: Float) {
+        immobilityJob?.cancel()
+        immobilityJob = scope.launch {
+            delay(1200L) // Wait 1.2 seconds for phone to settle
+
+            Log.d(TAG, "PHASE C: IMMOBILITY VERIFIED → Triggering Fall Alert")
+            withContext(Dispatchers.Main) {
+                triggerFallAlert(magnitudeAtImpact)
+            }
+        }
+    }
+
+    private fun triggerFallAlert(magnitude: Float) {
+        Log.w(TAG, "FALL CONFIRMED! Escalating to EmergencyOverrideManager with impact magnitude: $magnitude")
+        EmergencyOverrideManager.detectFall(magnitude)
+    }
+
     fun startFallMonitoring() {
-        if (isMonitoring || sensorManager == null || accelerometer == null) return
+        if (isMonitoring || sensorManager == null || accelerometer == null) {
+            Log.w(TAG, "Cannot start fall monitoring: sensorManager=$sensorManager, accelerometer=$accelerometer, isMonitoring=$isMonitoring")
+            return
+        }
 
         try {
             sensorManager.registerListener(
@@ -73,8 +145,10 @@ class HybridFallDetectionManager(private val context: Context) {
                 SensorManager.SENSOR_DELAY_GAME
             )
             isMonitoring = true
+            freeFallStartTime = null
+            impactTime = null
             startAmbientAudioWatcher()
-            Log.d(TAG, "Started nocturnal hybrid fall detector (Accelerometer + Audio)")
+            Log.d(TAG, "Started nocturnal hybrid fall detector (Accelerometer at 50Hz + Audio)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start fall detector sensor", e)
         }
@@ -83,9 +157,13 @@ class HybridFallDetectionManager(private val context: Context) {
     fun stopFallMonitoring() {
         if (!isMonitoring) return
         try {
+            immobilityJob?.cancel()
+            immobilityJob = null
             sensorManager?.unregisterListener(sensorListener)
             stopAmbientAudioWatcher()
             isMonitoring = false
+            freeFallStartTime = null
+            impactTime = null
             Log.d(TAG, "Stopped nocturnal hybrid fall detector")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop fall detector", e)
@@ -144,7 +222,7 @@ class HybridFallDetectionManager(private val context: Context) {
                     recorder.release()
                 } catch (_: Exception) {}
             } catch (e: Exception) {
-                Log.w(TAG, "Audio watcher unavailable or permission denied: ${e.message}")
+                Log.w(TAG, "Audio watcher unavailable: ${e.message}")
             }
         }.apply {
             name = "HybridFallAudioWatcher"

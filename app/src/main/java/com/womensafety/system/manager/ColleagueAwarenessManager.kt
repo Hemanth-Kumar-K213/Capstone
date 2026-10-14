@@ -36,8 +36,7 @@ object ColleagueAwarenessManager {
     private val _safetyBuddy = MutableStateFlow<Colleague?>(null)
     val safetyBuddy: StateFlow<Colleague?> = _safetyBuddy.asStateFlow()
 
-    private val _incomingRequests = MutableStateFlow<List<BuddyRequest>>(emptyList())
-    val incomingRequests: StateFlow<List<BuddyRequest>> = _incomingRequests.asStateFlow()
+    val incomingRequests: StateFlow<List<BuddyRequest>> = safetyBuddyRepository.incomingRequests
 
     private val _isLateStayActive = MutableStateFlow(false)
     val isLateStayActive: StateFlow<Boolean> = _isLateStayActive.asStateFlow()
@@ -59,6 +58,10 @@ object ColleagueAwarenessManager {
         scope.launch {
             detectionManager?.colleagues?.collect { discovered ->
                 _colleagues.value = discovered
+                val currentBuddyId = safetyBuddyRepository.activeAgreements.value.firstOrNull()?.let {
+                    if (it.user1Id == authManager.currentUserId) it.user2Id else it.user1Id
+                }
+                _safetyBuddy.value = discovered.firstOrNull { it.id == currentBuddyId }
             }
         }
 
@@ -77,11 +80,9 @@ object ColleagueAwarenessManager {
     fun refreshData() {
         scope.launch {
             val list = colleagueRepository.getColleaguesAtWorkplace("workplace_main")
-            if (_colleagues.value.isEmpty()) {
+            if (_colleagues.value.isEmpty() && list.isNotEmpty()) {
                 _colleagues.value = list
             }
-            _safetyBuddy.value = colleagueRepository.getCurrentSafetyBuddy("workplace_main")
-            _incomingRequests.value = safetyBuddyRepository.getIncomingBuddyRequests()
             checkForLateStay()
         }
     }
@@ -161,42 +162,42 @@ object ColleagueAwarenessManager {
         }
     }
 
-    fun acceptBuddyRequest(requesterUserId: String) {
+    fun acceptBuddyRequest(request: BuddyRequest) {
         scope.launch {
-            safetyBuddyRepository.acceptBuddyRequest(requesterUserId)
-            val matched = _colleagues.value.find { it.id == requesterUserId }
-            if (matched != null) {
-                _safetyBuddy.value = matched.copy(isSafetyBuddy = true)
-                detectionManager?.setBuddyPairing(requesterUserId, true)
-            }
+            safetyBuddyRepository.acceptBuddyRequest(request)
+            refreshData()
+        }
+    }
+
+    fun acceptBuddyRequest(requesterUserId: String) {
+        val req = incomingRequests.value.find { it.fromUserId == requesterUserId }
+            ?: BuddyRequest(fromUserId = requesterUserId, workplaceId = "workplace_main")
+        acceptBuddyRequest(req)
+    }
+
+    fun declineBuddyRequest(request: BuddyRequest) {
+        scope.launch {
+            safetyBuddyRepository.declineBuddyRequest(request)
             refreshData()
         }
     }
 
     fun declineBuddyRequest(requesterUserId: String) {
-        scope.launch {
-            safetyBuddyRepository.declineBuddyRequest(requesterUserId)
-            refreshData()
-        }
+        val req = incomingRequests.value.find { it.fromUserId == requesterUserId }
+            ?: BuddyRequest(fromUserId = requesterUserId, workplaceId = "workplace_main")
+        declineBuddyRequest(req)
     }
 
     /**
-     * Instantly pairs a Safety Buddy (or updates active buddy state).
+     * Pairs a Safety Buddy directly.
      */
     fun setSafetyBuddy(colleague: Colleague) {
         scope.launch {
             safetyBuddyRepository.sendBuddyRequest(colleague, "workplace_main")
-            safetyBuddyRepository.acceptBuddyRequest(colleague.id)
-            _safetyBuddy.value = colleague.copy(isSafetyBuddy = true)
-            detectionManager?.setBuddyPairing(colleague.id, true)
+            val req = BuddyRequest(fromUserId = colleague.id, workplaceId = "workplace_main")
+            safetyBuddyRepository.acceptBuddyRequest(req)
             refreshData()
         }
-    }
-
-    fun simulateBuddyPairing(colleague: Colleague) {
-        safetyBuddyRepository.addSimulatedBuddy(colleague, "workplace_main")
-        _safetyBuddy.value = colleague.copy(isSafetyBuddy = true)
-        detectionManager?.setBuddyPairing(colleague.id, true)
     }
 
     /**

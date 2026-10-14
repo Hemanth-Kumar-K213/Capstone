@@ -71,6 +71,7 @@ fun UserHomeScreen(
     onNavigateToHeartRate: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
     onNavigateToRoutine: () -> Unit = {},
+    onNavigateToDiagnostic: () -> Unit = {},
     routineViewModel: RoutineMonitoringViewModel = viewModel()
 ) {
     val state by viewModel.homeState.collectAsState()
@@ -563,7 +564,8 @@ fun UserHomeScreen(
                 SleepingModeView(
                     userProfile = state.userProfile,
                     viewModel = viewModel,
-                    onNavigateToSafety = onNavigateToSafety
+                    onNavigateToSafety = onNavigateToSafety,
+                    onNavigateToDiagnostic = onNavigateToDiagnostic
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }

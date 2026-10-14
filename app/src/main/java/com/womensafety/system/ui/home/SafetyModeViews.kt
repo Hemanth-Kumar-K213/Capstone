@@ -271,6 +271,7 @@ fun SleepingModeView(
     userProfile: UserProfile?,
     viewModel: UserHomeViewModel,
     onNavigateToSafety: () -> Unit,
+    onNavigateToDiagnostic: () -> Unit = {},
     sleepViewModel: SleepModeViewModel = viewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -495,7 +496,8 @@ fun SleepingModeView(
         Spacer(modifier = Modifier.height(14.dp))
         SleepModeCard(
             viewModel = sleepViewModel,
-            onTriggerSOS = onNavigateToSafety
+            onTriggerSOS = onNavigateToSafety,
+            onNavigateToDiagnostic = onNavigateToDiagnostic
         )
     }
 }

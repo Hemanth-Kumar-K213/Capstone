@@ -36,7 +36,7 @@ fun RoutineMonitoringCard(
     onNavigateToDetails: () -> Unit = {},
     onTriggerSOS: () -> Unit = {}
 ) {
-    val routine by viewModel.todayRoutine.collectAsState()
+    val locations by viewModel.todayLocations.collectAsState()
     val nextExpected by viewModel.nextExpectedLocation.collectAsState()
     val activeAlert by viewModel.activeAlert.collectAsState()
     val isDark = LocalDarkTheme.current
@@ -237,7 +237,7 @@ fun RoutineMonitoringCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Next: ${nextExpected!!.name} (${nextExpected!!.typicalTimeRange.displayString()})",
+                            text = "Next: ${nextExpected!!.name} (${nextExpected!!.typicalArrivalTime} - ${nextExpected!!.typicalDepartureTime})",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -245,7 +245,7 @@ fun RoutineMonitoringCard(
                     }
                 } else {
                     Text(
-                        text = "Monitoring active location patterns (${routine?.typicalLocations?.size ?: 0} learned locations)",
+                        text = "Monitoring active location patterns (${locations.size} learned locations)",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -382,6 +382,9 @@ fun AppNavGraph(
                     onNavigateToRoutine = {
                         navController.navigate(RoutineMonitoringScreen)
                     },
+                    onNavigateToDiagnostic = {
+                        navController.navigate(AccelerometerDiagnosticScreen)
+                    },
                     onNavigateToContacts = {
                         navController.navigate(UserContacts) {
                             popUpTo(navController.graph.startDestinationId) {
@@ -646,6 +649,29 @@ fun AppNavGraph(
                 val travelViewModel: com.womensafety.system.viewmodel.TravelViewModel = viewModel()
                 com.womensafety.system.ui.travel.TravelHistoryScreen(
                     viewModel = travelViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<RoutineMonitoringScreen> {
+                val routineViewModel: com.womensafety.system.viewmodel.RoutineMonitoringViewModel = viewModel()
+                val context = androidx.compose.ui.platform.LocalContext.current
+                com.womensafety.system.ui.safety.RoutineMonitoringScreen(
+                    viewModel = routineViewModel,
+                    onBack = { navController.popBackStack() },
+                    onTriggerSOS = {
+                        sharedSOSViewModel.triggerSOS(
+                            context = context,
+                            method = com.womensafety.system.data.model.SOSTriggerMethod.BUTTON
+                        ) { eventId ->
+                            navController.navigate(SOSAlertScreen(eventId))
+                        }
+                    }
+                )
+            }
+
+            composable<AccelerometerDiagnosticScreen> {
+                com.womensafety.system.ui.safety.AccelerometerDiagnosticScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

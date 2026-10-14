@@ -5,7 +5,9 @@ import android.util.Log
 import com.womensafety.system.data.firebase.FirebaseAuthManager
 import com.womensafety.system.data.firebase.FirestoreManager
 import com.womensafety.system.data.model.*
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -20,6 +22,8 @@ class RoutineRepository(
     private val firestoreManager: FirestoreManager = FirestoreManager(),
     private val authManager: FirebaseAuthManager = FirebaseAuthManager()
 ) {
+    private val db = FirebaseFirestore.getInstance()
+
     companion object {
         private const val TAG = "RoutineRepository"
         private const val PREFS_NAME = "trinetra_routines_cache"
@@ -28,6 +32,7 @@ class RoutineRepository(
 
         // In-memory cache for fast, reactive queries
         private val inMemoryRoutines = mutableMapOf<DayOfWeek, DailyRoutine>()
+        private val inMemoryLocations = mutableMapOf<DayOfWeek, List<RoutineLocation>>()
         private val inMemoryAnomalies = mutableListOf<AnomalyDetected>()
     }
 
@@ -42,18 +47,118 @@ class RoutineRepository(
         get() = authManager.currentUserId
 
     /**
-     * Retrieves routine for the specified day of week.
-     * If not found, builds a realistic initial baseline routine from profile/history.
+     * Retrieves routine locations directly from Firestore routines/{userId}/{dayOfWeek}
+     */
+    suspend fun getRoutineLocationsForDay(dayOfWeek: DayOfWeek): List<RoutineLocation> = withContext(Dispatchers.IO) {
+        inMemoryLocations[dayOfWeek]?.let { return@withContext it }
+        val uid = currentUserId ?: return@withContext emptyList()
+        try {
+            val snapshot = db.collection("routines")
+                .document(uid)
+                .collection(dayOfWeek.name)
+                .get()
+                .await()
+
+            val locations = snapshot.documents.mapNotNull { doc ->
+                val data = doc.data ?: return@mapNotNull null
+                RoutineLocation.fromMap(doc.id, data)
+            }
+            inMemoryLocations[dayOfWeek] = locations
+            locations
+        } catch (e: Exception) {
+            Log.w(TAG, "Error fetching routine locations for ${dayOfWeek.name}", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Retrieves daily routine model from real Firestore locations (NO hardcoded fake data).
      */
     suspend fun getRoutineForDay(dayOfWeek: DayOfWeek): DailyRoutine = withContext(Dispatchers.IO) {
         inMemoryRoutines[dayOfWeek]?.let { return@withContext it }
 
-        // Build default routine for user
         val uid = currentUserId ?: "guest_user"
-        val defaultRoutine = buildDefaultRoutine(uid, dayOfWeek)
-        inMemoryRoutines[dayOfWeek] = defaultRoutine
-        saveRoutine(defaultRoutine)
-        defaultRoutine
+        val locations = getRoutineLocationsForDay(dayOfWeek)
+        val patterns = locations.map { it.toLocationPattern() }
+        val avgConfidence = if (patterns.isNotEmpty()) patterns.map { it.confidenceScore }.average().toFloat() else 0.0f
+
+        val routine = DailyRoutine(
+            userId = uid,
+            dayOfWeek = dayOfWeek,
+            typicalLocations = patterns,
+            confidenceScore = avgConfidence,
+            lastUpdated = System.currentTimeMillis()
+        )
+        inMemoryRoutines[dayOfWeek] = routine
+        routine
+    }
+
+    /**
+     * Persists a manual or auto-learned routine location to routines/{userId}/{dayOfWeek}/{locationId}
+     */
+    suspend fun saveRoutineLocation(dayOfWeek: DayOfWeek, location: RoutineLocation): Result<Unit> = withContext(Dispatchers.IO) {
+        val uid = currentUserId ?: return@withContext Result.failure(Exception("Not signed in"))
+        try {
+            db.collection("routines")
+                .document(uid)
+                .collection(dayOfWeek.name)
+                .document(location.locationId)
+                .set(location.toMap())
+                .await()
+
+            inMemoryRoutines.remove(dayOfWeek)
+            inMemoryLocations.remove(dayOfWeek)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving routine location", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Saves a location across multiple days of the week (from Manual Entry Dialog).
+     */
+    suspend fun saveRoutineLocationForDays(days: List<DayOfWeek>, location: RoutineLocation): Result<Unit> = withContext(Dispatchers.IO) {
+        val uid = currentUserId ?: return@withContext Result.failure(Exception("Not signed in"))
+        try {
+            val batch = db.batch()
+            for (day in days) {
+                val docRef = db.collection("routines")
+                    .document(uid)
+                    .collection(day.name)
+                    .document(location.locationId)
+                batch.set(docRef, location.toMap())
+                inMemoryRoutines.remove(day)
+                inMemoryLocations.remove(day)
+            }
+            batch.commit().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving location across multiple days", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Deletes a routine location from routines/{userId}/{dayOfWeek}/{locationId}
+     */
+    suspend fun deleteRoutineLocation(dayOfWeek: DayOfWeek, locationId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val uid = currentUserId ?: return@withContext Result.failure(Exception("Not signed in"))
+        try {
+            db.collection("routines")
+                .document(uid)
+                .collection(dayOfWeek.name)
+                .document(locationId)
+                .delete()
+                .await()
+
+            inMemoryRoutines.remove(dayOfWeek)
+            inMemoryLocations.remove(dayOfWeek)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting routine location", e)
+            Result.failure(e)
+        }
     }
 
     /**
@@ -231,87 +336,6 @@ class RoutineRepository(
             }
         }
         false
-    }
-
-    // ─── Private Helpers ────────────────────────────────────────────────
-
-    private fun buildDefaultRoutine(userId: String, dayOfWeek: DayOfWeek): DailyRoutine {
-        val isWeekend = dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY
-        val patterns = if (isWeekend) {
-            listOf(
-                LocationPattern(
-                    name = "Home Residence",
-                    latitude = 12.9716,
-                    longitude = 77.5946,
-                    radiusMeters = 200f,
-                    averageTimeSpentMinutes = 480,
-                    frequency = 7,
-                    typicalTimeRange = TimeRange(21, 0, 9, 30),
-                    confidenceScore = 0.95f
-                ),
-                LocationPattern(
-                    name = "Community Park / Fitness",
-                    latitude = 12.9750,
-                    longitude = 77.5980,
-                    radiusMeters = 250f,
-                    averageTimeSpentMinutes = 90,
-                    frequency = 2,
-                    typicalTimeRange = TimeRange(10, 0, 12, 30),
-                    confidenceScore = 0.80f
-                ),
-                LocationPattern(
-                    name = "Local Marketplace / Cafe",
-                    latitude = 12.9680,
-                    longitude = 77.5910,
-                    radiusMeters = 200f,
-                    averageTimeSpentMinutes = 120,
-                    frequency = 3,
-                    typicalTimeRange = TimeRange(16, 0, 19, 0),
-                    confidenceScore = 0.82f
-                )
-            )
-        } else {
-            listOf(
-                LocationPattern(
-                    name = "Home Residence",
-                    latitude = 12.9716,
-                    longitude = 77.5946,
-                    radiusMeters = 200f,
-                    averageTimeSpentMinutes = 540,
-                    frequency = 7,
-                    typicalTimeRange = TimeRange(21, 30, 8, 30),
-                    confidenceScore = 0.96f
-                ),
-                LocationPattern(
-                    name = "Workplace / College Campus",
-                    latitude = 12.9850,
-                    longitude = 77.6050,
-                    radiusMeters = 300f,
-                    averageTimeSpentMinutes = 450,
-                    frequency = 5,
-                    typicalTimeRange = TimeRange(9, 0, 17, 30),
-                    confidenceScore = 0.92f
-                ),
-                LocationPattern(
-                    name = "Study Library / Cafe",
-                    latitude = 12.9780,
-                    longitude = 77.5990,
-                    radiusMeters = 150f,
-                    averageTimeSpentMinutes = 75,
-                    frequency = 4,
-                    typicalTimeRange = TimeRange(18, 0, 19, 30),
-                    confidenceScore = 0.84f
-                )
-            )
-        }
-
-        return DailyRoutine(
-            userId = userId,
-            dayOfWeek = dayOfWeek,
-            typicalLocations = patterns,
-            confidenceScore = 0.88f,
-            lastUpdated = System.currentTimeMillis()
-        )
     }
 
     private fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

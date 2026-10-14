@@ -36,6 +36,7 @@ import com.womensafety.system.viewmodel.SleepModeViewModel
 fun SleepModeCard(
     viewModel: SleepModeViewModel,
     onTriggerSOS: () -> Unit = {},
+    onNavigateToDiagnostic: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isSleeping by viewModel.isSleeping.collectAsState()
@@ -192,42 +193,31 @@ fun SleepModeCard(
             }
         }
 
-        // ─── CAPSTONE TEST HARNESS SIMULATOR ───────────────────────────────
+        // ─── HARDWARE SENSOR DIAGNOSTIC ────────────────────────────────────
         AppCard(
             accentGradient = Brush.horizontalGradient(
-                colors = listOf(SecondaryViolet.copy(alpha = 0.15f), AmberOrange.copy(alpha = 0.08f))
+                colors = listOf(SecondaryViolet.copy(alpha = 0.15f), MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
             )
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Science, contentDescription = null, tint = SecondaryViolet)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Sleep Mode Evaluator Test Harness", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Filled.Sensors, contentDescription = null, tint = SecondaryViolet, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Hardware Sensor Diagnostic", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text("Verify live accelerometer streaming, 30cm drop magnitude spike & 10s waveform", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    "Test live critical alarm override and fall detection escalation without waiting for midnight calls:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { viewModel.simulateConsecutiveCalls("Mom (Primary)") },
-                        colors = ButtonDefaults.buttonColors(containerColor = CoralRed),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f).height(40.dp)
-                    ) {
-                        Text("Simulate 3 Calls", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Button(
-                        onClick = { viewModel.simulateFallEvent() },
-                        colors = ButtonDefaults.buttonColors(containerColor = AmberOrange),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f).height(40.dp)
-                    ) {
-                        Text("Simulate Fall (10s)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
+                Button(
+                    onClick = onNavigateToDiagnostic,
+                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryViolet),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                ) {
+                    Icon(Icons.Filled.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open Accelerometer Diagnostic Screen", fontWeight = FontWeight.Bold)
                 }
             }
         }

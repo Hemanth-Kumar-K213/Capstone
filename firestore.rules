@@ -341,7 +341,7 @@ service cloud.firestore {
     // ROUTINES & ANOMALIES (REGULAR MODE)
     // ============================================================
 
-    match /routines/{routineId} {
+    match /routines/{document=**} {
       allow read, write: if isSignedIn();
     }
 

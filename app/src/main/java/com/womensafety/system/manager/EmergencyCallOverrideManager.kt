@@ -27,6 +27,16 @@ class EmergencyCallOverrideManager(private val context: Context) {
     fun startCallMonitoring() {
         if (isListening || telephonyManager == null) return
 
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.READ_PHONE_STATE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
+            Log.w(TAG, "READ_PHONE_STATE permission not granted. Emergency call override standby.")
+            return
+        }
+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 registerModernCallback()

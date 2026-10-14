@@ -42,9 +42,6 @@ class ColleagueRepository(
      * Retrieves all verified colleagues currently registered at the user's workplace.
      */
     suspend fun getColleaguesAtWorkplace(workplaceId: String): List<Colleague> = withContext(Dispatchers.IO) {
-        if (inMemoryColleagues.isEmpty()) {
-            inMemoryColleagues.addAll(generateSeedColleagues(workplaceId))
-        }
         inMemoryColleagues
     }
 
@@ -133,64 +130,6 @@ class ColleagueRepository(
     suspend fun getColleaguesAlsoLeavingNow(workplaceId: String): List<Colleague> = withContext(Dispatchers.IO) {
         val all = getColleaguesAtWorkplace(workplaceId)
         all.filter { it.currentStatus == ColleagueStatus.LEAVING || it.currentStatus == ColleagueStatus.AT_WORKPLACE }
-    }
-
-    private fun generateSeedColleagues(workplaceId: String): List<Colleague> {
-        val now = System.currentTimeMillis()
-        return listOf(
-            Colleague(
-                id = "colleague_1",
-                userId = "user_priya",
-                name = "Priya Sharma",
-                workplaceName = "Tech Center / Campus",
-                lastSeen = now - (3 * 60 * 1000L),
-                latitude = 12.9852,
-                longitude = 77.6053,
-                isTrustedContact = true,
-                isSafetyBuddy = true,
-                currentStatus = ColleagueStatus.AT_WORKPLACE,
-                phone = "+91 98765 43211"
-            ),
-            Colleague(
-                id = "colleague_2",
-                userId = "user_ananya",
-                name = "Ananya Rao",
-                workplaceName = "Tech Center / Campus",
-                lastSeen = now - (7 * 60 * 1000L),
-                latitude = 12.9849,
-                longitude = 77.6048,
-                isTrustedContact = true,
-                isSafetyBuddy = false,
-                currentStatus = ColleagueStatus.LEAVING,
-                phone = "+91 98765 43212"
-            ),
-            Colleague(
-                id = "colleague_3",
-                userId = "user_sneha",
-                name = "Sneha Patel",
-                workplaceName = "Tech Center / Campus",
-                lastSeen = now - (15 * 60 * 1000L),
-                latitude = 12.9855,
-                longitude = 77.6058,
-                isTrustedContact = false,
-                isSafetyBuddy = false,
-                currentStatus = ColleagueStatus.AT_WORKPLACE,
-                phone = "+91 98765 43213"
-            ),
-            Colleague(
-                id = "colleague_4",
-                userId = "user_vikram",
-                name = "Vikram Mehta",
-                workplaceName = "Tech Center / Campus",
-                lastSeen = now - (25 * 60 * 1000L),
-                latitude = 12.9840,
-                longitude = 77.6035,
-                isTrustedContact = false,
-                isSafetyBuddy = false,
-                currentStatus = ColleagueStatus.ON_BREAK,
-                phone = "+91 98765 43214"
-            )
-        )
     }
 
     private fun persistBuddy(buddyId: String) {

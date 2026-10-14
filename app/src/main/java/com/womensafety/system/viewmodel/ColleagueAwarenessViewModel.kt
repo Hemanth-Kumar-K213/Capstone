@@ -43,24 +43,24 @@ class ColleagueAwarenessViewModel(
         manager.sendBuddyRequest(colleague)
     }
 
+    fun acceptBuddyRequest(request: com.womensafety.system.data.model.BuddyRequest) {
+        manager.acceptBuddyRequest(request)
+    }
+
     fun acceptBuddyRequest(requesterUserId: String) {
         manager.acceptBuddyRequest(requesterUserId)
+    }
+
+    fun declineBuddyRequest(request: com.womensafety.system.data.model.BuddyRequest) {
+        manager.declineBuddyRequest(request)
     }
 
     fun declineBuddyRequest(requesterUserId: String) {
         manager.declineBuddyRequest(requesterUserId)
     }
 
-    fun simulateBuddyPairing(colleague: Colleague) {
-        manager.simulateBuddyPairing(colleague)
-    }
-
     fun bookTransport(option: TransportSuggestion) {
         manager.bookTransport(option)
-    }
-
-    fun simulateLateStay(isLate: Boolean) {
-        manager.simulateLateStay(isLate)
     }
 
     fun clearConfirmation() {

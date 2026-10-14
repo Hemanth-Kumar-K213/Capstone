@@ -20,7 +20,9 @@ data class Colleague(
     val phone: String? = null,
     val distanceMeters: Float? = null,
     val rssi: Int? = null,
-    val dataSource: String = "BLE" // "BLE", "Geofence", "Firestore", "Simulator"
+    val dataSource: String = "BLE", // "BLE", "Geofence", "Firestore", "Simulator"
+    val detectionMethod: String = "BLE",
+    val confidence: Float = 0.95f
 )
 
 enum class ColleagueStatus(val displayName: String, val iconEmoji: String) {

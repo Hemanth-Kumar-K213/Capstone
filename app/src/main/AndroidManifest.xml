@@ -70,6 +70,11 @@
             android:name=".receiver.SafetyNotificationActionReceiver"
             android:exported="false" />
 
+        <!-- 06:00 AM daily routine auto-learn alarm receiver -->
+        <receiver
+            android:name=".manager.RoutineAutoLearnReceiver"
+            android:exported="false" />
+
         <!-- Location Tracking Foreground Service -->
         <service
             android:name=".service.LocationTrackingService"

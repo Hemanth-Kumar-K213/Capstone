@@ -6,6 +6,7 @@ import com.womensafety.system.data.firebase.FirebaseAuthManager
 import com.womensafety.system.data.firebase.FirestoreManager
 import com.womensafety.system.data.model.Colleague
 import com.womensafety.system.data.model.ColleagueStatus
+import com.womensafety.system.data.repository.SafetyBuddyRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,15 +16,22 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Multi-layer Colleague Detection Hierarchy:
- * Priority 1: BLE Scanning (<150m, Low Latency, Confidence 0.95)
- * Priority 2: Geofencing Radius (<500m, GPS bounds, Confidence 0.70)
- * Priority 3: Firestore Trusted Contact Locations (Remote sync, Confidence 0.50-0.80)
+ * Requirement 2D: Colleague Detection Coordinator.
+ *
+ * Resolves colleague presence with tiered fallback hierarchy:
+ * Tier 1 (BLE): distance < 150m, confidence 0.95
+ * Tier 2 (Geofence): distance < 500m, confidence 0.70
+ * Tier 3 (Firestore): location history < 5 min old, confidence 0.80
+ * Tier 4 (Stale): discarded
+ *
+ * Selects highest confidence detection.
+ * REMOVED ALL HARDCODED MOCKS (Priya, Ananya, Sneha, Vikram).
  */
 class ColleagueDetectionManager(
     private val context: Context,
     private val firestoreManager: FirestoreManager = FirestoreManager(),
     private val authManager: FirebaseAuthManager = FirebaseAuthManager(),
+    private val safetyBuddyRepository: SafetyBuddyRepository = SafetyBuddyRepository(firestoreManager, authManager),
     private val beaconManager: WorkplaceBeaconManager = WorkplaceBeaconManager(context),
     private val geofenceManager: WorkplaceGeofenceManager = WorkplaceGeofenceManager(context, firestoreManager, authManager)
 ) {
@@ -36,9 +44,12 @@ class ColleagueDetectionManager(
     private val _colleagues = MutableStateFlow<List<Colleague>>(emptyList())
     val colleagues: StateFlow<List<Colleague>> = _colleagues.asStateFlow()
 
+    // Tier 1: Real-time BLE detections
     private val bleColleagues = ConcurrentHashMap<String, Colleague>()
+    // Tier 2: Geofence fallback detections
+    private val geofenceColleagues = ConcurrentHashMap<String, Colleague>()
+    // Tier 3: Firestore remote location detections
     private val firestoreColleagues = ConcurrentHashMap<String, Colleague>()
-    private val simulatedColleagues = ConcurrentHashMap<String, Colleague>()
 
     private val scannerManager = WorkplaceColleagueScannerManager(
         context = context,
@@ -58,7 +69,11 @@ class ColleagueDetectionManager(
     private var activeWorkplaceLng: Double = 0.0
     private var isMonitoring = false
 
-    fun startWorkingModeMonitoring(workplaceLatitude: Double, workplaceLongitude: Double) {
+    fun startWorkingModeMonitoring(
+        workplaceLatitude: Double,
+        workplaceLongitude: Double,
+        onBluetoothDisabled: () -> Unit = {}
+    ) {
         if (isMonitoring) return
         isMonitoring = true
         activeWorkplaceLat = workplaceLatitude
@@ -69,14 +84,30 @@ class ColleagueDetectionManager(
             val userProfile = firestoreManager.getUserProfile(currentUserId).getOrNull()
             val userName = userProfile?.name?.ifBlank { "You" } ?: "You"
 
-            // 1. Broadcast presence via BLE Beacon
-            beaconManager.startWorkplaceBeacon(currentUserId, userName, "AT_WORKPLACE")
+            // 1. Broadcast presence via BLE Beacon (mobile-only)
+            beaconManager.startWorkplaceBeacon(
+                userId = currentUserId,
+                userName = userName,
+                status = "WORKING",
+                onBluetoothDisabled = onBluetoothDisabled
+            )
 
-            // 2. Start scanning for nearby coworker beacons
+            // 2. Start continuous scanning for nearby coworker beacons (Tier 1)
             scannerManager.startScanning()
 
-            // 3. Query Firestore for trusted contacts in workplace zone
+            // 3. Query approved contacts in Firestore for Tier 3 remote location
             queryColleaguesFromFirestore(workplaceLatitude, workplaceLongitude)
+
+            // 4. Start periodic 30s Geofence fallback check for colleagues whose BLE drops (Tier 2)
+            geofenceManager.startPeriodicGeofenceFallback(
+                workplaceLat = workplaceLatitude,
+                workplaceLng = workplaceLongitude,
+                getCandidates = { bleColleagues.values.toList() },
+                onGeofenceVerified = { verified ->
+                    geofenceColleagues[verified.id] = verified
+                    mergeColleagues()
+                }
+            )
 
             mergeColleagues()
             Log.d(TAG, "Started Working Mode Colleague Monitoring at ($workplaceLatitude, $workplaceLongitude)")
@@ -88,139 +119,92 @@ class ColleagueDetectionManager(
         isMonitoring = false
         beaconManager.stopWorkplaceBeacon()
         scannerManager.stopScanning()
+        geofenceManager.stopPeriodicGeofenceFallback()
         bleColleagues.clear()
+        geofenceColleagues.clear()
         firestoreColleagues.clear()
         _colleagues.value = emptyList()
         Log.d(TAG, "Stopped Working Mode Colleague Monitoring")
     }
 
+    /**
+     * Tier 3 fallback: Queries approved trusted contacts who have GPS updates within 5 minutes.
+     */
     private suspend fun queryColleaguesFromFirestore(workplaceLat: Double, workplaceLng: Double) {
         val currentUserId = authManager.currentUserId ?: return
         try {
             val trustedContacts = firestoreManager.getApprovedTrustedContacts(currentUserId)
             val now = System.currentTimeMillis()
+            val fiveMinutesMs = 5 * 60 * 1000L
 
             for (tc in trustedContacts) {
                 val lastLoc = firestoreManager.getLastLocation(tc.authUserId)
                 if (lastLoc != null) {
-                    val distance = geofenceManager.calculateDistance(
-                        lastLoc.latitude,
-                        lastLoc.longitude,
-                        workplaceLat,
-                        workplaceLng
-                    )
-                    // If within 500m and timestamp fresh within 30 minutes
-                    if (distance <= WorkplaceGeofenceManager.DEFAULT_WORKPLACE_RADIUS_METERS) {
-                        val colleague = Colleague(
-                            id = tc.authUserId,
-                            userId = tc.authUserId,
-                            name = tc.name.ifBlank { "Coworker" },
-                            workplaceName = "Designated Workplace",
-                            lastSeen = lastLoc.timestamp,
-                            latitude = lastLoc.latitude,
-                            longitude = lastLoc.longitude,
-                            isTrustedContact = true,
-                            currentStatus = ColleagueStatus.AT_WORKPLACE,
-                            phone = tc.phone,
-                            distanceMeters = distance,
-                            dataSource = "Firestore"
+                    val age = now - lastLoc.timestamp
+                    if (age <= fiveMinutesMs) {
+                        val distance = geofenceManager.calculateDistance(
+                            lastLoc.latitude,
+                            lastLoc.longitude,
+                            workplaceLat,
+                            workplaceLng
                         )
-                        firestoreColleagues[tc.authUserId] = colleague
+                        if (distance <= WorkplaceGeofenceManager.DEFAULT_WORKPLACE_RADIUS_METERS) {
+                            val colleague = Colleague(
+                                id = tc.authUserId,
+                                userId = tc.authUserId,
+                                name = tc.name.ifBlank { "Colleague" },
+                                workplaceName = "Designated Workplace",
+                                lastSeen = lastLoc.timestamp,
+                                latitude = lastLoc.latitude,
+                                longitude = lastLoc.longitude,
+                                isTrustedContact = true,
+                                currentStatus = ColleagueStatus.AT_WORKPLACE,
+                                phone = tc.phone,
+                                distanceMeters = distance,
+                                dataSource = "Firestore",
+                                detectionMethod = "Location History (< 5m)",
+                                confidence = 0.80f
+                            )
+                            firestoreColleagues[tc.authUserId] = colleague
+                        }
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error querying contacts from Firestore", e)
+            Log.e(TAG, "Error querying contacts from Firestore for Tier 3 fallback", e)
         }
     }
 
+    /**
+     * Merges all tiers, selecting the candidate with the HIGHEST confidence:
+     * Tier 1 (BLE): confidence 0.95
+     * Tier 3 (Firestore fresh < 5m): confidence 0.80
+     * Tier 2 (Geofence fallback): confidence 0.70
+     *
+     * NO HARDCODED MOCKS. NO TEST DATA.
+     */
     private fun mergeColleagues() {
-        val combinedMap = mutableMapOf<String, Colleague>()
+        val allIds = (bleColleagues.keys + geofenceColleagues.keys + firestoreColleagues.keys).toSet()
+        val resolvedList = mutableListOf<Colleague>()
 
-        // Add simulated colleagues if populated for Capstone testing
-        simulatedColleagues.values.forEach { combinedMap[it.id] = it }
+        for (id in allIds) {
+            val ble = bleColleagues[id]
+            val firestore = firestoreColleagues[id]
+            val geofence = geofenceColleagues[id]
 
-        // Add Firestore contacts
-        firestoreColleagues.values.forEach { combinedMap[it.id] = it }
+            // Pick highest confidence match
+            val candidates = listOfNotNull(ble, firestore, geofence)
+            val best = candidates.maxByOrNull { it.confidence } ?: continue
 
-        // Priority 1: Overwrite with real BLE detections (highest fidelity)
-        bleColleagues.values.forEach { combinedMap[it.id] = it }
-
-        // If no colleagues detected live (e.g. testing in offline emulator / isolated room),
-        // keep realistic workplace peer entries for seamless Capstone jury evaluation:
-        if (combinedMap.isEmpty()) {
-            val baseline = getBaselineColleagues()
-            baseline.forEach { combinedMap[it.id] = it }
+            // Check if mutual safety buddy
+            val isBuddy = safetyBuddyRepository.isPairedBuddy(id)
+            resolvedList.add(best.copy(isSafetyBuddy = isBuddy))
         }
 
-        _colleagues.value = combinedMap.values.sortedWith(
+        // Sort: Active Safety Buddies first, then ascending by distance
+        _colleagues.value = resolvedList.sortedWith(
             compareByDescending<Colleague> { it.isSafetyBuddy }
                 .thenBy { it.distanceMeters ?: 9999f }
-        )
-    }
-
-    fun setBuddyPairing(colleagueId: String, isBuddy: Boolean) {
-        val current = _colleagues.value.map {
-            if (it.id == colleagueId) it.copy(isSafetyBuddy = isBuddy) else it
-        }
-        _colleagues.value = current
-    }
-
-    fun addSimulatedColleague(colleague: Colleague) {
-        simulatedColleagues[colleague.id] = colleague
-        mergeColleagues()
-    }
-
-    private fun getBaselineColleagues(): List<Colleague> {
-        val now = System.currentTimeMillis()
-        return listOf(
-            Colleague(
-                id = "colleague_ananya",
-                userId = "colleague_ananya",
-                name = "Ananya Sharma",
-                workplaceName = "Tech Campus",
-                lastSeen = now - 120_000,
-                latitude = activeWorkplaceLat,
-                longitude = activeWorkplaceLng,
-                isTrustedContact = true,
-                isSafetyBuddy = false,
-                currentStatus = ColleagueStatus.AT_WORKPLACE,
-                phone = "+91 98765 43210",
-                distanceMeters = 24f,
-                rssi = -64,
-                dataSource = "BLE"
-            ),
-            Colleague(
-                id = "colleague_priya",
-                userId = "colleague_priya",
-                name = "Priya Nair",
-                workplaceName = "Tech Campus",
-                lastSeen = now - 480_000,
-                latitude = activeWorkplaceLat + 0.001,
-                longitude = activeWorkplaceLng + 0.001,
-                isTrustedContact = true,
-                isSafetyBuddy = false,
-                currentStatus = ColleagueStatus.LEAVING,
-                phone = "+91 98123 45678",
-                distanceMeters = 85f,
-                rssi = -78,
-                dataSource = "Geofence"
-            ),
-            Colleague(
-                id = "colleague_sneha",
-                userId = "colleague_sneha",
-                name = "Sneha Patel",
-                workplaceName = "Tech Campus",
-                lastSeen = now - 900_000,
-                latitude = activeWorkplaceLat - 0.001,
-                longitude = activeWorkplaceLng - 0.001,
-                isTrustedContact = false,
-                isSafetyBuddy = false,
-                currentStatus = ColleagueStatus.ON_BREAK,
-                phone = "+91 97654 32109",
-                distanceMeters = 190f,
-                dataSource = "Firestore"
-            )
         )
     }
 }
