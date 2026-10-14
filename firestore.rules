@@ -351,8 +351,22 @@ service cloud.firestore {
 
 
     // ============================================================
-    // COLLEAGUES & LATE-STAY (WORKING MODE)
+    // COLLEAGUES & SAFETY BUDDY PAIRING (WORKING MODE)
     // ============================================================
+
+    match /safetyBuddies/{userId}/agreements/{buddyId} {
+      // Both users involved in mutual safety buddy agreement can read/write
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || request.auth.uid == buddyId);
+    }
+
+    match /buddyRequests/{userId}/incoming/{requesterUserId} {
+      // Target colleague or requester can manage incoming request
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || request.auth.uid == requesterUserId);
+    }
+
+    match /colleagueDetections/{userId}/sessions/{sessionId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
 
     match /colleagues/{colleagueId} {
       allow read, write: if isSignedIn();
@@ -371,15 +385,27 @@ service cloud.firestore {
     // SLEEP SESSIONS & EMERGENCY OVERRIDES (SLEEPING MODE)
     // ============================================================
 
+    match /sleepSessions/{userId}/{sessionId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
     match /sleepSessions/{sessionId} {
       allow read, write: if isSignedIn();
     }
 
-    match /emergencyOverrideConfig/{configId} {
-      allow read, write: if isSignedIn();
+    match /emergencyWakeupsLog/{userId}/{wakeupId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /fallDetectionsLog/{userId}/{fallId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
     match /fallDetections/{fallId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /emergencyOverrideConfig/{configId} {
       allow read, write: if isSignedIn();
     }
 

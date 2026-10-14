@@ -1658,5 +1658,84 @@ class FirestoreManager {
             Result.failure(e)
         }
     }
+
+    suspend fun setDocument(fullPath: String, data: Map<String, Any?>): Result<Unit> {
+        return try {
+            db.document(fullPath).set(data.filterValues { it != null }, SetOptions.merge()).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "setDocument failed for $fullPath", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateDocument(fullPath: String, data: Map<String, Any?>): Result<Unit> {
+        return try {
+            db.document(fullPath).update(data.filterValues { it != null }).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "updateDocument failed for $fullPath", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteDocument(fullPath: String): Result<Unit> {
+        return try {
+            db.document(fullPath).delete().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "deleteDocument failed for $fullPath", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getDocuments(collectionPath: String): List<Map<String, Any>> {
+        return try {
+            val snapshot = db.collection(collectionPath).get().await()
+            snapshot.documents.mapNotNull { it.data }
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getDocuments failed for $collectionPath", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getLastLocation(userId: String): UserLocation? {
+        return try {
+            val snapshot = db.collection(USER_LOCATIONS_COLLECTION)
+                .document(userId)
+                .collection(LOCATIONS_SUBCOLLECTION)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(1)
+                .get()
+                .await()
+            snapshot.documents.firstOrNull()?.toObject(UserLocation::class.java)
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getLastLocation failed for $userId", e)
+            null
+        }
+    }
+
+    suspend fun isTrustedContact(userId: String, contactId: String): Boolean {
+        return try {
+            val userProfile = getUserProfile(userId).getOrNull()
+            userProfile?.trustedContactIds?.contains(contactId) == true ||
+                userProfile?.emergencyContacts?.any { it.id == contactId } == true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun getApprovedTrustedContacts(userId: String): List<TrustedContactProfile> {
+        return try {
+            val userProfile = getUserProfile(userId).getOrNull() ?: return emptyList()
+            val contactIds = userProfile.trustedContactIds
+            contactIds.mapNotNull { contactId ->
+                getTrustedContactProfile(contactId).getOrNull()
+            }
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "getApprovedTrustedContacts failed for $userId", e)
+            emptyList()
+        }
+    }
 }
 

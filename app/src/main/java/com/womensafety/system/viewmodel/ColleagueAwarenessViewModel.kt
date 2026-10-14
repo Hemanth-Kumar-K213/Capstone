@@ -18,6 +18,7 @@ class ColleagueAwarenessViewModel(
 
     val colleaguesAtWork: StateFlow<List<Colleague>> = manager.colleagues
     val safetyBuddy: StateFlow<Colleague?> = manager.safetyBuddy
+    val incomingBuddyRequests = manager.incomingRequests
     val isLateStay: StateFlow<Boolean> = manager.isLateStayActive
     val transportOptions: StateFlow<List<TransportSuggestion>> = manager.transportOptions
     val bookingConfirmation: StateFlow<String?> = manager.bookingConfirmation
@@ -26,8 +27,32 @@ class ColleagueAwarenessViewModel(
         manager.refreshData()
     }
 
+    fun startMonitoring(workplaceLatitude: Double, workplaceLongitude: Double) {
+        manager.startMonitoring(workplaceLatitude, workplaceLongitude)
+    }
+
+    fun stopMonitoring() {
+        manager.stopMonitoring()
+    }
+
     fun setSafetyBuddy(colleague: Colleague) {
         manager.setSafetyBuddy(colleague)
+    }
+
+    fun sendBuddyRequest(colleague: Colleague) {
+        manager.sendBuddyRequest(colleague)
+    }
+
+    fun acceptBuddyRequest(requesterUserId: String) {
+        manager.acceptBuddyRequest(requesterUserId)
+    }
+
+    fun declineBuddyRequest(requesterUserId: String) {
+        manager.declineBuddyRequest(requesterUserId)
+    }
+
+    fun simulateBuddyPairing(colleague: Colleague) {
+        manager.simulateBuddyPairing(colleague)
     }
 
     fun bookTransport(option: TransportSuggestion) {

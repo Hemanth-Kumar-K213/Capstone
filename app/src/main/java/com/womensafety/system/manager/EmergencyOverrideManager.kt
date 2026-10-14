@@ -51,10 +51,14 @@ object EmergencyOverrideManager {
 
     private var appContext: Context? = null
     private var fallCountdownJob: Job? = null
+    private var callOverrideManager: EmergencyCallOverrideManager? = null
+    private var fallDetectionManager: HybridFallDetectionManager? = null
 
     fun initialize(context: Context) {
         this.appContext = context.applicationContext
         repository.initialize(context)
+        callOverrideManager = EmergencyCallOverrideManager(context)
+        fallDetectionManager = HybridFallDetectionManager(context)
         _lastSleepQuality.value = repository.getLastSleepQuality()
     }
 
@@ -68,7 +72,9 @@ object EmergencyOverrideManager {
             val session = repository.startSleepSession()
             _currentSession.value = session
             callTimestamps.clear()
-            Log.d(TAG, "Sleep mode activated. Emergency override armed.")
+            callOverrideManager?.startCallMonitoring()
+            fallDetectionManager?.startFallMonitoring()
+            Log.d(TAG, "Sleep mode activated. Hardware call override & hybrid fall detector armed.")
         }
     }
 
@@ -80,6 +86,8 @@ object EmergencyOverrideManager {
         fallCountdownJob?.cancel()
         _fallAlert.value = null
         _fallCountdown.value = null
+        callOverrideManager?.stopCallMonitoring()
+        fallDetectionManager?.stopFallMonitoring()
         dismissCriticalAlert()
 
         scope.launch {

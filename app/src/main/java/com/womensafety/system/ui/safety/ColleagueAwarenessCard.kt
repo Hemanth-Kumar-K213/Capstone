@@ -39,6 +39,7 @@ fun ColleagueAwarenessCard(
     val context = LocalContext.current
     val colleagues by viewModel.colleaguesAtWork.collectAsState()
     val safetyBuddy by viewModel.safetyBuddy.collectAsState()
+    val incomingRequests by viewModel.incomingBuddyRequests.collectAsState()
     val isLateStay by viewModel.isLateStay.collectAsState()
     val transportOptions by viewModel.transportOptions.collectAsState()
     val bookingConfirmation by viewModel.bookingConfirmation.collectAsState()
@@ -134,6 +135,53 @@ fun ColleagueAwarenessCard(
                     )
                     IconButton(onClick = { viewModel.clearConfirmation() }) {
                         Icon(Icons.Filled.Close, contentDescription = "Dismiss", modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+
+        // ─── INCOMING BUDDY REQUESTS BANNER ──────────────────────────────
+        if (incomingRequests.isNotEmpty()) {
+            incomingRequests.forEach { request ->
+                AppCard(
+                    accentGradient = Brush.horizontalGradient(
+                        colors = listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), DeepCyan.copy(alpha = 0.1f))
+                    )
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.PersonAdd, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                "Safety Buddy Request from ${request.fromName}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "${request.fromName} wants to pair as your Workplace Safety Buddy for mutual departure check-ins.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = { viewModel.acceptBuddyRequest(request.fromUserId) },
+                                colors = ButtonDefaults.buttonColors(containerColor = StatusApproved),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).height(38.dp)
+                            ) {
+                                Text("Accept Buddy", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.declineBuddyRequest(request.fromUserId) },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f).height(38.dp)
+                            ) {
+                                Text("Decline", fontSize = 11.sp)
+                            }
+                        }
                     }
                 }
             }
@@ -299,67 +347,129 @@ fun ColleagueAwarenessCard(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                colleagues.forEach { colleague ->
-                    Row(
+                if (colleagues.isEmpty()) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Box(
+                        Icon(
+                            imageVector = Icons.Filled.BluetoothSearching,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "No colleagues detected nearby",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "BLE beacon broadcast & workplace geofence monitoring active.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    colleagues.forEach { colleague ->
+                        Row(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                colleague.name.take(1),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(colleague.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                if (colleague.isSafetyBuddy) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    colleague.name.take(1),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(colleague.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                    if (colleague.isSafetyBuddy) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Filled.Shield, contentDescription = "Safety Buddy", tint = StatusApproved, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val (badgeLabel, badgeColor) = when (colleague.dataSource) {
+                                        "BLE" -> "BLE • ${colleague.distanceMeters?.toInt() ?: 15}m" to StatusApproved
+                                        "Geofence" -> "Geofence < 500m" to DeepCyan
+                                        "Firestore" -> "Location History" to AmberOrange
+                                        else -> colleague.dataSource to MaterialTheme.colorScheme.secondary
+                                    }
+                                    Surface(
+                                        color = badgeColor.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            badgeLabel,
+                                            color = badgeColor,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Icon(Icons.Filled.Shield, contentDescription = "Safety Buddy", tint = StatusApproved, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        "${colleague.currentStatus.iconEmoji} ${colleague.currentStatus.displayName}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp
+                                    )
                                 }
                             }
-                            Text(
-                                "${colleague.currentStatus.iconEmoji} ${colleague.currentStatus.displayName}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
 
-                        // Phone call button
-                        if (!colleague.phone.isNullOrBlank()) {
-                            IconButton(onClick = {
-                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${colleague.phone}"))
-                                context.startActivity(intent)
-                            }) {
-                                Icon(Icons.Filled.Call, contentDescription = "Call", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            // Phone call button
+                            if (!colleague.phone.isNullOrBlank()) {
+                                IconButton(
+                                    onClick = {
+                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${colleague.phone}"))
+                                        context.startActivity(intent)
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(Icons.Filled.Call, contentDescription = "Call", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                }
+                            }
+
+                            // Send Buddy Request / Pair Button
+                            if (!colleague.isSafetyBuddy) {
+                                Button(
+                                    onClick = { viewModel.sendBuddyRequest(colleague) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text("Pair", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
-
-                        // Set as Buddy Button
-                        if (!colleague.isSafetyBuddy) {
-                            TextButton(onClick = { viewModel.setSafetyBuddy(colleague) }) {
-                                Text("Set Buddy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+                        if (colleague != colleagues.last()) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
-                    }
-                    if (colleague != colleagues.last()) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     }
                 }
             }
         }
 
         // ─── CAPSTONE EVALUATOR DEMO SIMULATOR ─────────────────────────────
+        // Essential test harness for Capstone live defense:
+        // Allows demonstrating late-stay triggers past 6:30 PM & instant safety buddy pairing
+        // without waiting for actual evening hours or requiring multi-device BLE testing.
         AppCard(
             accentGradient = Brush.horizontalGradient(
                 colors = listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), AmberOrange.copy(alpha = 0.08f))
@@ -373,7 +483,7 @@ fun ColleagueAwarenessCard(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "Instantly demonstrate Late-Stay past 6:30 PM & transport notification dispatch:",
+                    "Instant demo controls for Capstone evaluation (triggers late-stay protection & simulates buddy pairing without peer devices):",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -387,13 +497,29 @@ fun ColleagueAwarenessCard(
                     ) {
                         Text("Simulate Late Stay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
-                    OutlinedButton(
-                        onClick = { showTransportSheet = true },
+                    Button(
+                        onClick = {
+                            val candidate = colleagues.firstOrNull { !it.isSafetyBuddy } ?: colleagues.firstOrNull()
+                            if (candidate != null) {
+                                viewModel.simulateBuddyPairing(candidate)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusApproved),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.weight(1f).height(38.dp)
                     ) {
-                        Text("Show Transport", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Set Buddy (Demo)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showTransportSheet = true },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().height(36.dp)
+                ) {
+                    Icon(Icons.Filled.DirectionsCar, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Show Transport Options Dialog", fontSize = 11.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }

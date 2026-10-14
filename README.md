@@ -170,20 +170,25 @@ Backend & Cloud Functions (Firebase Auth, Cloud Firestore, 2Factor SMS REST API)
     - **Intelligent Deviation Detection**: Evaluates current GPS fix against expected spatial radius and time boundaries (`RoutineAnalyzer.kt`), calculating Bayesian-style confidence scores factoring nighttime penalties and distance thresholds (>5 km).
     - **Confidence-Filtered Alerting**: Logs low/medium concerns silently while immediately alerting on high-confidence (>0.70) deviations (`UNUSUAL_LOCATION`, `UNUSUAL_TIME`, `UNUSUAL_BOTH`).
     - **Adaptive Learning Feedback**: Captures user responses ("Safe", "Regular", "Emergency"); automatically absorbs recurring confirmed locations into the permanent daily routine after 3 confirmations.
-    - **UI & Navigation**: Dedicated `RoutineMonitoringScreen` with routine pattern explorer, anomaly history, and interactive Capstone Simulator tab; embedded live tile on `UserHomeScreen`.
+    - **UI & Navigation**: Direct navigation route from `UserHomeScreen` via `RoutineMonitoringCard` linking to `RoutineMonitoringScreen` (Tab 1: Routine Patterns, Tab 2: Deviation History, Tab 3: Capstone Simulator).
   - **2. Colleague Awareness & Late-Stay Protection (WORKING Mode)**:
-    - **Real-Time Workplace Presence**: Automatically queries and displays verified trusted contacts and coworkers at the same workplace (`ColleagueAwareness.kt`, `ColleagueRepository.kt`).
-    - **Safety Buddy Pairing**: Mutual one-tap buddy agreement (`SafetyBuddyAgreement`) establishing shared departure check-ins and mutual automated alerts.
-    - **Automated Late-Stay Detection**: Flags when a user remains at work past 6:30 PM (or >30 minutes after standard shift end), triggering an automated check-in and dispatching alerts to emergency contacts.
-    - **Multi-Modal Safe Transport Engine**: Suggests verified transit solutions (sharing ride with safety buddy, coworkers leaving at similar times, company cab, or Ola/Uber rideshare) with one-tap booking simulation and automated SMS tracking dispatch via `TwoFactorClient`.
-    - **UI Integration**: `ColleagueAwarenessCard` embedded seamlessly inside the Working Mode home dashboard (`SafetyModeViews.kt`).
+    - **Multi-Tiered Detection Hierarchy**:
+      - **Tier 1 (BLE Beacon Discovery)**: Low-latency BLE advertising (`WorkplaceBeaconManager`) and scanning (`WorkplaceColleagueScannerManager`) on service UUID `0000180A-0000-1000-8000-00805F9B34FB` with RSSI distance estimation ($< 150\text{m}$, confidence 0.95).
+      - **Tier 2 (Workplace Geofence)**: FusedLocationProviderClient geofence validation (`WorkplaceGeofenceManager`) confirming workplace presence ($< 500\text{m}$, confidence 0.70) when BLE signals are obstructed.
+      - **Tier 3 (Firestore Cloud Presence)**: Queries trusted contacts' recent cloud locations (`ColleagueDetectionManager`) for real-time fallback ($< 5\text{ min}$ old, confidence 0.80).
+    - **Bilateral Safety Buddy Pairing**: Mutual pairing workflow (`SafetyBuddyRepository`, `BuddyRequest`) with request and acceptance states (`PENDING_ACCEPTANCE`, `ACTIVE`, `DECLINED`) stored in Firestore (`safetyBuddies/{userId}/agreements` and `buddyRequests/{userId}/incoming`).
+    - **Automated Late-Stay Detection**: Flags presence past 6:30 PM, triggers check-ins, and dispatches automated alerts to emergency contacts.
+    - **Multi-Modal Safe Transport Engine**: Suggests verified transit solutions (coworker carpooling, corporate cab, Ola/Uber rideshare) with one-tap simulated booking and SMS tracking dispatch via `TwoFactorClient`.
+    - **UI Integration & Evaluator Harness**: `ColleagueAwarenessCard` in `SafetyModeViews.kt` with live detection source badges (`BLE`, `Geofence`, `Location History`), direct call shortcuts, pair actions, and Capstone Evaluator Simulator buttons ("Simulate Late Stay", "Set Buddy (Demo)").
   - **3. Smart Emergency Override System (SLEEPING Mode)**:
     - **Sleep Sanctuary with Emergency Safeguards**: Pauses continuous GPS broadcasts and disables motion/shake alarms to eliminate false alarms during sleep (`SleepSession.kt`, `EmergencyOverrideManager.kt`).
-    - **Multiple-Call Emergency Override**: Monitors incoming calls from configured emergency contacts (`PhoneCallManager.kt`); detects 3 incoming calls within 60 seconds and overrides device silent/DND mode with a high-decibel pulsing alarm and haptic feedback.
+    - **Hardware 3-Call Emergency Override (`EmergencyCallOverrideManager.kt`)**: Telephony state listener monitoring incoming calls from configured emergency contacts; detects 3 incoming calls within a 60-second sliding window, bypassing silent/DND mode to trigger max-volume `STREAM_ALARM` audio and full-screen critical wakeup dialog.
     - **Trusted Contact SOS Wakeup**: Instantly wakes the sleeping user with critical audio-visual alerts if any trusted contact triggers an SOS emergency.
-    - **Sleep Fall Detection with 10s Grace Period**: Uses accelerometer drop and sudden inactivity thresholds to detect falls during nighttime; displays a 10-second countdown prompt before auto-escalating to emergency contacts with exact location coordinates.
-    - **Sleep Quality Diagnostics**: Categorizes sleep sessions (`DEEP`, `LIGHT`, `RESTLESS`, `POOR`) based on duration and disruption count upon waking.
-    - **UI Integration**: Full-screen `CriticalEmergencyAlertDialog`, `FallDetectionCountdownDialog`, and `SleepModeCard` in `SafetyModeViews.kt`.
+    - **Hybrid Kinematic + Acoustic Fall Detection (`HybridFallDetectionManager.kt`)**:
+      - **Kinematic Stage**: Accelerometer detecting free-fall weightlessness ($< 3.0\text{ m/s}^2$) followed by high-G impact ($> 25.0\text{ m/s}^2$) within 500ms.
+      - **Acoustic Stage**: Ambient microphone monitoring detecting crash transients ($> 68\text{ dB}$) to prevent false alarms.
+      - **10-Second Grace Period**: Countdown dialog allowing safe cancellation before auto-dispatching SOS with exact coordinates.
+    - **UI Integration & Evaluator Harness**: Full-screen `CriticalEmergencyAlertDialog`, `FallDetectionCountdownDialog`, and `SleepModeCard` in `SafetyModeViews.kt` with evaluator test harness buttons ("Simulate 3 Calls", "Simulate Fall (10s)").
 
 - **Automatic Mode Suggestions**: Suggests mode changes based on saved workplace/home geofences, nighttime hours, and transit speed.
 - **RiskAssessmentEngine**: Transparent, rule-based 0-100 risk scoring algorithm evaluating:

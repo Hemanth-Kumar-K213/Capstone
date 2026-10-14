@@ -17,7 +17,10 @@ data class Colleague(
     val isTrustedContact: Boolean = false,
     val isSafetyBuddy: Boolean = false,
     val currentStatus: ColleagueStatus = ColleagueStatus.AT_WORKPLACE,
-    val phone: String? = null
+    val phone: String? = null,
+    val distanceMeters: Float? = null,
+    val rssi: Int? = null,
+    val dataSource: String = "BLE" // "BLE", "Geofence", "Firestore", "Simulator"
 )
 
 enum class ColleagueStatus(val displayName: String, val iconEmoji: String) {
@@ -35,7 +38,24 @@ data class SafetyBuddyAgreement(
     val workplaceId: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val mutualCheckIns: Boolean = true,
-    val automatedAlerts: Boolean = true
+    val automatedAlerts: Boolean = true,
+    val status: String = "ACTIVE", // PENDING_ACCEPTANCE, ACTIVE, DECLINED, REVOKED
+    val initiatedBy: String = "",
+    val initiatedAt: Long = System.currentTimeMillis(),
+    val acceptedAt: Long? = null,
+    val sharedTransportNotif: Boolean = true,
+    val eveningCheckIn: Boolean = true
+)
+
+data class BuddyRequest(
+    val id: String = UUID.randomUUID().toString(),
+    val agreementId: String = "",
+    val fromUserId: String = "",
+    val fromName: String = "",
+    val fromPhone: String = "",
+    val workplaceId: String = "",
+    val receivedAt: Long = System.currentTimeMillis(),
+    val status: String = "PENDING_ACCEPTANCE"
 )
 
 data class LateStayAlert(

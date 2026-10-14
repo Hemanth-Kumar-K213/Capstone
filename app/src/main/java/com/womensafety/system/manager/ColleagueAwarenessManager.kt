@@ -5,6 +5,7 @@ import android.util.Log
 import com.womensafety.system.data.firebase.FirebaseAuthManager
 import com.womensafety.system.data.model.*
 import com.womensafety.system.data.repository.ColleagueRepository
+import com.womensafety.system.data.repository.SafetyBuddyRepository
 import com.womensafety.system.data.repository.UserRepository
 import com.womensafety.system.data.sms.TwoFactorClient
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,7 @@ object ColleagueAwarenessManager {
     private const val TAG = "ColleagueManager"
 
     private val colleagueRepository = ColleagueRepository()
+    private val safetyBuddyRepository = SafetyBuddyRepository()
     private val userRepository = UserRepository()
     private val authManager = FirebaseAuthManager()
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -33,6 +35,9 @@ object ColleagueAwarenessManager {
 
     private val _safetyBuddy = MutableStateFlow<Colleague?>(null)
     val safetyBuddy: StateFlow<Colleague?> = _safetyBuddy.asStateFlow()
+
+    private val _incomingRequests = MutableStateFlow<List<BuddyRequest>>(emptyList())
+    val incomingRequests: StateFlow<List<BuddyRequest>> = _incomingRequests.asStateFlow()
 
     private val _isLateStayActive = MutableStateFlow(false)
     val isLateStayActive: StateFlow<Boolean> = _isLateStayActive.asStateFlow()
@@ -44,18 +49,39 @@ object ColleagueAwarenessManager {
     val bookingConfirmation: StateFlow<String?> = _bookingConfirmation.asStateFlow()
 
     private var appContext: Context? = null
+    private var detectionManager: ColleagueDetectionManager? = null
 
     fun initialize(context: Context) {
         this.appContext = context.applicationContext
         colleagueRepository.initialize(context)
+        detectionManager = ColleagueDetectionManager(context)
+
+        scope.launch {
+            detectionManager?.colleagues?.collect { discovered ->
+                _colleagues.value = discovered
+            }
+        }
+
         refreshData()
+    }
+
+    fun startMonitoring(workplaceLatitude: Double, workplaceLongitude: Double) {
+        detectionManager?.startWorkingModeMonitoring(workplaceLatitude, workplaceLongitude)
+        refreshData()
+    }
+
+    fun stopMonitoring() {
+        detectionManager?.stopWorkingModeMonitoring()
     }
 
     fun refreshData() {
         scope.launch {
             val list = colleagueRepository.getColleaguesAtWorkplace("workplace_main")
-            _colleagues.value = list
+            if (_colleagues.value.isEmpty()) {
+                _colleagues.value = list
+            }
             _safetyBuddy.value = colleagueRepository.getCurrentSafetyBuddy("workplace_main")
+            _incomingRequests.value = safetyBuddyRepository.getIncomingBuddyRequests()
             checkForLateStay()
         }
     }
@@ -126,19 +152,51 @@ object ColleagueAwarenessManager {
     }
 
     /**
-     * Establishes a verified Safety Buddy partnership with a coworker.
+     * Sends a real bilateral Safety Buddy request to a coworker.
+     */
+    fun sendBuddyRequest(colleague: Colleague) {
+        scope.launch {
+            safetyBuddyRepository.sendBuddyRequest(colleague, "workplace_main")
+            refreshData()
+        }
+    }
+
+    fun acceptBuddyRequest(requesterUserId: String) {
+        scope.launch {
+            safetyBuddyRepository.acceptBuddyRequest(requesterUserId)
+            val matched = _colleagues.value.find { it.id == requesterUserId }
+            if (matched != null) {
+                _safetyBuddy.value = matched.copy(isSafetyBuddy = true)
+                detectionManager?.setBuddyPairing(requesterUserId, true)
+            }
+            refreshData()
+        }
+    }
+
+    fun declineBuddyRequest(requesterUserId: String) {
+        scope.launch {
+            safetyBuddyRepository.declineBuddyRequest(requesterUserId)
+            refreshData()
+        }
+    }
+
+    /**
+     * Instantly pairs a Safety Buddy (or updates active buddy state).
      */
     fun setSafetyBuddy(colleague: Colleague) {
         scope.launch {
-            val agreement = SafetyBuddyAgreement(
-                user1Id = authManager.currentUserId ?: "",
-                user2Id = colleague.id,
-                workplaceId = "workplace_main"
-            )
-            colleagueRepository.createBuddyAgreement(agreement)
+            safetyBuddyRepository.sendBuddyRequest(colleague, "workplace_main")
+            safetyBuddyRepository.acceptBuddyRequest(colleague.id)
             _safetyBuddy.value = colleague.copy(isSafetyBuddy = true)
+            detectionManager?.setBuddyPairing(colleague.id, true)
             refreshData()
         }
+    }
+
+    fun simulateBuddyPairing(colleague: Colleague) {
+        safetyBuddyRepository.addSimulatedBuddy(colleague, "workplace_main")
+        _safetyBuddy.value = colleague.copy(isSafetyBuddy = true)
+        detectionManager?.setBuddyPairing(colleague.id, true)
     }
 
     /**
