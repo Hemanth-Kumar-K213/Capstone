@@ -37,7 +37,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 class FirestoreManager {
 
-    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+    val db: FirebaseFirestore = FirebaseFirestore.getInstance()
 
     companion object {
         const val USERS_COLLECTION = "users"

@@ -1,6 +1,7 @@
 package com.womensafety.system.ui.safety
 
 import android.app.TimePickerDialog
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,9 +24,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.google.android.gms.location.LocationServices
+import com.google.firebase.auth.FirebaseAuth
 import com.womensafety.system.data.model.RoutineLocation
+import com.womensafety.system.data.repository.RoutineRepository
 import com.womensafety.system.ui.theme.CoralRed
 import com.womensafety.system.ui.theme.EmergencyRed
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.util.Calendar
@@ -53,6 +57,8 @@ fun RoutineManualEntryDialog(
     onDeleteLocation: ((dayOfWeek: DayOfWeek, locationId: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val routineRepository = remember { RoutineRepository() }
     val isEditMode = initialLocation != null
 
     var name by remember { mutableStateOf(initialLocation?.name ?: "") }
@@ -61,6 +67,7 @@ fun RoutineManualEntryDialog(
     var radiusMeters by remember { mutableFloatStateOf(initialLocation?.radiusMeters ?: 100f) }
     var arrivalTime by remember { mutableStateOf(initialLocation?.typicalArrivalTime ?: "09:00") }
     var departureTime by remember { mutableStateOf(initialLocation?.typicalDepartureTime ?: "17:00") }
+    var showMapPicker by remember { mutableStateOf(false) }
 
     val allDays = DayOfWeek.values().toList()
     val selectedDays = remember {
@@ -171,40 +178,78 @@ fun RoutineManualEntryDialog(
                         leadingIcon = { Icon(Icons.Filled.Place, contentDescription = null) }
                     )
 
-                    // Latitude & Longitude
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    // Map Location Picker Button (Replaces tedious manual coordinate entry)
+                    Button(
+                        onClick = { showMapPicker = true },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     ) {
-                        OutlinedTextField(
-                            value = latText,
-                            onValueChange = { latText = it },
-                            label = { Text("Latitude") },
-                            placeholder = { Text("12.9716") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = lonText,
-                            onValueChange = { lonText = it },
-                            label = { Text("Longitude") },
-                            placeholder = { Text("77.5946") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f)
-                        )
+                        Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("📍 Tap Map to Pick Location", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
 
-                    // GPS Pin / Current Location Button
-                    OutlinedButton(
-                        onClick = { fetchCurrentGpsCoordinates() },
+                    // Display Selected Location Coordinates Card
+                    if (latText.isNotBlank() && lonText.isNotBlank()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = if (name.isNotBlank()) "Location: $name" else "Selected Pin Coordinates",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "Lat: $latText, Lon: $lonText",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
+                    // Quick Option: Current GPS Location or Manual text adjustment
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Filled.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Use Current GPS Location")
+                        OutlinedButton(
+                            onClick = { fetchCurrentGpsCoordinates() },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Filled.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Use Current GPS", fontSize = 12.sp)
+                        }
+                    }
+
+                    // Map Picker Dialog Instance
+                    if (showMapPicker) {
+                        MapLocationPickerDialog(
+                            isOpen = true,
+                            initialLat = latText.toDoubleOrNull(),
+                            initialLon = lonText.toDoubleOrNull(),
+                            onLocationSelected = { lat, lon, addr ->
+                                latText = String.format(Locale.US, "%.6f", lat)
+                                lonText = String.format(Locale.US, "%.6f", lon)
+                                if (name.isBlank()) {
+                                    name = addr.split(",").firstOrNull()?.trim() ?: "Custom Place"
+                                }
+                                showMapPicker = false
+                            },
+                            onDismiss = { showMapPicker = false }
+                        )
                     }
 
                     // Radius Slider (50m - 500m)
@@ -348,19 +393,24 @@ fun RoutineManualEntryDialog(
                             val parsedLon = lonText.toDoubleOrNull()
                             val targetDays = selectedDays.filter { it.value }.keys.toList()
 
+                            Log.d("ROUTINE_DIALOG", "Save clicked - validating inputs...")
+
                             when {
                                 name.isBlank() -> {
+                                    Log.d("ROUTINE_DIALOG", "Validation failed: Name is blank")
                                     Toast.makeText(context, "Please enter a location name", Toast.LENGTH_SHORT).show()
                                 }
                                 parsedLat == null || parsedLon == null -> {
-                                    Toast.makeText(context, "Please enter valid latitude and longitude", Toast.LENGTH_SHORT).show()
+                                    Log.d("ROUTINE_DIALOG", "Validation failed: Invalid coordinates ($latText, $lonText)")
+                                    Toast.makeText(context, "Please pick a location on the map", Toast.LENGTH_SHORT).show()
                                 }
                                 targetDays.isEmpty() -> {
+                                    Log.d("ROUTINE_DIALOG", "Validation failed: No days selected")
                                     Toast.makeText(context, "Please select at least one active day", Toast.LENGTH_SHORT).show()
                                 }
                                 else -> {
                                     val locId = initialLocation?.locationId ?: "loc_${UUID.randomUUID()}"
-                                    val newLocation = RoutineLocation(
+                                    val routineLocation = RoutineLocation(
                                         locationId = locId,
                                         name = name.trim(),
                                         lat = parsedLat,
@@ -369,13 +419,47 @@ fun RoutineManualEntryDialog(
                                         visitFrequency = initialLocation?.visitFrequency ?: targetDays.size,
                                         typicalArrivalTime = arrivalTime,
                                         typicalDepartureTime = departureTime,
-                                        confidence = 1.0f,
+                                        confidence = 0.95f,
                                         learnedAt = System.currentTimeMillis(),
                                         source = "manual"
                                     )
-                                    onSaveLocation(targetDays, newLocation)
-                                    Toast.makeText(context, "Custom location saved to routine", Toast.LENGTH_SHORT).show()
-                                    onDismiss()
+
+                                    Log.d("ROUTINE_DIALOG", "Location object created: ${routineLocation.locationId}")
+
+                                    val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: "guest_user"
+
+                                    coroutineScope.launch {
+                                        try {
+                                            targetDays.forEach { day ->
+                                                Log.d("ROUTINE_DIALOG", "Saving for day: ${day.name}")
+                                                routineRepository.addCustomLocation(
+                                                    userId = currentUid,
+                                                    dayOfWeek = day.name,
+                                                    location = routineLocation
+                                                )
+                                                Log.d("ROUTINE_DIALOG", "SUCCESS: Saved for ${day.name}")
+                                            }
+
+                                            // Also invoke parent viewmodel listener
+                                            onSaveLocation(targetDays, routineLocation)
+
+                                            Toast.makeText(
+                                                context,
+                                                "Location saved for ${targetDays.size} days!",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+
+                                            onDismiss()
+
+                                        } catch (e: Exception) {
+                                            Log.e("ROUTINE_DIALOG", "ERROR saving location: ${e.message}", e)
+                                            Toast.makeText(
+                                                context,
+                                                "Error saving location: ${e.message}",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
                                 }
                             }
                         },

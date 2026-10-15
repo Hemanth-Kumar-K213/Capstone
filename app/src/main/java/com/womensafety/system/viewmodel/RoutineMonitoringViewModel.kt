@@ -82,6 +82,10 @@ class RoutineMonitoringViewModel(
         }
     }
 
+    fun refreshRoutine(dayOfWeek: DayOfWeek = LocalDate.now().dayOfWeek) {
+        loadData()
+    }
+
     fun saveLocation(days: List<DayOfWeek>, location: RoutineLocation) {
         viewModelScope.launch {
             _isLoading.value = true

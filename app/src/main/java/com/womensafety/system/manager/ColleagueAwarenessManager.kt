@@ -74,13 +74,19 @@ object ColleagueAwarenessManager {
     }
 
     fun startColleagueMonitoring(userId: String, workplaceLatitude: Double = 0.0, workplaceLongitude: Double = 0.0) {
-        Log.d("WORKING_MODE", "Starting colleague monitoring for $userId")
+        Log.d("COLLEAGUE", "Starting colleague monitoring for $userId at ($workplaceLatitude, $workplaceLongitude)")
         detectionManager?.startWorkingModeMonitoring(workplaceLatitude, workplaceLongitude)
         refreshData()
     }
 
+    fun startColleagueMonitoring(userId: String, userName: String) {
+        Log.d("COLLEAGUE", "Starting colleague monitoring for $userId ($userName)")
+        detectionManager?.startWorkingModeMonitoring(0.0, 0.0)
+        refreshData()
+    }
+
     fun stopMonitoring() {
-        Log.d("WORKING_MODE", "Stopping colleague monitoring")
+        Log.d("COLLEAGUE", "Stopping colleague monitoring")
         detectionManager?.stopWorkingModeMonitoring()
     }
 

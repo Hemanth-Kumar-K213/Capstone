@@ -101,11 +101,13 @@ fun WorkingModeView(
     LaunchedEffect(Unit) {
         val lat = userProfile?.savedWorkplaceLatitude ?: 0.0
         val lon = userProfile?.savedWorkplaceLongitude ?: 0.0
+        android.util.Log.d("MODE", "WORKING mode activated (lat=$lat, lon=$lon)")
         colleagueViewModel.startMonitoring(lat, lon)
     }
 
     DisposableEffect(Unit) {
         onDispose {
+            android.util.Log.d("MODE", "WORKING mode deactivated")
             colleagueViewModel.stopMonitoring()
         }
     }

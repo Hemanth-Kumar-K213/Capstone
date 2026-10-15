@@ -165,20 +165,38 @@ fun RoutineMonitoringScreen(
                             )
                         }
 
-                        // Add Custom Location Button
+                        // Add Custom Location & Refresh Buttons
                         item {
-                            Button(
-                                onClick = {
-                                    locationToEdit = null
-                                    showManualEntryDialog = true
-                                },
-                                modifier = Modifier.fillMaxWidth().height(46.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Filled.AddLocationAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("+ ADD CUSTOM LOCATION", fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = {
+                                        locationToEdit = null
+                                        showManualEntryDialog = true
+                                    },
+                                    modifier = Modifier.weight(1.7f).height(46.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Icon(Icons.Filled.AddLocationAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("+ ADD LOCATION", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.refreshRoutine(LocalDate.now().dayOfWeek)
+                                        Toast.makeText(context, "Routine list refreshed", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1.3f).height(46.dp),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Refresh", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                }
                             }
                         }
 

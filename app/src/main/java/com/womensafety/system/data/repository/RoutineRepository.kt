@@ -51,7 +51,7 @@ class RoutineRepository(
      */
     suspend fun getRoutineLocationsForDay(dayOfWeek: DayOfWeek): List<RoutineLocation> = withContext(Dispatchers.IO) {
         inMemoryLocations[dayOfWeek]?.let { return@withContext it }
-        val uid = currentUserId ?: return@withContext emptyList()
+        val uid = currentUserId ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "guest_user"
         try {
             val snapshot = db.collection("routines")
                 .document(uid)
@@ -77,7 +77,7 @@ class RoutineRepository(
     suspend fun getRoutineForDay(dayOfWeek: DayOfWeek): DailyRoutine = withContext(Dispatchers.IO) {
         inMemoryRoutines[dayOfWeek]?.let { return@withContext it }
 
-        val uid = currentUserId ?: "guest_user"
+        val uid = currentUserId ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "guest_user"
         val locations = getRoutineLocationsForDay(dayOfWeek)
         val patterns = locations.map { it.toLocationPattern() }
         val avgConfidence = if (patterns.isNotEmpty()) patterns.map { it.confidenceScore }.average().toFloat() else 0.0f
@@ -94,10 +94,42 @@ class RoutineRepository(
     }
 
     /**
+     * Requirement 2B: Add custom location to Firestore directly.
+     */
+    suspend fun addCustomLocation(
+        userId: String,
+        dayOfWeek: String,
+        location: RoutineLocation
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val cleanDay = dayOfWeek.trim().uppercase()
+            Log.d("RoutineRepo", "Adding custom location for $cleanDay: ${location.name} (${location.locationId})")
+
+            db.collection("routines")
+                .document(userId)
+                .collection(cleanDay)
+                .document(location.locationId)
+                .set(location.toMap())
+                .await()
+
+            try {
+                val dayEnum = DayOfWeek.valueOf(cleanDay)
+                inMemoryRoutines.remove(dayEnum)
+                inMemoryLocations.remove(dayEnum)
+            } catch (_: Exception) {}
+
+            Log.d("RoutineRepo", "Successfully saved location ${location.name} for $cleanDay")
+        } catch (e: Exception) {
+            Log.e("RoutineRepo", "Error saving custom location: ${e.message}", e)
+            throw e
+        }
+    }
+
+    /**
      * Persists a manual or auto-learned routine location to routines/{userId}/{dayOfWeek}/{locationId}
      */
     suspend fun saveRoutineLocation(dayOfWeek: DayOfWeek, location: RoutineLocation): Result<Unit> = withContext(Dispatchers.IO) {
-        val uid = currentUserId ?: return@withContext Result.failure(Exception("Not signed in"))
+        val uid = currentUserId ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "guest_user"
         try {
             db.collection("routines")
                 .document(uid)
@@ -119,7 +151,7 @@ class RoutineRepository(
      * Saves a location across multiple days of the week (from Manual Entry Dialog).
      */
     suspend fun saveRoutineLocationForDays(days: List<DayOfWeek>, location: RoutineLocation): Result<Unit> = withContext(Dispatchers.IO) {
-        val uid = currentUserId ?: return@withContext Result.failure(Exception("Not signed in"))
+        val uid = currentUserId ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "guest_user"
         try {
             val batch = db.batch()
             for (day in days) {
@@ -132,9 +164,10 @@ class RoutineRepository(
                 inMemoryLocations.remove(day)
             }
             batch.commit().await()
+            Log.d("RoutineRepo", "SUCCESS: Saved ${location.name} for ${days.size} days ($days)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving location across multiple days", e)
+            Log.e("RoutineRepo", "Error saving location across multiple days: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -143,7 +176,7 @@ class RoutineRepository(
      * Deletes a routine location from routines/{userId}/{dayOfWeek}/{locationId}
      */
     suspend fun deleteRoutineLocation(dayOfWeek: DayOfWeek, locationId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val uid = currentUserId ?: return@withContext Result.failure(Exception("Not signed in"))
+        val uid = currentUserId ?: com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "guest_user"
         try {
             db.collection("routines")
                 .document(uid)
@@ -154,9 +187,10 @@ class RoutineRepository(
 
             inMemoryRoutines.remove(dayOfWeek)
             inMemoryLocations.remove(dayOfWeek)
+            Log.d("RoutineRepo", "SUCCESS: Deleted $locationId for ${dayOfWeek.name}")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting routine location", e)
+            Log.e(TAG, "Error deleting routine location: ${e.message}", e)
             Result.failure(e)
         }
     }

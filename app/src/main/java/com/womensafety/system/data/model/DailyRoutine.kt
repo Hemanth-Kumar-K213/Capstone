@@ -136,6 +136,8 @@ data class RoutineLocation(
         "name" to name,
         "lat" to lat,
         "lon" to lon,
+        "latitude" to lat,
+        "longitude" to lon,
         "radiusMeters" to radiusMeters,
         "visitFrequency" to visitFrequency,
         "typicalArrivalTime" to typicalArrivalTime,

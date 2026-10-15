@@ -10,196 +10,172 @@ import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import org.json.JSONObject
 import java.util.UUID
 
 /**
- * Requirement 2A: Real BLE Broadcasting Manager — Mobile only (no watch).
+ * Requirement 1A: Complete BLE Rewrite — WorkplaceBeaconManager.
  *
- * Broadcasts Service UUID 0000180A-0000-1000-8000-00805F9B34FB with
- * payload: { userId, userName, status: "WORKING", timestamp }
- * Runs continuously while WORKING mode is active.
+ * Uses manufacturer data (0xFFFF) encoding: [len][userId][len][userName]
+ * Runs non-connectable broadcast during WORKING mode.
  */
 class WorkplaceBeaconManager(private val context: Context) {
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
     val bluetoothAdapter: BluetoothAdapter?
-        get() = bluetoothManager?.adapter
+        get() = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
 
-    private var bluetoothAdvertiser: BluetoothLeAdvertiser? = null
-    private val firestore = FirebaseFirestore.getInstance()
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private var advertiser: BluetoothLeAdvertiser? = null
+    private var isAdvertising = false
 
     companion object {
-        private const val TAG = "WorkplaceBeacon"
-        val BEACON_SERVICE_UUID: UUID = UUID.fromString("0000180A-0000-1000-8000-00805F9B34FB")
-        val BEACON_PARCEL_UUID: ParcelUuid = ParcelUuid(BEACON_SERVICE_UUID)
+        private const val BEACON_UUID_STRING = "0000180A-0000-1000-8000-00805F9B34FB"
+        val BEACON_UUID: UUID = UUID.fromString(BEACON_UUID_STRING)
+        const val MANUFACTURER_ID = 0xFFFF
+        private const val TAG = "BLE_BEACON"
     }
-
-    private var isAdvertising = false
 
     fun isBluetoothEnabled(): Boolean {
         return bluetoothAdapter?.isEnabled == true
     }
 
-    private val advertiseCallback = object : AdvertiseCallback() {
-        override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-            isAdvertising = true
-            Log.d(TAG, "Workplace BLE beacon advertising started successfully")
+    fun startAdvertising(userId: String, userName: String): Boolean {
+        Log.d(TAG, "=== START BEACON ADVERTISING ===")
+        Log.d(TAG, "userId=$userId, userName=$userName")
+
+        val adapter = bluetoothAdapter
+        if (adapter == null) {
+            Log.e(TAG, "ERROR: Device does not support Bluetooth")
+            return false
         }
 
-        override fun onStartFailure(errorCode: Int) {
-            isAdvertising = false
-            Log.w(TAG, "Workplace BLE beacon advertising failed with errorCode: $errorCode")
+        if (!adapter.isEnabled) {
+            Log.e(TAG, "ERROR: Bluetooth is disabled - cannot advertise")
+            return false
+        }
+
+        // Check BLUETOOTH_ADVERTISE permission on Android 12+ (API 31+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasPerm = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_ADVERTISE
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasPerm) {
+                Log.e(TAG, "ERROR: BLUETOOTH_ADVERTISE runtime permission missing")
+                return false
+            }
+        }
+
+        try {
+            advertiser = adapter.bluetoothLeAdvertiser
+            if (advertiser == null) {
+                Log.e(TAG, "ERROR: BLE advertiser not available on this device hardware")
+                return false
+            }
+
+            // Create simple advertise settings (non-connectable scan response)
+            val settings = AdvertiseSettings.Builder()
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
+                .setConnectable(false) // Non-connectable for broadcast only
+                .setTimeout(0) // Advertise indefinitely
+                .build()
+
+            val payload = encodeBeaconPayload(userId, userName)
+
+            // Create advertise data with manufacturer data (simpler and more reliable than service data)
+            val advertiseData = AdvertiseData.Builder()
+                .setIncludeDeviceName(false) // Keeps total packet strictly under 31-byte BLE limit
+                .setIncludeTxPowerLevel(false)
+                .addManufacturerData(
+                    MANUFACTURER_ID, // 0xFFFF reserved for testing / custom beacons
+                    payload
+                )
+                .build()
+
+            // Start advertising
+            advertiser?.startAdvertising(settings, advertiseData, object : AdvertiseCallback() {
+                override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+                    Log.d(TAG, "SUCCESS: BLE advertising started")
+                    isAdvertising = true
+                }
+
+                override fun onStartFailure(errorCode: Int) {
+                    isAdvertising = false
+                    Log.e(TAG, "ERROR: Failed to start advertising - errorCode=$errorCode")
+                    when (errorCode) {
+                        ADVERTISE_FAILED_DATA_TOO_LARGE -> Log.e(TAG, "Payload too large (>31 bytes)")
+                        ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> Log.e(TAG, "Too many advertisers active")
+                        ADVERTISE_FAILED_ALREADY_STARTED -> {
+                            Log.e(TAG, "Already advertising - marking active")
+                            isAdvertising = true
+                        }
+                        ADVERTISE_FAILED_INTERNAL_ERROR -> Log.e(TAG, "Internal hardware/BT error")
+                        else -> Log.e(TAG, "Unknown error")
+                    }
+                }
+            })
+
+            return true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception during startAdvertising: ${e.message}", e)
+            return false
         }
     }
 
-    fun startBeaconAdvertising(userId: String, userName: String): Boolean {
-        Log.d("BLE_BEACON", "Starting advertising for userId=$userId, userName=$userName")
-        return startWorkplaceBeacon(userId, userName, "WORKING")
+    fun stopAdvertising() {
+        Log.d(TAG, "Stopping BLE advertising")
+        try {
+            if (advertiser != null && isAdvertising) {
+                advertiser?.stopAdvertising(object : AdvertiseCallback() {})
+                isAdvertising = false
+                Log.d(TAG, "BLE advertising stopped")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping advertising: ${e.message}")
+        }
     }
 
-    fun stopBeaconAdvertising() {
-        stopWorkplaceBeacon()
+    private fun encodeBeaconPayload(userId: String, userName: String): ByteArray {
+        // Format: [length][userId][length][userName]
+        // Cap lengths to ensure total packet is well within BLE 31-byte limit
+        val cleanUid = userId.trim().take(10)
+        val cleanName = userName.trim().ifBlank { "Colleague" }.take(14)
+
+        val userIdBytes = cleanUid.toByteArray(Charsets.UTF_8)
+        val userNameBytes = cleanName.toByteArray(Charsets.UTF_8)
+
+        val payload = ByteArray(1 + userIdBytes.size + 1 + userNameBytes.size)
+        var offset = 0
+
+        payload[offset++] = userIdBytes.size.toByte()
+        userIdBytes.copyInto(payload, offset)
+        offset += userIdBytes.size
+
+        payload[offset++] = userNameBytes.size.toByte()
+        userNameBytes.copyInto(payload, offset)
+
+        Log.d(TAG, "Encoded payload for $cleanUid ($cleanName): ${payload.size} bytes: [${payload.joinToString(",") { it.toString() }}]")
+        return payload
     }
 
-    /**
-     * Starts BLE advertising for coworker discovery.
-     * Returns true if advertising initiated, false if Bluetooth disabled or unsupported.
-     */
+    fun isAdvertising(): Boolean = isAdvertising
+
+    // Compatibility aliases for existing callers
+    fun startBeaconAdvertising(userId: String, userName: String): Boolean = startAdvertising(userId, userName)
+    fun stopBeaconAdvertising() = stopAdvertising()
     fun startWorkplaceBeacon(
         userId: String,
         userName: String,
         status: String = "WORKING",
         onBluetoothDisabled: () -> Unit = {}
     ): Boolean {
-        Log.d("BLE_BEACON", "startWorkplaceBeacon called: userId=$userId, userName=$userName, status=$status")
-        if (isAdvertising) {
-            Log.d("BLE_BEACON", "Workplace beacon is already active")
-            return true
-        }
-
-        val adapter = bluetoothAdapter
-        if (adapter == null) {
-            Log.e("BLE_BEACON", "ERROR: Bluetooth adapter not available on device")
-            return false
-        }
-        if (!adapter.isEnabled) {
-            Log.e("BLE_BEACON", "ERROR: Bluetooth is disabled. Prompting user to enable.")
+        if (!isBluetoothEnabled()) {
             onBluetoothDisabled()
-            return false
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val hasPermission = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.BLUETOOTH_ADVERTISE
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!hasPermission) {
-                Log.e("BLE_BEACON", "ERROR: BLUETOOTH_ADVERTISE permission not granted")
-                return false
-            }
-        }
-
-        bluetoothAdvertiser = adapter.bluetoothLeAdvertiser
-        if (bluetoothAdvertiser == null) {
-            Log.e("BLE_BEACON", "ERROR: BLE advertiser is not supported on this device hardware")
-            return false
-        }
-
-        Log.d("BLE_BEACON", "SUCCESS: Bluetooth enabled and BLE advertiser acquired. Configuring packet payload...")
-
-        try {
-            val advertiseSettings = AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-                .setConnectable(false)
-                .setTimeout(0) // Run while WORKING mode is active
-                .build()
-
-            val sanitizedName = userName.take(16).ifBlank { "Colleague" }
-            val now = System.currentTimeMillis()
-
-            // Construct payload JSON or compact encoding
-            val jsonPayload = JSONObject().apply {
-                put("userId", userId)
-                put("userName", sanitizedName)
-                put("status", status)
-                put("timestamp", now)
-            }.toString()
-
-            val payloadBytes = jsonPayload.toByteArray(Charsets.UTF_8)
-
-            // Setup AdvertiseData with Service UUID
-            val advertiseData = AdvertiseData.Builder()
-                .setIncludeDeviceName(false)
-                .addServiceUuid(BEACON_PARCEL_UUID)
-                .build()
-
-            // Put Service Data into ScanResponse to prevent 31-byte legacy advertisement overflow
-            val scanResponseData = AdvertiseData.Builder()
-                .setIncludeDeviceName(false)
-                .addServiceData(BEACON_PARCEL_UUID, payloadBytes)
-                .build()
-
-            bluetoothAdvertiser?.startAdvertising(
-                advertiseSettings,
-                advertiseData,
-                scanResponseData,
-                advertiseCallback
-            )
-
-            // Also mirror active status to Firestore for geofence/remote coordination
-            scope.launch {
-                try {
-                    val statusMap = mapOf(
-                        "userId" to userId,
-                        "name" to sanitizedName,
-                        "status" to status,
-                        "lastSeen" to now,
-                        "source" to "BLE_BEACON"
-                    )
-                    firestore.collection("colleagues")
-                        .document(userId)
-                        .set(statusMap)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to mirror status to Firestore", e)
-                }
-            }
-
-            Log.d(TAG, "Initiated BLE workplace beacon advertising for $sanitizedName ($userId)")
-            return true
-        } catch (e: Exception) {
-            Log.e(TAG, "Exception starting workplace BLE beacon", e)
-            return false
-        }
+        return startAdvertising(userId, userName)
     }
-
-    /**
-     * Stops BLE advertising when exiting WORKING mode.
-     */
-    fun stopWorkplaceBeacon() {
-        if (!isAdvertising) return
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val hasPermission = ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.BLUETOOTH_ADVERTISE
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!hasPermission) return
-            }
-            bluetoothAdvertiser?.stopAdvertising(advertiseCallback)
-            isAdvertising = false
-            Log.d(TAG, "Stopped workplace BLE beacon advertising")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping workplace beacon", e)
-        }
-    }
+    fun stopWorkplaceBeacon() = stopAdvertising()
 }

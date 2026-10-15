@@ -244,6 +244,8 @@ Backend & Cloud Functions (Firebase Auth, Cloud Firestore, 2Factor SMS REST API)
 - **Unified SOS Trigger Pipeline (`SOSTriggerUtils.kt`)**: Centralized emergency escalation handler unifying manual SOS, route deviations, and unacknowledged fall detection events into a single resilient pipeline.
 - **All-Mode Fall Detection with Sleep Muting (`HybridFallDetectionManager.kt`)**: Runs 3-phase nocturnal and daytime fall detection continuously across Regular, Working, and Travel modes while automatically muting false positives during Sleep Mode.
 - **Dynamic Travel Route Simulator (`ActiveJourneyScreen.kt`)**: Route simulation engine dynamically calculating on-path progression and perpendicular route deviations (>300m) relative to actual navigation waypoints using `MapUtils`.
+- **MapLocationPickerDialog (`MapLocationPickerDialog.kt`)**: Interactive OpenStreetMap (OSMDroid) location picker with Nominatim/Geocoder search, pin dropping via tap/long-press, center reticle snapping, and real-time reverse geocoding.
+- **BLE Colleague Presence Engine (Rewritten)**: Lightweight non-connectable broadcast using standard manufacturer data (`0xFFFF`) and continuous balanced scanning, eliminating payload truncation and packet dropping.
 - **Capstone Scenario Simulator**: In-app test harness simulating composite risk conditions (Route Deviation + Late Night + Heart Rate Panic Spike) to verify automated safety escalation.
 
 ### 13. User Profile & Home UI Enhancements

@@ -424,6 +424,23 @@ service cloud.firestore {
 
 
     // ============================================================
+    // ROUTINES & ANOMALIES (REGULAR SAFETY MODE)
+    // ============================================================
+
+    match /routines/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+
+      match /{dayOfWeek}/{locationId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /anomalies/{userId}/{doc=**} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+
+    // ============================================================
     // HELPER FUNCTIONS
     // ============================================================
 
