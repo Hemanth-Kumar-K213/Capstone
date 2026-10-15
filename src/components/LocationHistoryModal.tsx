@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, History, MapPin, Clock, Gauge, Download } from 'lucide-react';
+import { X, History, MapPin, Clock, BatteryMedium, BatteryCharging, Download } from 'lucide-react';
 import { LocationData } from '../types/safety';
 
 interface LocationHistoryModalProps {
@@ -19,12 +19,12 @@ const LocationHistoryModal: React.FC<LocationHistoryModalProps> = ({
 
   const handleDownloadCSV = () => {
     if (history.length === 0) return;
-    const headers = 'Timestamp,Latitude,Longitude,Accuracy(m),Speed(km/h),Address\n';
+    const headers = 'Timestamp,Latitude,Longitude,Accuracy(m),Battery(%),Address\n';
     const rows = history
       .map(
         (h) =>
           `"${new Date(h.timestamp).toISOString()}",${h.latitude},${h.longitude},${h.accuracy},${
-            h.speed || 0
+            h.batteryLevel !== undefined ? `${h.batteryLevel}%` : 'N/A'
           },"${(h.address || '').replace(/"/g, '""')}"`
       )
       .join('\n');
@@ -109,9 +109,13 @@ const LocationHistoryModal: React.FC<LocationHistoryModalProps> = ({
 
                     <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 font-mono">
                       <span>{loc.latitude.toFixed(5)}° N, {loc.longitude.toFixed(5)}° E</span>
-                      <span className="flex items-center gap-1">
-                        <Gauge className="w-3.5 h-3.5 text-purple-400" />
-                        {loc.speed !== undefined ? `${loc.speed} km/h` : '0 km/h'}
+                      <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                        {loc.isCharging ? (
+                          <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <BatteryMedium className="w-3.5 h-3.5 text-emerald-400" />
+                        )}
+                        {loc.batteryLevel !== undefined ? `${loc.batteryLevel}% Battery` : 'DB Synced'}
                       </span>
                     </div>
                   </div>

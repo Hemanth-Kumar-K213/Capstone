@@ -11,7 +11,11 @@ import {
   Volume2, 
   VolumeX, 
   Download,
-  Clock
+  Clock,
+  BatteryMedium,
+  BatteryCharging,
+  BatteryLow,
+  Database
 } from 'lucide-react';
 
 import MapContainer from '../components/MapContainer';
@@ -27,6 +31,7 @@ import {
   subscribeToLocationHistory,
   subscribeToSOSEvents, 
   subscribeToActiveJourney, 
+  subscribeToDatabaseBattery,
   calculateRiskAssessment 
 } from '../services/safetyService';
 import { soundEffects } from '../utils/audioAlert';
@@ -191,6 +196,22 @@ const DashboardPage: React.FC = () => {
     return () => unsubscribe();
   }, [userId, uid, isMockMode]);
 
+  // Strictly track real-time battery updates through the database
+  useEffect(() => {
+    if (!uid) return;
+    const unsubscribe = subscribeToDatabaseBattery(uid, userId, (batteryInfo) => {
+      if (batteryInfo.batteryLevel !== undefined) {
+        setCurrentLocation((prev) => ({
+          ...prev,
+          batteryLevel: batteryInfo.batteryLevel,
+          isCharging: batteryInfo.isCharging ?? prev.isCharging,
+        }));
+      }
+    });
+
+    return () => unsubscribe();
+  }, [uid, userId]);
+
   const toggleMute = () => {
     const nextState = !soundMuted;
     setSoundMuted(nextState);
@@ -268,12 +289,28 @@ const DashboardPage: React.FC = () => {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-0.5">
+              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-0.5 flex-wrap">
                 <span>UID: <strong className="text-slate-200">{uid}</strong></span>
                 <span>•</span>
                 <span className="flex items-center gap-1 text-slate-400">
                   <Clock className="w-3 h-3 text-purple-400" />
                   {lastPingTime.toLocaleTimeString()}
+                </span>
+                <span>•</span>
+                {/* Live Database Battery Badge */}
+                <span 
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-bold text-slate-200"
+                  title="Exact battery tracked through database"
+                >
+                  {currentLocation.isCharging ? (
+                    <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (currentLocation.batteryLevel ?? 100) <= 20 ? (
+                    <BatteryLow className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                  ) : (
+                    <BatteryMedium className="w-3.5 h-3.5 text-emerald-400" />
+                  )}
+                  <span>{currentLocation.batteryLevel !== undefined ? `${currentLocation.batteryLevel}%` : 'Syncing...'}</span>
+                  {currentLocation.isCharging && <span className="text-amber-400 text-[10px]">⚡</span>}
                 </span>
               </div>
             </div>
@@ -393,9 +430,10 @@ const DashboardPage: React.FC = () => {
                   userName={userData?.name || initialUserName}
                   uid={uid || undefined}
                   bearing={currentLocation.bearing}
-                  speed={currentLocation.speed}
                   altitude={currentLocation.altitude}
                   status={currentLocation.status}
+                  batteryLevel={currentLocation.batteryLevel}
+                  isCharging={currentLocation.isCharging}
                   activeSOS={activeSOSEvent}
                   activeJourney={activeJourney}
                   onMapCenterChange={handleMapCenterChange}
@@ -459,9 +497,19 @@ const DashboardPage: React.FC = () => {
                     </p>
                   </div>
                   <div className="p-3 rounded-2xl bg-[#090D16]/60 border border-slate-800">
-                    <p className="text-[10px] text-slate-400 uppercase font-mono">Velocity</p>
-                    <p className="text-xs font-bold text-purple-400 font-mono mt-0.5">
-                      {currentLocation.speed !== undefined ? `${currentLocation.speed} km/h` : '0 km/h'}
+                    <p className="text-[10px] text-slate-400 uppercase font-mono flex items-center justify-between">
+                      <span>Battery (DB)</span>
+                      <Database className="w-3 h-3 text-emerald-400" />
+                    </p>
+                    <p className="text-xs font-bold text-emerald-400 font-mono mt-0.5 flex items-center gap-1">
+                      {currentLocation.batteryLevel !== undefined ? (
+                        <>
+                          <span>{currentLocation.batteryLevel}%</span>
+                          {currentLocation.isCharging && <span className="text-amber-400 text-[10px]">⚡</span>}
+                        </>
+                      ) : (
+                        <span className="text-slate-500">Syncing...</span>
+                      )}
                     </p>
                   </div>
                 </div>

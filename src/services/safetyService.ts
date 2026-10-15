@@ -1,6 +1,7 @@
 import { 
   doc, 
   getDoc, 
+  setDoc,
   collection, 
   query, 
   where, 
@@ -332,6 +333,157 @@ export async function verifyWeeklyUID(uid: string): Promise<UIDVerificationResul
 }
 
 /**
+ * Strictly extracts the exact battery percentage and charging state from any database document
+ * without defaulting to fake fallback numbers.
+ */
+export function parseExactBattery(raw: any): { batteryLevel?: number; isCharging?: boolean } {
+  if (!raw) return {};
+
+  const candidates = [
+    raw.batteryLevel,
+    raw.battery,
+    raw.batteryPercentage,
+    raw.battery_percentage,
+    raw.battery_level,
+    raw.batteryPct,
+    raw.batteryPercent,
+    raw.level,
+    raw.device?.batteryLevel,
+    raw.device?.battery,
+    raw.device?.batteryPercentage,
+    raw.telemetry?.batteryLevel,
+    raw.telemetry?.battery,
+    raw.telemetry?.batteryPercentage,
+    raw.status?.batteryLevel,
+    raw.status?.battery
+  ];
+
+  let batteryLevel: number | undefined = undefined;
+  for (const val of candidates) {
+    if (val !== undefined && val !== null && val !== '') {
+      if (typeof val === 'number' && !isNaN(val)) {
+        batteryLevel = Math.round(val);
+        break;
+      }
+      if (typeof val === 'string') {
+        const clean = val.replace('%', '').trim();
+        const num = Number(clean);
+        if (!isNaN(num)) {
+          batteryLevel = Math.round(num);
+          break;
+        }
+      }
+    }
+  }
+
+  if (batteryLevel !== undefined) {
+    batteryLevel = Math.max(0, Math.min(100, batteryLevel));
+  }
+
+  const isCharging = Boolean(
+    raw.isCharging ??
+    raw.charging ??
+    raw.batteryCharging ??
+    raw.is_charging ??
+    raw.device?.isCharging ??
+    raw.telemetry?.isCharging
+  );
+
+  return { batteryLevel, isCharging };
+}
+
+/**
+ * Dedicated Real-Time Database Battery Tracker
+ * Subscribes directly to Firestore (child_locations, uid_locations, and users documents)
+ * to stream the exact battery percentage updates with zero latency.
+ */
+export function subscribeToDatabaseBattery(
+  uid: string,
+  userId: string | null,
+  onBatteryUpdate: (data: { batteryLevel?: number; isCharging?: boolean; lastUpdated: number; source: string }) => void
+): Unsubscribe {
+  if (!isFirebaseConfigured || !uid) {
+    return () => {};
+  }
+
+  const unsubs: (() => void)[] = [];
+
+  const handleDocSnap = (snap: any, source: string) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      const { batteryLevel, isCharging } = parseExactBattery(data);
+      if (batteryLevel !== undefined) {
+        onBatteryUpdate({
+          batteryLevel,
+          isCharging: Boolean(isCharging),
+          lastUpdated: typeof data.timestamp?.toMillis === 'function' 
+            ? data.timestamp.toMillis() 
+            : (typeof data.timestamp === 'number' ? data.timestamp : Date.now()),
+          source
+        });
+      }
+    }
+  };
+
+  try {
+    const childRef = doc(db, 'child_locations', uid);
+    unsubs.push(onSnapshot(childRef, (s) => handleDocSnap(s, 'child_locations'), () => {}));
+  } catch {}
+
+  try {
+    const uidRef = doc(db, 'uid_locations', uid);
+    unsubs.push(onSnapshot(uidRef, (s) => handleDocSnap(s, 'uid_locations'), () => {}));
+  } catch {}
+
+  if (userId) {
+    try {
+      const userRef = doc(db, 'users', userId);
+      unsubs.push(onSnapshot(userRef, (s) => handleDocSnap(s, 'users'), () => {}));
+    } catch {}
+  }
+
+  return () => {
+    unsubs.forEach((u) => u());
+  };
+}
+
+/**
+ * Updates the user's exact battery percentage in Firestore database
+ */
+export async function updateBatteryInDatabase(
+  uid: string,
+  userId: string | null,
+  batteryLevel: number,
+  isCharging: boolean = false
+): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseConfigured) {
+    return { success: false, error: 'Firebase is not configured.' };
+  }
+  try {
+    await ensureFirebaseAuth();
+    const clamped = Math.max(0, Math.min(100, Math.round(batteryLevel)));
+    const payload = {
+      batteryLevel: clamped,
+      isCharging: Boolean(isCharging),
+      batteryUpdatedAt: Date.now()
+    };
+
+    if (uid) {
+      const childRef = doc(db, 'child_locations', uid);
+      await setDoc(childRef, payload, { merge: true });
+    }
+    if (userId) {
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, payload, { merge: true });
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error updating battery in database:', err);
+    return { success: false, error: err?.message || 'Failed to update battery in database.' };
+  }
+}
+
+/**
  * Real-time Location Subscription
  * Listens to Firestore userLocations/{userId}/locations matching Trinetra LocationTrackingService
  */
@@ -367,6 +519,9 @@ export function subscribeToLocation(
           ? raw.timestamp 
           : Date.now();
 
+      // Strictly extract exact battery percentage from database fields
+      const { batteryLevel, isCharging } = parseExactBattery(raw);
+
       return {
         latitude: Number(lat),
         longitude: Number(lng),
@@ -378,9 +533,9 @@ export function subscribeToLocation(
         address: raw.address,
         status: raw.status || 'ONLINE',
         isSOSLocation: Boolean(raw.isSOSLocation),
-        batteryLevel: raw.batteryLevel ?? raw.battery ?? 85,
+        batteryLevel, // Exact database percentage (undefined if not reported in DB, never fake)
         networkStatus: raw.networkStatus ?? '4G',
-        isCharging: Boolean(raw.isCharging)
+        isCharging
       };
     };
 
@@ -577,7 +732,7 @@ export function subscribeToLocation(
         speed: Number(speed.toFixed(1)),
         bearing: Number(dynamicBearing.toFixed(1)),
         status: 'ONLINE',
-        batteryLevel: Math.max(1, (currentLoc.batteryLevel || 90) - (Math.random() < 0.02 ? 1 : 0)),
+        batteryLevel: currentLoc.batteryLevel, // Strictly preserve exact battery percentage
       };
 
       onLocationUpdate({ ...currentLoc });

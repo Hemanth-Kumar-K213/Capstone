@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Crosshair, Navigation, AlertTriangle, Maximize, Minimize, Gauge, ExternalLink, Compass, MapPin } from 'lucide-react';
+import { Crosshair, Navigation, AlertTriangle, Maximize, Minimize, ExternalLink, Compass, MapPin, BatteryMedium, BatteryCharging } from 'lucide-react';
 import { JourneyData, SOSEvent } from '../types/safety';
 
 interface MapContainerProps {
@@ -12,9 +12,10 @@ interface MapContainerProps {
   userName?: string;
   uid?: string;
   bearing?: number;
-  speed?: number;
   altitude?: number;
   status?: string;
+  batteryLevel?: number;
+  isCharging?: boolean;
   activeSOS?: SOSEvent | null;
   activeJourney?: JourneyData | null;
   onMapCenterChange?: (lat: number, lng: number, isUserLocation: boolean) => void;
@@ -28,9 +29,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
   userName = 'User',
   uid,
   bearing,
-  speed,
   altitude,
   status = 'ONLINE',
+  batteryLevel,
+  isCharging,
   activeSOS,
   activeJourney,
   onMapCenterChange,
@@ -202,7 +204,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
         </div>
         <div style="padding-top: 6px; border-top: 1px solid #E2E8F0; font-size: 11px; color: #334155; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
           <span>Accuracy: <b>±${Math.round(accuracy || 8)}m</b></span>
-          <span>Speed: <b>${speed !== undefined ? `${speed} km/h` : '0 km/h'}</b></span>
+          <span>Battery: <b style="color: #059669;">${batteryLevel !== undefined ? `${batteryLevel}%` : 'Syncing...'}</b></span>
           ${headingDegrees !== undefined ? `<span>Bearing: <b>${headingDegrees}°</b></span>` : ''}
           ${altitude !== undefined ? `<span>Altitude: <b>${Math.round(altitude)}m</b></span>` : ''}
         </div>
@@ -307,7 +309,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       map.removeLayer(sosIncidentMarkerRef.current);
       sosIncidentMarkerRef.current = null;
     }
-  }, [latitude, longitude, accuracy, activeSOS, userName, uid, bearing, speed, altitude, autoCenter, mapReady, address]);
+  }, [latitude, longitude, accuracy, activeSOS, userName, uid, bearing, batteryLevel, isCharging, altitude, autoCenter, mapReady, address]);
 
   // Execute marker update on props change or map ready
   useEffect(() => {
@@ -475,10 +477,14 @@ const MapContainer: React.FC<MapContainerProps> = ({
             <span className="truncate">{address}</span>
           </div>
         )}
-        {speed !== undefined && (
-          <div className="flex items-center gap-1 text-slate-400 border-l border-slate-700 pl-3">
-            <Gauge className="w-3.5 h-3.5 text-purple-400" />
-            <span>{speed} km/h</span>
+        {batteryLevel !== undefined && (
+          <div className="flex items-center gap-1.5 text-emerald-300 border-l border-slate-700 pl-3 font-mono text-xs">
+            {isCharging ? (
+              <BatteryCharging className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <BatteryMedium className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+            <span>{batteryLevel}% Battery</span>
           </div>
         )}
         {bearing !== undefined && (

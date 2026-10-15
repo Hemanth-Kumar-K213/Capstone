@@ -152,7 +152,7 @@ const HomePage: React.FC = () => {
           <div className="mt-6 space-y-4">
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                <label htmlFor="safety-uid-input" className="text-xs font-bold text-slate-300 uppercase tracking-wider cursor-pointer">
                   Safety UID or User ID
                 </label>
                 <span className="text-[11px] font-mono text-purple-400">Child UID / User ID</span>
@@ -160,6 +160,8 @@ const HomePage: React.FC = () => {
 
               <div className="relative">
                 <input
+                  id="safety-uid-input"
+                  name="safetyUID"
                   type="text"
                   value={uid}
                   onChange={(e) => {
@@ -170,6 +172,9 @@ const HomePage: React.FC = () => {
                   placeholder="202610111234"
                   maxLength={64}
                   disabled={loading}
+                  aria-label="Enter 12-digit Safety UID or User ID"
+                  aria-required="true"
+                  autoComplete="off"
                   className="w-full px-5 py-4 bg-[#0B0F19]/90 border-2 border-slate-700/80 rounded-2xl text-white text-lg font-mono placeholder:text-slate-600 focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/15 transition shadow-inner tracking-wider"
                 />
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-slate-400 pointer-events-none bg-slate-900/80 px-2 py-1 rounded-lg border border-slate-800">
@@ -180,12 +185,14 @@ const HomePage: React.FC = () => {
 
             {/* Submit Action */}
             <button
+              type="button"
               onClick={() => handleVerifyUID()}
               disabled={loading || uid.trim().length < 4}
+              aria-label="Access Real-time Safety Console"
               className={`w-full py-4 px-6 rounded-2xl font-bold text-sm tracking-wide transition-all duration-200 flex items-center justify-center gap-2.5 shadow-xl ${
                 loading || uid.trim().length < 4
                   ? 'bg-slate-800/80 text-slate-500 border border-slate-700/40 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-purple-600 via-purple-700 to-rose-600 hover:from-purple-500 hover:to-rose-500 text-white shadow-purple-600/30 hover:scale-[1.01] active:scale-[0.99] glow-purple'
+                  : 'bg-gradient-to-r from-purple-600 via-purple-700 to-rose-600 hover:from-purple-500 hover:to-rose-500 text-white shadow-purple-600/30 hover:scale-[1.01] active:scale-[0.99] glow-purple focus-visible:ring-4 focus-visible:ring-purple-500/40 focus-visible:outline-none'
               }`}
             >
               {loading ? (
@@ -210,44 +217,52 @@ const HomePage: React.FC = () => {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
+                type="button"
                 onClick={() => handleQuickFill(DEMO_UID_CHILD)}
-                className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/40 to-slate-900/90 hover:from-emerald-950/60 hover:to-slate-900 border border-emerald-500/40 hover:border-emerald-400 text-left transition group shadow-md"
+                aria-label={`Test Scenario: Jane Doe with 92% Battery`}
+                className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/40 to-slate-900/90 hover:from-emerald-950/60 hover:to-slate-900 border border-emerald-500/40 hover:border-emerald-400 text-left transition group shadow-md focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none"
               >
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-extrabold text-white group-hover:text-emerald-300">Jane Doe (Live Radar)</span>
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
                 </div>
                 <div className="text-[11px] font-mono text-emerald-400/90 font-bold mt-1">{DEMO_UID_CHILD}</div>
-                <div className="text-[10px] text-emerald-300/80 font-medium mt-1">10s Sync • Bearing & Radar Cone</div>
+                <div className="text-[10px] text-emerald-300/80 font-medium mt-1">92% DB Battery • 10s Live Sync</div>
               </button>
 
               <button
+                type="button"
                 onClick={() => handleQuickFill(DEMO_UID_ACTIVE)}
-                className="p-3.5 rounded-2xl bg-slate-900/70 hover:bg-slate-800/90 border border-slate-800 hover:border-purple-500/50 text-left transition group shadow-md"
+                aria-label={`Test Scenario: Ananya with 78% Battery`}
+                className="p-3.5 rounded-2xl bg-slate-900/70 hover:bg-slate-800/90 border border-slate-800 hover:border-purple-500/50 text-left transition group shadow-md focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none"
               >
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-white group-hover:text-purple-300">Ananya (Transit)</span>
                   <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
                 </div>
                 <div className="text-[11px] font-mono text-slate-400 mt-1">{DEMO_UID_ACTIVE}</div>
-                <div className="text-[10px] text-purple-300/80 font-medium mt-1">Normal Metro Route</div>
+                <div className="text-[10px] text-purple-300/80 font-medium mt-1">78% DB Battery • Normal Metro</div>
               </button>
 
               <button
+                type="button"
                 onClick={() => handleQuickFill(DEMO_UID_SOS)}
-                className="p-3.5 rounded-2xl bg-slate-900/70 hover:bg-slate-800/90 border border-slate-800 hover:border-rose-500/50 text-left transition group shadow-md"
+                aria-label={`Test Scenario: Priya with 21% Battery Critical SOS`}
+                className="p-3.5 rounded-2xl bg-slate-900/70 hover:bg-slate-800/90 border border-slate-800 hover:border-rose-500/50 text-left transition group shadow-md focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
               >
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-white group-hover:text-rose-300">Priya (SOS Alert)</span>
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
                 </div>
                 <div className="text-[11px] font-mono text-slate-400 mt-1">{DEMO_UID_SOS}</div>
-                <div className="text-[10px] text-rose-400/90 font-medium mt-1">Emergency Beacon Active</div>
+                <div className="text-[10px] text-rose-400/90 font-medium mt-1">21% DB Battery • SOS Beacon</div>
               </button>
 
               <button
+                type="button"
                 onClick={() => handleQuickFill(DEMO_UID_EXPIRED)}
-                className="p-3.5 rounded-2xl bg-slate-900/70 hover:bg-slate-800/90 border border-slate-800 hover:border-amber-500/50 text-left transition group shadow-md"
+                aria-label={`Test Scenario: Expired UID Key`}
+                className="p-3.5 rounded-2xl bg-slate-900/70 hover:bg-slate-800/90 border border-slate-800 hover:border-amber-500/50 text-left transition group shadow-md focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
               >
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-white group-hover:text-amber-300">Expired Key</span>
