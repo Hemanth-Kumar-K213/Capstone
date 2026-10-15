@@ -37,9 +37,31 @@ export interface LocationData {
   altitude?: number;
   batteryLevel?: number; // 0 - 100
   isCharging?: boolean;
+  temperature?: number; // Celsius
+  voltage?: number; // mV
+  deviceId?: string;
+  technology?: string;
+  chargingStatus?: number;
   networkStatus?: '5G' | '4G' | 'WiFi' | 'Offline';
   status?: string; // 'ONLINE' | 'OFFLINE'
   isSOSLocation?: boolean;
+  lastUpdated?: any;
+}
+
+export interface DeviceBatteryStatus {
+  userId: string;
+  deviceId?: string;
+  batteryPercentage?: number;
+  latestBattery?: number;
+  isCharging?: boolean;
+  latestCharging?: boolean;
+  chargingStatus?: number; // 0: unknown, 1: AC, 2: USB, 4: Wireless
+  latestChargingStatus?: number;
+  temperature?: number; // Celsius
+  health?: number;
+  voltage?: number; // mV
+  technology?: string;
+  timestamp?: number;
   lastUpdated?: any;
 }
 

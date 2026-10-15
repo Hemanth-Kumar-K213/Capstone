@@ -37,11 +37,13 @@ const SafetyScoreCard: React.FC<SafetyScoreCardProps> = ({ assessment, location 
   const getBatteryDetails = () => {
     const level = location?.batteryLevel;
     const isCharging = location?.isCharging;
+    const chargingStatus = location?.chargingStatus;
 
     if (isCharging) {
+      const chargeType = chargingStatus === 1 ? 'AC' : chargingStatus === 2 ? 'USB' : chargingStatus === 4 ? 'WIRELESS' : '';
       return {
         icon: <BatteryCharging className="w-5 h-5 text-emerald-400 shrink-0" />,
-        statusTag: 'CHARGING',
+        statusTag: chargeType ? `CHARGING (${chargeType})` : 'CHARGING',
         tagColor: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
         barColor: 'bg-emerald-400',
       };
@@ -171,9 +173,9 @@ const SafetyScoreCard: React.FC<SafetyScoreCardProps> = ({ assessment, location 
                 <span className="text-emerald-400 text-[10px] font-bold shrink-0">⚡ Plugged</span>
               )}
             </div>
-            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 shrink-0">
+            <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 shrink-0" title="Live stream from deviceBatteryStatus Firestore collection">
               <Database className="w-3 h-3 text-emerald-400" />
-              <span>DB Synced</span>
+              <span>deviceBatteryStatus</span>
             </span>
           </div>
 
@@ -191,6 +193,25 @@ const SafetyScoreCard: React.FC<SafetyScoreCardProps> = ({ assessment, location 
               style={{ width: `${Math.max(4, Math.min(100, location?.batteryLevel ?? 0))}%` }}
             />
           </div>
+
+          {/* Secondary Hardware Telemetry Row */}
+          {(location?.temperature !== undefined || location?.voltage !== undefined || location?.deviceId) && (
+            <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+              <div className="flex items-center gap-2">
+                {location?.temperature !== undefined && (
+                  <span className="text-slate-300 font-semibold">{location.temperature}°C</span>
+                )}
+                {location?.voltage !== undefined && (
+                  <span>{(location.voltage / 1000).toFixed(2)}V</span>
+                )}
+              </div>
+              {location?.deviceId && (
+                <span className="truncate max-w-[130px] text-slate-500" title={location.deviceId}>
+                  {location.deviceId}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Signal & Cloud Real-Time Uplink */}

@@ -130,7 +130,16 @@ const DashboardPage: React.FC = () => {
     if (!userId || !uid) return;
 
     const unsubscribe = subscribeToLocation(userId, uid, isMockMode, (newLoc) => {
-      setCurrentLocation(newLoc);
+      setCurrentLocation((prev) => ({
+        ...newLoc,
+        batteryLevel: newLoc.batteryLevel !== undefined ? newLoc.batteryLevel : prev.batteryLevel,
+        isCharging: newLoc.isCharging !== undefined ? newLoc.isCharging : prev.isCharging,
+        temperature: newLoc.temperature ?? prev.temperature,
+        voltage: newLoc.voltage ?? prev.voltage,
+        deviceId: newLoc.deviceId ?? prev.deviceId,
+        technology: newLoc.technology ?? prev.technology,
+        chargingStatus: newLoc.chargingStatus ?? prev.chargingStatus,
+      }));
       setLastPingTime(new Date());
       soundEffects.playPing();
 
@@ -196,15 +205,20 @@ const DashboardPage: React.FC = () => {
     return () => unsubscribe();
   }, [userId, uid, isMockMode]);
 
-  // Strictly track real-time battery updates through the database
+  // Strictly track real-time battery updates through the F2 deviceBatteryStatus collection
   useEffect(() => {
-    if (!uid) return;
-    const unsubscribe = subscribeToDatabaseBattery(uid, userId, (batteryInfo) => {
+    if (!uid && !userId) return;
+    const unsubscribe = subscribeToDatabaseBattery(uid || '', userId, (batteryInfo) => {
       if (batteryInfo.batteryLevel !== undefined) {
         setCurrentLocation((prev) => ({
           ...prev,
           batteryLevel: batteryInfo.batteryLevel,
           isCharging: batteryInfo.isCharging ?? prev.isCharging,
+          temperature: batteryInfo.temperature ?? prev.temperature,
+          voltage: batteryInfo.voltage ?? prev.voltage,
+          deviceId: batteryInfo.deviceId ?? prev.deviceId,
+          technology: batteryInfo.technology ?? prev.technology,
+          chargingStatus: batteryInfo.chargingStatus ?? prev.chargingStatus,
         }));
       }
     });

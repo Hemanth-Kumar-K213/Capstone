@@ -7,11 +7,13 @@ import {
   where, 
   orderBy, 
   limit, 
-  onSnapshot, 
+  onSnapshot,
+  serverTimestamp, 
   Unsubscribe 
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured, ensureFirebaseAuth } from '../config/firebase';
-import { UserData, WeeklyUIDDoc, LocationData, SOSEvent, JourneyData, RiskAssessment } from '../types/safety';
+import { UserData, WeeklyUIDDoc, LocationData, SOSEvent, JourneyData, RiskAssessment, DeviceBatteryStatus } from '../types/safety';
+export type { DeviceBatteryStatus };
 import { MOCK_DATABASE } from './mockData';
 
 export interface UIDVerificationResult {
@@ -186,6 +188,29 @@ export async function verifyWeeklyUID(uid: string): Promise<UIDVerificationResul
         }
       }
 
+      // Step 5b: Query deviceBatteryStatus/{uid} (from newest F2 branch battery telemetry engine)
+      if (!uidData) {
+        try {
+          const devBatteryRef = doc(db, 'deviceBatteryStatus', uid);
+          const devBatterySnap = await getDoc(devBatteryRef);
+          if (devBatterySnap.exists()) {
+            const bData = devBatterySnap.data();
+            const liveName = bData.deviceId ? `Protected Device (${bData.deviceId})` : `Protected User (${uid.slice(-4)})`;
+            const liveUserId = bData.userId || uid;
+            uidData = {
+              uid,
+              userId: liveUserId,
+              userName: liveName,
+              active: true,
+              expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+              createdAt: typeof bData.lastUpdated?.toMillis === 'function' ? bData.lastUpdated.toMillis() : Date.now()
+            };
+          }
+        } catch (e) {
+          console.warn('Checking deviceBatteryStatus in verifyWeeklyUID:', e);
+        }
+      }
+
       // If not yet in Firestore, seamlessly create an active session for this UID
       if (!uidData) {
         const now = Date.now();
@@ -332,28 +357,45 @@ export async function verifyWeeklyUID(uid: string): Promise<UIDVerificationResul
   };
 }
 
+export interface ExactBatteryResult {
+  batteryLevel?: number;
+  isCharging?: boolean;
+  temperature?: number;
+  voltage?: number;
+  deviceId?: string;
+  technology?: string;
+  chargingStatus?: number;
+}
+
 /**
  * Strictly extracts the exact battery percentage and charging state from any database document
  * without defaulting to fake fallback numbers.
+ * Integrates with the newest F2 branch 'deviceBatteryStatus' schema (latestBattery, batteryPercentage,
+ * latestCharging, temperature, voltage, deviceId, etc.)
  */
-export function parseExactBattery(raw: any): { batteryLevel?: number; isCharging?: boolean } {
+export function parseExactBattery(raw: any): ExactBatteryResult {
   if (!raw) return {};
 
   const candidates = [
+    raw.latestBattery,
+    raw.batteryPercentage,
     raw.batteryLevel,
     raw.battery,
-    raw.batteryPercentage,
     raw.battery_percentage,
     raw.battery_level,
     raw.batteryPct,
     raw.batteryPercent,
     raw.level,
+    raw.device?.latestBattery,
+    raw.device?.batteryPercentage,
     raw.device?.batteryLevel,
     raw.device?.battery,
-    raw.device?.batteryPercentage,
+    raw.telemetry?.latestBattery,
+    raw.telemetry?.batteryPercentage,
     raw.telemetry?.batteryLevel,
     raw.telemetry?.battery,
-    raw.telemetry?.batteryPercentage,
+    raw.status?.latestBattery,
+    raw.status?.batteryPercentage,
     raw.status?.batteryLevel,
     raw.status?.battery
   ];
@@ -381,28 +423,52 @@ export function parseExactBattery(raw: any): { batteryLevel?: number; isCharging
   }
 
   const isCharging = Boolean(
+    raw.latestCharging ??
     raw.isCharging ??
     raw.charging ??
     raw.batteryCharging ??
     raw.is_charging ??
+    raw.device?.latestCharging ??
     raw.device?.isCharging ??
+    raw.telemetry?.latestCharging ??
     raw.telemetry?.isCharging
   );
 
-  return { batteryLevel, isCharging };
+  const temperature = typeof raw.temperature === 'number' 
+    ? raw.temperature 
+    : (typeof raw.device?.temperature === 'number' ? raw.device.temperature : undefined);
+
+  const voltage = typeof raw.voltage === 'number' 
+    ? raw.voltage 
+    : (typeof raw.device?.voltage === 'number' ? raw.device.voltage : undefined);
+
+  const deviceId = raw.deviceId || raw.device?.id || raw.device?.model || undefined;
+  const technology = raw.technology || raw.device?.technology || undefined;
+  const chargingStatus = typeof (raw.latestChargingStatus ?? raw.chargingStatus) === 'number'
+    ? (raw.latestChargingStatus ?? raw.chargingStatus)
+    : undefined;
+
+  return { batteryLevel, isCharging, temperature, voltage, deviceId, technology, chargingStatus };
+}
+
+export interface LiveBatteryTelemetry extends ExactBatteryResult {
+  lastUpdated: number;
+  source: string;
 }
 
 /**
  * Dedicated Real-Time Database Battery Tracker
- * Subscribes directly to Firestore (child_locations, uid_locations, and users documents)
- * to stream the exact battery percentage updates with zero latency.
+ * Subscribes directly to the newest F2 branch Firestore collection 'deviceBatteryStatus'
+ * (/deviceBatteryStatus/{userId} & /deviceBatteryStatus/{userId}/history)
+ * as well as child_locations, uid_locations, and users documents
+ * to stream the exact battery percentage and hardware telemetry lively with zero latency.
  */
 export function subscribeToDatabaseBattery(
   uid: string,
   userId: string | null,
-  onBatteryUpdate: (data: { batteryLevel?: number; isCharging?: boolean; lastUpdated: number; source: string }) => void
+  onBatteryUpdate: (data: LiveBatteryTelemetry) => void
 ): Unsubscribe {
-  if (!isFirebaseConfigured || !uid) {
+  if (!isFirebaseConfigured || (!uid && !userId)) {
     return () => {};
   }
 
@@ -411,30 +477,90 @@ export function subscribeToDatabaseBattery(
   const handleDocSnap = (snap: any, source: string) => {
     if (snap.exists()) {
       const data = snap.data();
-      const { batteryLevel, isCharging } = parseExactBattery(data);
-      if (batteryLevel !== undefined) {
+      const parsed = parseExactBattery(data);
+      if (parsed.batteryLevel !== undefined) {
         onBatteryUpdate({
-          batteryLevel,
-          isCharging: Boolean(isCharging),
-          lastUpdated: typeof data.timestamp?.toMillis === 'function' 
-            ? data.timestamp.toMillis() 
-            : (typeof data.timestamp === 'number' ? data.timestamp : Date.now()),
+          ...parsed,
+          lastUpdated: typeof data.lastUpdated?.toMillis === 'function'
+            ? data.lastUpdated.toMillis()
+            : typeof data.timestamp?.toMillis === 'function' 
+              ? data.timestamp.toMillis() 
+              : (typeof data.lastUpdated === 'number' 
+                ? data.lastUpdated 
+                : (typeof data.timestamp === 'number' ? data.timestamp : Date.now())),
           source
         });
       }
     }
   };
 
-  try {
-    const childRef = doc(db, 'child_locations', uid);
-    unsubs.push(onSnapshot(childRef, (s) => handleDocSnap(s, 'child_locations'), () => {}));
-  } catch {}
+  // 1. Primary F2 Collection Channel: deviceBatteryStatus/{userId}
+  if (userId) {
+    try {
+      const batRef = doc(db, 'deviceBatteryStatus', userId);
+      unsubs.push(
+        onSnapshot(
+          batRef,
+          (s) => handleDocSnap(s, 'deviceBatteryStatus'),
+          (err) => console.warn('deviceBatteryStatus live stream notice:', err.message)
+        )
+      );
 
-  try {
-    const uidRef = doc(db, 'uid_locations', uid);
-    unsubs.push(onSnapshot(uidRef, (s) => handleDocSnap(s, 'uid_locations'), () => {}));
-  } catch {}
+      // Listen to latest historical telemetry entry in subcollection
+      const histQuery = query(
+        collection(db, 'deviceBatteryStatus', userId, 'history'),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
+      unsubs.push(
+        onSnapshot(
+          histQuery,
+          (qs) => {
+            if (!qs.empty) {
+              handleDocSnap(qs.docs[0], 'deviceBatteryStatus/history');
+            }
+          },
+          () => {}
+        )
+      );
+    } catch (e) {
+      console.warn('Subscribing to deviceBatteryStatus for userId:', e);
+    }
+  }
 
+  // 2. Secondary F2 Collection Channel: deviceBatteryStatus/{uid} (if uid differs from userId)
+  if (uid && uid !== userId) {
+    try {
+      const batUidRef = doc(db, 'deviceBatteryStatus', uid);
+      unsubs.push(
+        onSnapshot(
+          batUidRef,
+          (s) => handleDocSnap(s, 'deviceBatteryStatus'),
+          () => {}
+        )
+      );
+    } catch (e) {
+      console.warn('Subscribing to deviceBatteryStatus for uid:', e);
+    }
+  }
+
+  // 3. Fallback tracking channel: child_locations/{uid}
+  if (uid) {
+    try {
+      const childRef = doc(db, 'child_locations', uid);
+      unsubs.push(onSnapshot(childRef, (s) => handleDocSnap(s, 'child_locations'), () => {}));
+    } catch {}
+  }
+
+  // 4. Fallback tracking channel: uid_locations/{uid}
+  if (uid) {
+    try {
+      const uidRef = doc(db, 'uid_locations', uid);
+      unsubs.push(onSnapshot(uidRef, (s) => handleDocSnap(s, 'uid_locations'), () => {}));
+    } catch {}
+  }
+
+  // 5. Fallback user profile channel: users/{userId}
   if (userId) {
     try {
       const userRef = doc(db, 'users', userId);
@@ -442,13 +568,77 @@ export function subscribeToDatabaseBattery(
     } catch {}
   }
 
+  // Immediate proactive one-shot fetch for instantaneous zero-latency initialization
+  ensureFirebaseAuth().then(async () => {
+    if (userId) {
+      try {
+        const snap = await getDoc(doc(db, 'deviceBatteryStatus', userId));
+        if (snap.exists()) handleDocSnap(snap, 'deviceBatteryStatus');
+      } catch {}
+    }
+    if (uid && uid !== userId) {
+      try {
+        const snap = await getDoc(doc(db, 'deviceBatteryStatus', uid));
+        if (snap.exists()) handleDocSnap(snap, 'deviceBatteryStatus');
+      } catch {}
+    }
+  });
+
   return () => {
     unsubs.forEach((u) => u());
   };
 }
 
 /**
- * Updates the user's exact battery percentage in Firestore database
+ * One-shot fetch for battery telemetry from deviceBatteryStatus collection
+ */
+export async function fetchDeviceBatteryStatus(
+  userId: string | null,
+  uid?: string | null
+): Promise<LiveBatteryTelemetry | null> {
+  if (!isFirebaseConfigured || (!userId && !uid)) return null;
+
+  try {
+    await ensureFirebaseAuth();
+    if (userId) {
+      const devSnap = await getDoc(doc(db, 'deviceBatteryStatus', userId));
+      if (devSnap.exists()) {
+        const parsed = parseExactBattery(devSnap.data());
+        if (parsed.batteryLevel !== undefined) {
+          return {
+            ...parsed,
+            lastUpdated: typeof devSnap.data().lastUpdated?.toMillis === 'function'
+              ? devSnap.data().lastUpdated.toMillis()
+              : Date.now(),
+            source: 'deviceBatteryStatus'
+          };
+        }
+      }
+    }
+    if (uid) {
+      const uidSnap = await getDoc(doc(db, 'deviceBatteryStatus', uid));
+      if (uidSnap.exists()) {
+        const parsed = parseExactBattery(uidSnap.data());
+        if (parsed.batteryLevel !== undefined) {
+          return {
+            ...parsed,
+            lastUpdated: typeof uidSnap.data().lastUpdated?.toMillis === 'function'
+              ? uidSnap.data().lastUpdated.toMillis()
+              : Date.now(),
+            source: 'deviceBatteryStatus'
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error fetching device battery status:', e);
+  }
+  return null;
+}
+
+/**
+ * Updates the user's exact battery percentage in Firestore database across
+ * both legacy location documents and the new F2 'deviceBatteryStatus' collection
  */
 export async function updateBatteryInDatabase(
   uid: string,
@@ -476,6 +666,25 @@ export async function updateBatteryInDatabase(
       const userRef = doc(db, 'users', userId);
       await setDoc(userRef, payload, { merge: true });
     }
+
+    // Synchronize to the new F2 deviceBatteryStatus collection
+    const effectiveUserId = userId || uid;
+    const batteryStatusPayload = {
+      userId: effectiveUserId,
+      latestBattery: clamped,
+      batteryPercentage: clamped,
+      latestCharging: Boolean(isCharging),
+      isCharging: Boolean(isCharging),
+      lastUpdated: serverTimestamp()
+    };
+
+    if (userId) {
+      await setDoc(doc(db, 'deviceBatteryStatus', userId), batteryStatusPayload, { merge: true });
+    }
+    if (uid && uid !== userId) {
+      await setDoc(doc(db, 'deviceBatteryStatus', uid), batteryStatusPayload, { merge: true });
+    }
+
     return { success: true };
   } catch (err: any) {
     console.error('Error updating battery in database:', err);
@@ -519,8 +728,8 @@ export function subscribeToLocation(
           ? raw.timestamp 
           : Date.now();
 
-      // Strictly extract exact battery percentage from database fields
-      const { batteryLevel, isCharging } = parseExactBattery(raw);
+      // Strictly extract exact battery percentage and telemetry from database fields
+      const { batteryLevel, isCharging, temperature, voltage, deviceId, technology, chargingStatus } = parseExactBattery(raw);
 
       return {
         latitude: Number(lat),
@@ -535,7 +744,12 @@ export function subscribeToLocation(
         isSOSLocation: Boolean(raw.isSOSLocation),
         batteryLevel, // Exact database percentage (undefined if not reported in DB, never fake)
         networkStatus: raw.networkStatus ?? '4G',
-        isCharging
+        isCharging,
+        temperature,
+        voltage,
+        deviceId,
+        technology,
+        chargingStatus
       };
     };
 
