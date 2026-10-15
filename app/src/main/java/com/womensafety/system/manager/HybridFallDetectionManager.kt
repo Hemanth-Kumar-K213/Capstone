@@ -9,7 +9,11 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.util.Log
+import com.womensafety.system.data.model.FallDetection
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.log10
 import kotlin.math.sqrt
 
@@ -42,7 +46,46 @@ class HybridFallDetectionManager(private val context: Context) {
         private const val IMPACT_TIMEOUT_MS = 800L
         private const val IMMOBILITY_THRESHOLD = 2.5f // m/s² (gravity-adjusted)
         private const val CRASH_AUDIO_THRESHOLD_DB = 68.0 // dB
+
+        @Volatile
+        private var instance: HybridFallDetectionManager? = null
+
+        fun initialize(context: Context): HybridFallDetectionManager {
+            return instance ?: synchronized(this) {
+                instance ?: HybridFallDetectionManager(context.applicationContext).also { instance = it }
+            }
+        }
+
+        fun getInstance(): HybridFallDetectionManager? = instance
+
+        fun setSleepModeActive(active: Boolean) {
+            instance?.setSleepModeActive(active)
+        }
+
+        fun startFallMonitoring() {
+            instance?.startFallMonitoring()
+        }
+
+        fun stopFallMonitoring() {
+            instance?.stopFallMonitoring()
+        }
     }
+
+    var isSleepModeActive: Boolean = false
+        private set
+
+    fun setSleepModeActive(active: Boolean) {
+        isSleepModeActive = active
+        Log.d(TAG, "isSleepModeActive set to: $active")
+    }
+
+    private val _activeFallAlert = MutableStateFlow<FallDetection?>(null)
+    val activeFallAlert: StateFlow<FallDetection?> = _activeFallAlert.asStateFlow()
+
+    private val _fallCountdown = MutableStateFlow<Int?>(null)
+    val fallCountdown: StateFlow<Int?> = _fallCountdown.asStateFlow()
+
+    private var countdownJob: Job? = null
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
     private val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -57,6 +100,10 @@ class HybridFallDetectionManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Default)
     private var immobilityJob: Job? = null
     private var audioRecordThread: Thread? = null
+
+    init {
+        instance = this
+    }
 
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent?) {
@@ -113,7 +160,7 @@ class HybridFallDetectionManager(private val context: Context) {
     /**
      * Phase C: Verifies immobility 1-2 seconds after impact.
      * If the phone returns to resting stationary state (< 2.5 m/s² adjusted),
-     * the fall event is confirmed and escalates to EmergencyOverrideManager.
+     * the fall event is confirmed.
      */
     private fun scheduleImmobilityVerification(magnitudeAtImpact: Float) {
         immobilityJob?.cancel()
@@ -128,8 +175,83 @@ class HybridFallDetectionManager(private val context: Context) {
     }
 
     private fun triggerFallAlert(magnitude: Float) {
-        Log.w(TAG, "FALL CONFIRMED! Escalating to EmergencyOverrideManager with impact magnitude: $magnitude")
+        if (isSleepModeActive) {
+            Log.d(TAG, "Fall detected during SLEEPING mode -> Logged silently, suppressing alarm")
+            logFallEvent(silent = true, magnitude = magnitude)
+            return
+        }
+
+        Log.w(TAG, "FALL CONFIRMED in active mode! Starting 10-second confirmation countdown.")
+        val fall = com.womensafety.system.data.model.FallDetection(
+            timestamp = System.currentTimeMillis(),
+            deviceMovement = magnitude,
+            confidence = 0.90f
+        )
+        _activeFallAlert.value = fall
+
+        countdownJob?.cancel()
+        countdownJob = scope.launch {
+            for (i in 10 downTo 0) {
+                _fallCountdown.value = i
+                if (i == 0) {
+                    Log.e(TAG, "Fall countdown expired without user confirmation -> Triggering Unified SOS!")
+                    escalateFallToSOS(fall)
+                    break
+                }
+                delay(1000L)
+            }
+        }
+
+        // Also notify EmergencyOverrideManager if wired
         EmergencyOverrideManager.detectFall(magnitude)
+        logFallEvent(silent = false, magnitude = magnitude)
+    }
+
+    fun confirmSafe() {
+        Log.i(TAG, "User confirmed safe from fall.")
+        countdownJob?.cancel()
+        _activeFallAlert.value = null
+        _fallCountdown.value = null
+        EmergencyOverrideManager.confirmFallSafe()
+    }
+
+    fun cancelFallAlert() {
+        confirmSafe()
+    }
+
+    private fun escalateFallToSOS(fall: com.womensafety.system.data.model.FallDetection) {
+        _activeFallAlert.value = null
+        _fallCountdown.value = null
+
+        scope.launch {
+            com.womensafety.system.utils.SOSTriggerUtils.triggerSOS(
+                context = context,
+                triggerMethod = "FALL_DETECTION",
+                eventType = "FALL_DETECTED_EMERGENCY"
+            )
+        }
+    }
+
+    private fun logFallEvent(silent: Boolean, magnitude: Float) {
+        scope.launch {
+            try {
+                val authManager = com.womensafety.system.data.firebase.FirebaseAuthManager()
+                val uid = authManager.currentUserId ?: return@launch
+                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                db.collection("fallDetectionsLog")
+                    .document(uid)
+                    .collection("history")
+                    .document(System.currentTimeMillis().toString())
+                    .set(mapOf(
+                        "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                        "magnitude" to magnitude,
+                        "silent" to silent,
+                        "sleepModeActive" to isSleepModeActive
+                    ))
+            } catch (e: Exception) {
+                Log.w(TAG, "Error logging fall event: ${e.message}")
+            }
+        }
     }
 
     fun startFallMonitoring() {

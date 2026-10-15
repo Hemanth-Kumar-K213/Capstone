@@ -69,12 +69,23 @@ object ColleagueAwarenessManager {
     }
 
     fun startMonitoring(workplaceLatitude: Double, workplaceLongitude: Double) {
+        val uid = authManager.currentUserId ?: "user"
+        startColleagueMonitoring(uid, workplaceLatitude, workplaceLongitude)
+    }
+
+    fun startColleagueMonitoring(userId: String, workplaceLatitude: Double = 0.0, workplaceLongitude: Double = 0.0) {
+        Log.d("WORKING_MODE", "Starting colleague monitoring for $userId")
         detectionManager?.startWorkingModeMonitoring(workplaceLatitude, workplaceLongitude)
         refreshData()
     }
 
     fun stopMonitoring() {
+        Log.d("WORKING_MODE", "Stopping colleague monitoring")
         detectionManager?.stopWorkingModeMonitoring()
+    }
+
+    fun stopColleagueMonitoring() {
+        stopMonitoring()
     }
 
     fun refreshData() {

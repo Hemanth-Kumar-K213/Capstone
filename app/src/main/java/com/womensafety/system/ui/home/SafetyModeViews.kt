@@ -39,6 +39,7 @@ fun WorkingModeView(
     userProfile: UserProfile?,
     viewModel: UserHomeViewModel,
     onNavigateToSafety: () -> Unit,
+    onNavigateToBleDiagnostic: () -> Unit = {},
     colleagueViewModel: ColleagueAwarenessViewModel = viewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -96,6 +97,18 @@ fun WorkingModeView(
     var locationError by remember { mutableStateOf<String?>(null) }
 
     val isGpsEnabled = remember { TrinetraLocationManager.isGpsEnabled(context) }
+
+    LaunchedEffect(Unit) {
+        val lat = userProfile?.savedWorkplaceLatitude ?: 0.0
+        val lon = userProfile?.savedWorkplaceLongitude ?: 0.0
+        colleagueViewModel.startMonitoring(lat, lon)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            colleagueViewModel.stopMonitoring()
+        }
+    }
 
     LaunchedEffect(curLocation, isGpsEnabled) {
         if (!isGpsEnabled) {
@@ -261,7 +274,10 @@ fun WorkingModeView(
         }
 
         Spacer(modifier = Modifier.height(14.dp))
-        ColleagueAwarenessCard(viewModel = colleagueViewModel)
+        ColleagueAwarenessCard(
+            viewModel = colleagueViewModel,
+            onNavigateToBleDiagnostic = onNavigateToBleDiagnostic
+        )
     }
 }
 
@@ -281,6 +297,11 @@ fun SleepingModeView(
             android.Manifest.permission.ACCESS_COARSE_LOCATION
         )
     )
+
+    val isSleeping by sleepViewModel.isSleeping.collectAsState()
+    LaunchedEffect(isSleeping) {
+        com.womensafety.system.manager.HybridFallDetectionManager.setSleepModeActive(isSleeping)
+    }
 
     if (!permissionState.allPermissionsGranted) {
         AppCard {

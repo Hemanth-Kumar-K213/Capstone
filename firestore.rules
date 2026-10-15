@@ -411,6 +411,19 @@ service cloud.firestore {
 
 
     // ============================================================
+    // DEVICE BATTERY STATUS (5-MINUTE PERIODIC TELEMETRY)
+    // ============================================================
+
+    match /deviceBatteryStatus/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+
+      match /history/{doc=**} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+
+    // ============================================================
     // HELPER FUNCTIONS
     // ============================================================
 

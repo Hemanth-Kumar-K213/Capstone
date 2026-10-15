@@ -351,7 +351,7 @@ private fun CriticalEmergencyAlertDialog(
 }
 
 @Composable
-private fun FallDetectionCountdownDialog(
+fun FallDetectionCountdownDialog(
     countdownSeconds: Int,
     onConfirmSafe: () -> Unit,
     onTriggerHelp: () -> Unit
@@ -362,7 +362,7 @@ private fun FallDetectionCountdownDialog(
             Icon(Icons.Filled.Warning, contentDescription = null, tint = CoralRed, modifier = Modifier.size(40.dp))
         },
         title = {
-            Text("Fall Detected While Sleeping", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text("Fall Detected!", fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {

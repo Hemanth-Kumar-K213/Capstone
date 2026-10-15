@@ -1737,5 +1737,24 @@ class FirestoreManager {
             emptyList()
         }
     }
+
+    suspend fun addTrustedContact(currentUserId: String, contactUserId: String, contactName: String) {
+        try {
+            db.collection("trustedContacts")
+                .document(currentUserId)
+                .collection("contacts")
+                .document(contactUserId)
+                .set(mapOf(
+                    "userId" to contactUserId,
+                    "name" to contactName,
+                    "addedAt" to FieldValue.serverTimestamp(),
+                    "source" to "BLE_AUTO_DISCOVERY"
+                ), SetOptions.merge())
+                .await()
+            Log.d("FirestoreManager", "Auto-added trusted contact: $contactUserId ($contactName)")
+        } catch (e: Exception) {
+            Log.e("FirestoreManager", "Error adding trusted contact: ${e.message}", e)
+        }
+    }
 }
 

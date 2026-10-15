@@ -61,6 +61,15 @@ class WorkplaceBeaconManager(private val context: Context) {
         }
     }
 
+    fun startBeaconAdvertising(userId: String, userName: String): Boolean {
+        Log.d("BLE_BEACON", "Starting advertising for userId=$userId, userName=$userName")
+        return startWorkplaceBeacon(userId, userName, "WORKING")
+    }
+
+    fun stopBeaconAdvertising() {
+        stopWorkplaceBeacon()
+    }
+
     /**
      * Starts BLE advertising for coworker discovery.
      * Returns true if advertising initiated, false if Bluetooth disabled or unsupported.
@@ -71,14 +80,19 @@ class WorkplaceBeaconManager(private val context: Context) {
         status: String = "WORKING",
         onBluetoothDisabled: () -> Unit = {}
     ): Boolean {
+        Log.d("BLE_BEACON", "startWorkplaceBeacon called: userId=$userId, userName=$userName, status=$status")
         if (isAdvertising) {
-            Log.d(TAG, "Workplace beacon is already active")
+            Log.d("BLE_BEACON", "Workplace beacon is already active")
             return true
         }
 
         val adapter = bluetoothAdapter
-        if (adapter == null || !adapter.isEnabled) {
-            Log.w(TAG, "Bluetooth disabled. Prompting user to enable.")
+        if (adapter == null) {
+            Log.e("BLE_BEACON", "ERROR: Bluetooth adapter not available on device")
+            return false
+        }
+        if (!adapter.isEnabled) {
+            Log.e("BLE_BEACON", "ERROR: Bluetooth is disabled. Prompting user to enable.")
             onBluetoothDisabled()
             return false
         }
@@ -89,16 +103,18 @@ class WorkplaceBeaconManager(private val context: Context) {
                 Manifest.permission.BLUETOOTH_ADVERTISE
             ) == PackageManager.PERMISSION_GRANTED
             if (!hasPermission) {
-                Log.w(TAG, "BLUETOOTH_ADVERTISE permission not granted")
+                Log.e("BLE_BEACON", "ERROR: BLUETOOTH_ADVERTISE permission not granted")
                 return false
             }
         }
 
         bluetoothAdvertiser = adapter.bluetoothLeAdvertiser
         if (bluetoothAdvertiser == null) {
-            Log.w(TAG, "BLE advertising is not supported on this device hardware")
+            Log.e("BLE_BEACON", "ERROR: BLE advertiser is not supported on this device hardware")
             return false
         }
+
+        Log.d("BLE_BEACON", "SUCCESS: Bluetooth enabled and BLE advertiser acquired. Configuring packet payload...")
 
         try {
             val advertiseSettings = AdvertiseSettings.Builder()

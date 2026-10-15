@@ -32,7 +32,9 @@ import com.womensafety.system.manager.JourneyState
 import com.womensafety.system.manager.TravelModeManager
 import com.womensafety.system.ui.components.AppCard
 import com.womensafety.system.ui.theme.*
+import com.womensafety.system.utils.MapUtils
 import com.womensafety.system.viewmodel.TravelViewModel
+import kotlin.random.Random
 
 /**
  * Active Safe Journey navigation HUD screen powered by OpenStreetMap (OSMDroid).
@@ -292,9 +294,39 @@ fun ActiveJourneyScreen(
                     ) {
                         FilledTonalButton(
                             onClick = {
+                                val (fromWp, toWp) = if (routePoints.size >= 2) {
+                                    val cur = currentLocation ?: routePoints.first()
+                                    var nearestIdx = 0
+                                    var minDist = Double.MAX_VALUE
+                                    for (i in routePoints.indices) {
+                                        val dist = MapUtils.calculateDistanceMeters(
+                                            cur.latitude, cur.longitude,
+                                            routePoints[i].latitude, routePoints[i].longitude
+                                        )
+                                        if (dist < minDist) {
+                                            minDist = dist
+                                            nearestIdx = i
+                                        }
+                                    }
+                                    val startWp = routePoints[nearestIdx]
+                                    val nextWp = if (nearestIdx < routePoints.size - 1) {
+                                        routePoints[nearestIdx + 1]
+                                    } else {
+                                        destinationLocation ?: GeoPoint(startWp.latitude + 0.001, startWp.longitude + 0.001)
+                                    }
+                                    Pair(startWp, nextWp)
+                                } else {
+                                    val start = currentLocation ?: destinationLocation ?: GeoPoint(12.9736, 77.5966)
+                                    val end = destinationLocation ?: GeoPoint(start.latitude + 0.005, start.longitude + 0.005)
+                                    Pair(start, end)
+                                }
+
+                                val bearing = MapUtils.calculateBearing(fromWp, toWp)
+                                val offset = Random.nextDouble(5.0, 20.0)
+                                val simulatedPoint = MapUtils.movePointByDistance(fromWp, offset, bearing)
                                 val loc = UserLocation(
-                                    latitude = 12.9736,
-                                    longitude = 77.5966,
+                                    latitude = simulatedPoint.latitude,
+                                    longitude = simulatedPoint.longitude,
                                     speed = 6.0f,
                                     timestamp = System.currentTimeMillis()
                                 )
@@ -307,13 +339,46 @@ fun ActiveJourneyScreen(
                         }
                         FilledTonalButton(
                             onClick = {
+                                val (fromWp, toWp) = if (routePoints.size >= 2) {
+                                    val cur = currentLocation ?: routePoints.first()
+                                    var nearestIdx = 0
+                                    var minDist = Double.MAX_VALUE
+                                    for (i in routePoints.indices) {
+                                        val dist = MapUtils.calculateDistanceMeters(
+                                            cur.latitude, cur.longitude,
+                                            routePoints[i].latitude, routePoints[i].longitude
+                                        )
+                                        if (dist < minDist) {
+                                            minDist = dist
+                                            nearestIdx = i
+                                        }
+                                    }
+                                    val startWp = routePoints[nearestIdx]
+                                    val nextWp = if (nearestIdx < routePoints.size - 1) {
+                                        routePoints[nearestIdx + 1]
+                                    } else {
+                                        destinationLocation ?: GeoPoint(startWp.latitude + 0.001, startWp.longitude + 0.001)
+                                    }
+                                    Pair(startWp, nextWp)
+                                } else {
+                                    val start = currentLocation ?: destinationLocation ?: GeoPoint(12.9736, 77.5966)
+                                    val end = destinationLocation ?: GeoPoint(start.latitude + 0.005, start.longitude + 0.005)
+                                    Pair(start, end)
+                                }
+
+                                val bearing = MapUtils.calculateBearing(fromWp, toWp)
+                                val perpendicularBearing = (bearing + 90.0) % 360.0
+                                val offset = Random.nextDouble(350.0, 450.0)
+                                val simulatedPoint = MapUtils.movePointByDistance(fromWp, offset, perpendicularBearing)
                                 val loc = UserLocation(
-                                    latitude = 12.9856,
-                                    longitude = 77.5800,
+                                    latitude = simulatedPoint.latitude,
+                                    longitude = simulatedPoint.longitude,
                                     speed = 5.0f,
                                     timestamp = System.currentTimeMillis()
                                 )
-                                TravelModeManager.onLocationUpdated(loc)
+                                repeat(3) {
+                                    TravelModeManager.onLocationUpdated(loc)
+                                }
                             },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp)

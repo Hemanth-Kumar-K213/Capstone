@@ -19,7 +19,9 @@ enum class SOSTriggerMethod {
     BUTTON,        // Manual SOS button press
     SHAKE,         // Shake detection sensor
     AUTO,          // Automated sensor trigger
-    VOICE          // Voice command trigger
+    VOICE,         // Voice command trigger
+    FALL,          // 3-phase fall detection trigger
+    ROUTE_DEVIATION // Unresponsive route deviation trigger
 }
 
 /**

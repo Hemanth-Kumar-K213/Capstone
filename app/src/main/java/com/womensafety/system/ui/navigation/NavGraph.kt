@@ -385,6 +385,9 @@ fun AppNavGraph(
                     onNavigateToDiagnostic = {
                         navController.navigate(AccelerometerDiagnosticScreen)
                     },
+                    onNavigateToBleDiagnostic = {
+                        navController.navigate(BleDiscoveryTestScreen)
+                    },
                     onNavigateToContacts = {
                         navController.navigate(UserContacts) {
                             popUpTo(navController.graph.startDestinationId) {
@@ -672,6 +675,12 @@ fun AppNavGraph(
 
             composable<AccelerometerDiagnosticScreen> {
                 com.womensafety.system.ui.safety.AccelerometerDiagnosticScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<BleDiscoveryTestScreen> {
+                com.womensafety.system.ui.safety.BleDiscoveryTestScreen(
                     onBack = { navController.popBackStack() }
                 )
             }

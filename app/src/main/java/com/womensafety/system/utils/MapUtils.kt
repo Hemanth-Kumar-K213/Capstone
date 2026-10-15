@@ -74,4 +74,41 @@ object MapUtils {
             })
         }
     }
+
+    /**
+     * Projects a GeoPoint by a given distance in meters along a specified bearing in degrees.
+     */
+    fun movePointByDistance(startPoint: GeoPoint, distanceMeters: Double, bearingDegrees: Double): GeoPoint {
+        val lat1 = Math.toRadians(startPoint.latitude)
+        val lon1 = Math.toRadians(startPoint.longitude)
+        val d = distanceMeters / (EARTH_RADIUS_KM * 1000.0) // Angular distance in radians
+        val bearing = Math.toRadians(bearingDegrees)
+
+        val lat2 = asin(
+            sin(lat1) * cos(d) +
+            cos(lat1) * sin(d) * cos(bearing)
+        )
+
+        val lon2 = lon1 + atan2(
+            sin(bearing) * sin(d) * cos(lat1),
+            cos(d) - sin(lat1) * sin(lat2)
+        )
+
+        return GeoPoint(Math.toDegrees(lat2), Math.toDegrees(lon2))
+    }
+
+    /**
+     * Calculates the initial bearing (forward azimuth) from one GeoPoint to another in degrees [0, 360).
+     */
+    fun calculateBearing(from: GeoPoint, to: GeoPoint): Double {
+        val lat1 = Math.toRadians(from.latitude)
+        val lat2 = Math.toRadians(to.latitude)
+        val dLon = Math.toRadians(to.longitude - from.longitude)
+
+        val y = sin(dLon) * cos(lat2)
+        val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+
+        val bearing = Math.toDegrees(atan2(y, x))
+        return (bearing + 360.0) % 360.0
+    }
 }

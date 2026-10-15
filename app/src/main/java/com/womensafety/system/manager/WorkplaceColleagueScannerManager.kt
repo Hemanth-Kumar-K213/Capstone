@@ -115,18 +115,24 @@ class WorkplaceColleagueScannerManager(
             }
             lastProcessTimes[discoveredUserId] = now
 
-            // Step 2: Validate against approved trusted contacts in Firestore
+            // Step 2: Validate against approved trusted contacts in Firestore (Auto-trust on first discovery)
             scope.launch {
                 val isApproved = isContactApproved(currentUserId, discoveredUserId)
                 if (!isApproved) {
-                    Log.d(TAG, "Ignoring beacon from unapproved contact $discoveredUserId for privacy")
-                    return@launch
+                    Log.d("BLE_SCAN", "Auto-adding $discoveredUserId ($discoveredUserName) to trustedContacts on first discovery")
+                    try {
+                        firestoreManager.addTrustedContact(currentUserId, discoveredUserId, discoveredUserName)
+                        approvedContactsCache[discoveredUserId] = true
+                    } catch (e: Exception) {
+                        Log.w("BLE_SCAN", "Failed auto-adding trusted contact: ${e.message}")
+                    }
                 }
 
                 // Step 3a: Calculate distance from RSSI: 10^((txPower - RSSI) / (10 * n))
                 val rssi = result.rssi
                 val distanceMeters = calculateDistance(rssi)
                 if (distanceMeters > MAX_DISTANCE_METERS) {
+                    Log.d("BLE_SCAN", "Beacon out of range (${distanceMeters}m > ${MAX_DISTANCE_METERS}m) for $discoveredUserName")
                     return@launch
                 }
 
@@ -154,10 +160,10 @@ class WorkplaceColleagueScannerManager(
                 discoveredColleagues[discoveredUserId] = colleague
                 onColleagueDiscovered(colleague)
                 onColleaguesUpdate(discoveredColleagues.values.toList())
-                Log.d(TAG, "Discovered colleague via BLE: $discoveredUserName (${distanceMeters.toInt()}m, RSSI $rssi)")
+                Log.d("BLE_SCAN", "Successfully added colleague to list: $discoveredUserName (${distanceMeters.toInt()}m, RSSI $rssi dBm)")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error decoding colleague beacon payload", e)
+            Log.e("BLE_SCAN", "Error decoding colleague beacon payload", e)
         }
     }
 
@@ -203,12 +209,19 @@ class WorkplaceColleagueScannerManager(
         return distance.coerceAtLeast(0.5f)
     }
 
-    fun startScanning() {
-        if (isScanning) return
+    fun startScanning(currentUserId: String? = null) {
+        if (isScanning) {
+            Log.d("BLE_SCAN", "Scanner is already running")
+            return
+        }
 
         val adapter = bluetoothAdapter
-        if (adapter == null || !adapter.isEnabled) {
-            Log.w(TAG, "Bluetooth is disabled or unavailable")
+        if (adapter == null) {
+            Log.e("BLE_SCAN", "BluetoothAdapter is null")
+            return
+        }
+        if (!adapter.isEnabled) {
+            Log.e("BLE_SCAN", "Bluetooth is disabled. Cannot start BLE scanning.")
             return
         }
 
@@ -218,14 +231,14 @@ class WorkplaceColleagueScannerManager(
                 Manifest.permission.BLUETOOTH_SCAN
             ) == PackageManager.PERMISSION_GRANTED
             if (!hasScan) {
-                Log.w(TAG, "BLUETOOTH_SCAN permission not granted")
+                Log.e("BLE_SCAN", "BLUETOOTH_SCAN permission not granted")
                 return
             }
         }
 
         val scanner = adapter.bluetoothLeScanner
         if (scanner == null) {
-            Log.w(TAG, "bluetoothLeScanner is null")
+            Log.e("BLE_SCAN", "bluetoothLeScanner is null")
             return
         }
 
@@ -239,11 +252,16 @@ class WorkplaceColleagueScannerManager(
                 .setReportDelay(0)
                 .build()
 
-            scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            try {
+                scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            } catch (e: Exception) {
+                Log.w("BLE_SCAN", "Filtered scan failed, trying unfiltered scan: ${e.message}")
+                scanner.startScan(scanCallback)
+            }
             isScanning = true
-            Log.d(TAG, "Started continuous workplace colleague BLE scanner")
+            Log.d("BLE_SCAN", "Scanning started successfully for user: ${currentUserId ?: authManager.currentUserId}")
         } catch (e: Exception) {
-            Log.e(TAG, "Exception starting colleague BLE scan", e)
+            Log.e("BLE_SCAN", "Exception starting colleague BLE scan", e)
         }
     }
 

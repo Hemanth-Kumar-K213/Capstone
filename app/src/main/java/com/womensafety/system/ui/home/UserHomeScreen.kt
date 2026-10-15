@@ -72,6 +72,7 @@ fun UserHomeScreen(
     onNavigateToContacts: () -> Unit = {},
     onNavigateToRoutine: () -> Unit = {},
     onNavigateToDiagnostic: () -> Unit = {},
+    onNavigateToBleDiagnostic: () -> Unit = {},
     routineViewModel: RoutineMonitoringViewModel = viewModel()
 ) {
     val state by viewModel.homeState.collectAsState()
@@ -100,6 +101,21 @@ fun UserHomeScreen(
         if (state.userProfile != null && state.userProfile?.locationTrackingEnabled != false && !LocationTrackingService.isRunning) {
             LocationTrackingService.startTracking(context)
         }
+    }
+
+    val fallDetector = com.womensafety.system.manager.HybridFallDetectionManager.getInstance()
+    val globalFallAlert by (fallDetector?.activeFallAlert?.collectAsState() ?: remember { mutableStateOf(null) })
+    val globalFallCountdown by (fallDetector?.fallCountdown?.collectAsState() ?: remember { mutableStateOf(null) })
+
+    if (globalFallAlert != null && globalFallCountdown != null) {
+        com.womensafety.system.ui.safety.FallDetectionCountdownDialog(
+            countdownSeconds = globalFallCountdown!!,
+            onConfirmSafe = { fallDetector?.confirmSafe() },
+            onTriggerHelp = {
+                fallDetector?.cancelFallAlert()
+                onNavigateToSafety()
+            }
+        )
     }
 
     if (state.isLoading && state.userProfile == null) {
@@ -556,7 +572,8 @@ fun UserHomeScreen(
                 WorkingModeView(
                     userProfile = state.userProfile,
                     viewModel = viewModel,
-                    onNavigateToSafety = onNavigateToSafety
+                    onNavigateToSafety = onNavigateToSafety,
+                    onNavigateToBleDiagnostic = onNavigateToBleDiagnostic
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }

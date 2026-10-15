@@ -73,8 +73,8 @@ object EmergencyOverrideManager {
             _currentSession.value = session
             callTimestamps.clear()
             callOverrideManager?.startCallMonitoring()
-            fallDetectionManager?.startFallMonitoring()
-            Log.d(TAG, "Sleep mode activated. Hardware call override & hybrid fall detector armed.")
+            HybridFallDetectionManager.setSleepModeActive(true)
+            Log.d(TAG, "Sleep mode activated. Hardware call override armed; fall detection muted for sleep.")
         }
     }
 
@@ -87,7 +87,7 @@ object EmergencyOverrideManager {
         _fallAlert.value = null
         _fallCountdown.value = null
         callOverrideManager?.stopCallMonitoring()
-        fallDetectionManager?.stopFallMonitoring()
+        HybridFallDetectionManager.setSleepModeActive(false)
         dismissCriticalAlert()
 
         scope.launch {
@@ -96,7 +96,7 @@ object EmergencyOverrideManager {
                 val ended = repository.endSleepSession(session)
                 _lastSleepQuality.value = ended.quality
                 _currentSession.value = null
-                Log.d(TAG, "Sleep mode ended. Sleep quality evaluated: ${ended.quality}")
+                Log.d(TAG, "Sleep mode ended. Sleep quality evaluated: ${ended.quality}. Fall detection active.")
             }
         }
     }
@@ -226,22 +226,14 @@ object EmergencyOverrideManager {
             reason = "UNRESPONSIVE_FALL"
         )
 
-        // Dispatch SMS alert to emergency contacts
-        val uid = authManager.currentUserId
-        if (!uid.isNullOrBlank()) {
-            val profile = userRepository.getUserProfile(uid).getOrNull()
-            val userName = profile?.name?.ifBlank { "User" } ?: "User"
-            val phone = profile?.emergencyContacts?.firstOrNull { it.isPrimary }?.phone
-                ?: profile?.emergencyContacts?.firstOrNull()?.phone
-
-            if (!phone.isNullOrBlank()) {
-                val smsBody = "🚨 CRITICAL FALL ALERT 🚨\n" +
-                        "A potential fall was detected for $userName during sleep mode with no response after 10 seconds. " +
-                        "Please check on them immediately!\n" +
-                        "Sent automatically from Trinetra Sleep Protection."
-
-                TwoFactorClient.sendTransactionalSms(phone, smsBody)
-            }
+        val context = appContext
+        if (context != null) {
+            com.womensafety.system.utils.SOSTriggerUtils.triggerSOS(
+                context = context,
+                userId = authManager.currentUserId,
+                triggerMethod = "FALL_DETECTION",
+                eventType = "FALL_DETECTED_EMERGENCY"
+            )
         }
     }
 

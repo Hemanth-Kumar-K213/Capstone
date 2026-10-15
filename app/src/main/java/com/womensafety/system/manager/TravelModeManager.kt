@@ -352,7 +352,12 @@ object TravelModeManager {
 
         appContext?.let { context ->
             serviceScope.launch {
-                SOSManager.triggerSOS(context, SOSTriggerMethod.AUTO)
+                com.womensafety.system.utils.SOSTriggerUtils.triggerSOS(
+                    context = context,
+                    userId = authManager.currentUserId,
+                    triggerMethod = "ROUTE_DEVIATION",
+                    eventType = "TRAVEL_DEVIATION_UNRESPONSIVE"
+                )
             }
         }
 

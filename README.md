@@ -239,6 +239,11 @@ Backend & Cloud Functions (Firebase Auth, Cloud Firestore, 2Factor SMS REST API)
 ### 12. Diagnostic & Testing Tools
 - **LocationTestScreen**: Real-time GPS diagnostics showing latitude, longitude, altitude, accuracy, speed, bearing, provider status, OpenStreetMap readiness, and live map preview fix.
 - **MapTestScreen**: OpenStreetMap (OSMDroid) rendering validation for markers, camera controls, and zoom levels.
+- **BleDiscoveryTestScreen (`BleDiscoveryTestScreen.kt`)**: Dedicated BLE colleague diagnostic screen with 30s scan controls, active beacon advertising status, live discovered colleague cards with RSSI and distance telemetry, and live logcat window.
+- **Battery Telemetry Engine (`BatteryMonitoringManager.kt`)**: Periodic 5-minute background telemetry collector monitoring battery percentage, charging state, temperature, voltage, and health, synced to Firestore (`/deviceBatteryStatus/{userId}`).
+- **Unified SOS Trigger Pipeline (`SOSTriggerUtils.kt`)**: Centralized emergency escalation handler unifying manual SOS, route deviations, and unacknowledged fall detection events into a single resilient pipeline.
+- **All-Mode Fall Detection with Sleep Muting (`HybridFallDetectionManager.kt`)**: Runs 3-phase nocturnal and daytime fall detection continuously across Regular, Working, and Travel modes while automatically muting false positives during Sleep Mode.
+- **Dynamic Travel Route Simulator (`ActiveJourneyScreen.kt`)**: Route simulation engine dynamically calculating on-path progression and perpendicular route deviations (>300m) relative to actual navigation waypoints using `MapUtils`.
 - **Capstone Scenario Simulator**: In-app test harness simulating composite risk conditions (Route Deviation + Late Night + Heart Rate Panic Spike) to verify automated safety escalation.
 
 ### 13. User Profile & Home UI Enhancements

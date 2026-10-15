@@ -46,6 +46,7 @@ import com.womensafety.system.viewmodel.ColleagueAwarenessViewModel
 @Composable
 fun ColleagueAwarenessCard(
     viewModel: ColleagueAwarenessViewModel,
+    onNavigateToBleDiagnostic: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -200,6 +201,13 @@ fun ColleagueAwarenessCard(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Colleague Presence & Safety Buddy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Text("BLE • 500m Geofence • Mutual Protection", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = onNavigateToBleDiagnostic) {
+                        Icon(
+                            imageVector = Icons.Default.BluetoothSearching,
+                            contentDescription = "BLE Diagnostic Tool",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 

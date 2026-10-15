@@ -114,6 +114,9 @@ object SafetyMonitoringManager {
             _modeSuggestion.value = null
         }
 
+        // Sync sleep mode state with HybridFallDetectionManager (falls muted only in SLEEPING mode)
+        HybridFallDetectionManager.setSleepModeActive(mode == SafetyMode.SLEEPING)
+
         // Dynamically adjust location tracking interval based on safety mode
         appContext?.let { context ->
             val hasLocationPermission = androidx.core.content.ContextCompat.checkSelfPermission(
