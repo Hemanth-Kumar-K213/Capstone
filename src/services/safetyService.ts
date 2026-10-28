@@ -918,7 +918,7 @@ export function subscribeToLocation(
       altitude: 10.0,
       status: 'ONLINE',
       isSOSLocation: false,
-      batteryLevel: 92,
+      batteryLevel: undefined,
       networkStatus: '5G'
     };
 

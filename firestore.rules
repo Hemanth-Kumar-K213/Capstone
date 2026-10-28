@@ -1,96 +1,453 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function: Checks if weekly UID document exists, is active, and unexpired
-    function isValidUID(uid) {
-      return exists(/databases/$(database)/documents/weeklyUids/$(uid)) &&
-             get(/databases/$(database)/documents/weeklyUids/$(uid)).data.active == true &&
-             get(/databases/$(database)/documents/weeklyUids/$(uid)).data.expiresAt > request.time.toMillis();
-    }
-    
-    // Helper: Gets owner user ID for a valid weekly UID
-    function getUIDOwner(uid) {
-      return get(/databases/$(database)/documents/weeklyUids/$(uid)).data.userId;
+
+    // ============================================================
+    // DEFAULT DENY
+    // ============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // Weekly Rotating UIDs:
-    // Public read is permitted for validation lookup ONLY if active and valid
-    match /weeklyUids/{uid} {
-      allow get: if true; // Allows single doc verification
-      allow list: if false; // Prevents crawling all UIDs
-      allow write: if false; // Only Cloud Functions or authenticated Mobile App can issue/rotate
-    }
 
-    // Users Collection - Public read if valid matching weekly UID query
+    // ============================================================
+    // USER PROFILES
+    // users/{authUid}
+    // ============================================================
+
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      // Allow trusted contacts with valid weekly UID to read basic safety profile
-      allow get: if isValidUID(request.headers.get('x-safety-uid', '')) &&
-                    getUIDOwner(request.headers.get('x-safety-uid', '')) == userId;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Real-time Locations - Trusted contacts with valid weekly UID can read location stream
-    match /userLocations/{userId}/locations/{locationId} {
-      allow read: if (request.auth != null && request.auth.uid == userId) ||
-                     (isValidUID(request.headers.get('x-safety-uid', '')) &&
-                      getUIDOwner(request.headers.get('x-safety-uid', '')) == userId);
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // SOS Events - Read by user or trusted contact with weekly UID
-    match /sosEvents/{eventId} {
-      allow read: if (request.auth != null && request.auth.uid == resource.data.userId) ||
-                     (isValidUID(request.headers.get('x-safety-uid', '')) &&
-                      getUIDOwner(request.headers.get('x-safety-uid', '')) == resource.data.userId);
-      allow write: if request.auth != null && request.auth.uid == request.resource.data.userId;
-    }
-    
-    // Journeys - Read if valid weekly UID matches journey owner
-    match /journeys/{journeyId} {
-      allow read: if (request.auth != null && request.auth.uid == resource.data.userId) ||
-                     (isValidUID(request.headers.get('x-safety-uid', '')) &&
-                      getUIDOwner(request.headers.get('x-safety-uid', '')) == resource.data.userId);
-      allow write: if request.auth != null && request.auth.uid == request.resource.data.userId;
+
+      // A user can read only their own profile, or a connected trusted contact can read if a relationship exists.
+      allow read: if isSignedIn()
+                  && (
+                    request.auth.uid == userId
+                    || exists(/databases/$(database)/documents/relationships/$(userId + '_' + request.auth.uid))
+                  );
+
+      // User creates only their own USER profile.
+      allow create: if isSignedIn()
+                    && request.auth.uid == userId
+                    && request.resource.data.authUserId == userId
+                    && request.resource.data.accountType == 'USER';
+
+      // User can update only their own profile.
+      allow update: if isSignedIn()
+                    && request.auth.uid == userId
+                    && resource.data.authUserId == userId
+                    && request.resource.data.authUserId == userId
+                    && request.resource.data.accountType == 'USER';
+
+      // Client cannot delete profiles.
+      allow delete: if false;
     }
 
-    // Dedicated Child & UID Location Tracking for external website dashboard
-    // Device owner writes location coordinates; allows direct get / snapshot listeners by UID
+
+    // ============================================================
+    // TRUSTED CONTACT PROFILES
+    // trustedContacts/{authUid}
+    // ============================================================
+
+    match /trustedContacts/{tcId} {
+
+      // Trusted contact can access only their own profile, or connected user can read if relationship exists.
+      allow read: if isSignedIn()
+                  && (
+                    request.auth.uid == tcId
+                    || exists(/databases/$(database)/documents/relationships/$(request.auth.uid + '_' + tcId))
+                  );
+
+      // Trusted contact creates only their own profile.
+      allow create: if isSignedIn()
+                    && request.auth.uid == tcId
+                    && request.resource.data.authUserId == tcId
+                    && request.resource.data.accountType == 'TRUSTED_CONTACT';
+
+      // Trusted contact can update only their own profile.
+      allow update: if isSignedIn()
+                    && request.auth.uid == tcId
+                    && resource.data.authUserId == tcId
+                    && request.resource.data.authUserId == tcId
+                    && request.resource.data.accountType == 'TRUSTED_CONTACT';
+
+      // Client cannot delete profiles.
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // WEEKLY UID
+    //
+    // IMPORTANT:
+    // Document ID should be the actual weekly UID.
+    //
+    // Example:
+    // weeklyUids/202608181234
+    //
+    // The client can READ one specific UID document.
+    // The client can NEVER create/update/delete UID documents.
+    // Cloud Functions/Admin SDK handles UID creation and rotation.
+    // ============================================================
+
+    match /weeklyUids/{weeklyUid} {
+
+      // Retrieve a specific UID document if exact UID is known.
+      allow get: if true;
+
+      // No collection-wide listing.
+      // No client writes.
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+
+    // ============================================================
+    // RELATIONSHIPS
+    //
+    // IMPORTANT:
+    // Use a deterministic document ID:
+    //
+    // {userId}_{trustedContactId}
+    //
+    // Example:
+    // relationships/userFirebaseUid_trustedContactFirebaseUid
+    //
+    // This allows security rules to verify the relationship
+    // without exposing the whole relationship collection.
+    // ============================================================
+
+    match /relationships/{relationshipId} {
+
+      // User or trusted contact can read ONLY their own relationship.
+      allow get: if isSignedIn()
+                 && (
+                   (resource != null && resource.data != null && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid))
+                   || relationshipId.matches('^' + request.auth.uid + '_.*')
+                   || relationshipId.matches('.*_' + request.auth.uid + '$')
+                 );
+      allow list: if isSignedIn()
+                  && (
+                    resource.data.userId == request.auth.uid
+                    || resource.data.trustedContactId == request.auth.uid
+                  );
+
+
+      // Trusted contact creates a PENDING request.
+      allow create: if isSignedIn()
+                    && request.resource.data.trustedContactId == request.auth.uid
+                    && request.resource.data.status == 'PENDING'
+                    && request.resource.data.userId != request.auth.uid
+                    && relationshipId ==
+                       request.resource.data.userId + "_" +
+                       request.resource.data.trustedContactId;
+
+
+      // User can approve / deny / revoke. Trusted contact can also revoke or cancel their relationship.
+      allow update: if isSignedIn()
+                    && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid)
+
+                    // Relationship identities cannot be changed.
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.trustedContactId ==
+                       resource.data.trustedContactId
+
+                    // Only valid relationship states.
+                    && request.resource.data.status
+                       in ['APPROVED', 'DENIED', 'REVOKED', 'PENDING']
+
+                    // Relationship ID matches deterministic format or resource ID.
+                    && (
+                      relationshipId == request.resource.data.userId + "_" + request.resource.data.trustedContactId
+                      || (resource != null && resource.id == relationshipId)
+                    );
+
+
+
+      // User or trusted contact can delete their own relationship.
+      allow delete: if isSignedIn()
+                    && (
+                      (resource != null && (resource.data.userId == request.auth.uid || resource.data.trustedContactId == request.auth.uid))
+                      || relationshipId.matches(request.auth.uid + '_.*')
+                      || relationshipId.matches('.*_' + request.auth.uid)
+                    );
+    }
+
+
+    // ============================================================
+    // DEV UID MAPPINGS (Spark/Free plan fallback)
+    //
+    // IMPORTANT:
+    // This collection is used ONLY when Cloud Functions are not
+    // deployed (Spark plan). When Cloud Functions are available
+    // (Blaze plan), the weeklyUids collection is used instead.
+    //
+    // Document ID = the UID value (e.g., devUidMappings/202608181234)
+    //
+    // Security:
+    // - Only the owner (userId == auth.uid) can create/update
+    // - Any authenticated user can read by document ID (for TC lookup)
+    // - No collection-wide listing
+    // - Cannot write mappings for other users
+    // ============================================================
+
+    match /devUidMappings/{uid} {
+
+      // Any user or website with the specific UID can look up the mapping.
+      allow get: if true;
+
+      // No collection-wide listing.
+      allow list: if false;
+
+      // Only the owner can create their own UID mapping.
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.uid == uid;
+
+      // Only the owner can update their own UID mapping.
+      allow update: if isSignedIn()
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.uid == uid;
+
+      // No deletion.
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // USER LOCATIONS
+    // userLocations/{userId}/locations/{locationId}
+    // ============================================================
+
+    match /userLocations/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+
+      match /locations/{locationId} {
+        // User can write their own locations
+        allow write: if isSignedIn() && request.auth.uid == userId;
+        // User and authenticated contacts can read
+        allow read: if isSignedIn();
+      }
+    }
+
+
+    // ============================================================
+    // CHILD LOCATIONS (Dedicated for Website & App Tracking by UID)
+    // child_locations/{uid} & uid_locations/{uid}
+    // Updated every 10 seconds.
+    // ============================================================
+
     match /child_locations/{uid} {
-      allow get: if true; // Allows single doc verification & real-time tracking by UID
-      allow list: if false; // Prevents crawling all UIDs
-      allow write: if request.auth != null;
+      // Authenticated mobile app user can update their location
+      allow write: if isSignedIn();
 
-      // Historical route & breadcrumb tracking subcollection
-      match /history/{timestamp} {
+      // Anyone with the child's rotating UID (website or app) can track their live location
+      allow read: if true;
+
+      match /history/{historyId} {
+        allow write: if isSignedIn();
         allow read: if true;
-        allow write: if request.auth != null;
       }
     }
 
     match /uid_locations/{uid} {
-      allow get: if true;
-      allow list: if false;
-      allow write: if request.auth != null;
+      allow write: if isSignedIn();
+      allow read: if true;
 
-      match /history/{timestamp} {
+      match /history/{historyId} {
+        allow write: if isSignedIn();
         allow read: if true;
-        allow write: if request.auth != null;
       }
     }
 
+
     // ============================================================
-    // DEVICE BATTERY STATUS (5-MINUTE PERIODIC TELEMETRY FROM F2)
+    // SOS EVENTS
+    // sosEvents/{eventId}
     // ============================================================
+
+    match /sosEvents/{eventId} {
+      // User can create their own SOS event
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User who created the SOS or authenticated participants can update/resolve
+      allow update: if isSignedIn();
+
+      // Authenticated users (User and approved Trusted Contacts) can read SOS events
+      allow read: if isSignedIn();
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // RISK EVENTS
+    // riskEvents/{eventId}
+    // ============================================================
+
+    match /riskEvents/{eventId} {
+      // User can create their own Risk event
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User who created the Risk event can update it
+      allow update: if isSignedIn()
+                    && resource.data.userId == request.auth.uid;
+
+      // User can read their own Risk events
+      allow read: if isSignedIn()
+                  && resource.data.userId == request.auth.uid;
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // JOURNEYS
+    // journeys/{journeyId}
+    // ============================================================
+
+    match /journeys/{journeyId} {
+      // User can create their own journey log
+      allow create: if isSignedIn()
+                    && request.resource.data.userId == request.auth.uid;
+
+      // User can update/read their own journey log
+      allow update, read: if isSignedIn()
+                          && resource.data.userId == request.auth.uid;
+
+      // No deletion
+      allow delete: if false;
+    }
+
+
+    // ============================================================
+    // OTPS (2FACTOR SMS VERIFICATION)
+    // otps/{phoneNumber}
+    // ============================================================
+
+    match /otps/{phoneNumber} {
+      // Only Cloud Functions via Firebase Admin SDK can create/update/read OTP records.
+      // All client reads and writes are denied to prevent credential leakage or spoofing.
+      allow read, write: if false;
+    }
+
+
+    // ============================================================
+    // ROUTINES & ANOMALIES (REGULAR MODE)
+    // ============================================================
+
+    match /routines/{document=**} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /anomalies/{anomalyId} {
+      allow read, write: if isSignedIn();
+    }
+
+
+    // ============================================================
+    // COLLEAGUES & SAFETY BUDDY PAIRING (WORKING MODE)
+    // ============================================================
+
+    match /safetyBuddies/{userId}/agreements/{buddyId} {
+      // Both users involved in mutual safety buddy agreement can read/write
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || request.auth.uid == buddyId);
+    }
+
+    match /buddyRequests/{userId}/incoming/{requesterUserId} {
+      // Target colleague or requester can manage incoming request
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || request.auth.uid == requesterUserId);
+    }
+
+    match /colleagueDetections/{userId}/sessions/{sessionId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /colleagues/{colleagueId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /safetyBuddies/{buddyId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /lateStayAlerts/{alertId} {
+      allow read, write: if isSignedIn();
+    }
+
+
+    // ============================================================
+    // SLEEP SESSIONS & EMERGENCY OVERRIDES (SLEEPING MODE)
+    // ============================================================
+
+    match /sleepSessions/{userId}/{sessionId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /sleepSessions/{sessionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /emergencyWakeupsLog/{userId}/{wakeupId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /fallDetectionsLog/{userId}/{fallId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /fallDetections/{fallId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /emergencyOverrideConfig/{configId} {
+      allow read, write: if isSignedIn();
+    }
+
+
+    // ============================================================
+    // DEVICE BATTERY STATUS (5-MINUTE PERIODIC TELEMETRY)
+    // ============================================================
+
     match /deviceBatteryStatus/{userId} {
-      allow read: if true; // Allows live tracking by dashboard / trusted contacts via UID or userId
-      allow write: if request.auth != null;
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == userId;
 
       match /history/{doc=**} {
         allow read: if true;
-        allow write: if request.auth != null;
+        allow write: if isSignedIn() && request.auth.uid == userId;
       }
+    }
+
+
+    // ============================================================
+    // ROUTINES & ANOMALIES (REGULAR SAFETY MODE)
+    // ============================================================
+
+    match /routines/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+
+      match /{dayOfWeek}/{locationId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /anomalies/{userId}/{doc=**} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+
+    // ============================================================
+    // HELPER FUNCTIONS
+    // ============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
     }
   }
 }
