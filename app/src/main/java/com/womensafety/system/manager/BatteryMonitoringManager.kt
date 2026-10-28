@@ -77,6 +77,35 @@ object BatteryMonitoringManager {
         Log.d(TAG, "Stopped battery monitoring")
     }
 
+    /**
+     * Reads the immediate live battery percentage directly from system broadcast receiver.
+     */
+    fun getCurrentBatteryPercentage(context: Context? = null): Int {
+        val ctx = context ?: appContext
+        if (ctx == null) return 100
+        val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val batteryIntent = ctx.registerReceiver(null, ifilter)
+        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        return if (level >= 0 && scale > 0) {
+            ((level / scale.toFloat()) * 100).toInt().coerceIn(0, 100)
+        } else {
+            100
+        }
+    }
+
+    /**
+     * Checks if the device is currently plugged in and charging.
+     */
+    fun isDeviceCharging(context: Context? = null): Boolean {
+        val ctx = context ?: appContext ?: return false
+        val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val batteryIntent = ctx.registerReceiver(null, ifilter)
+        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        return status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+    }
+
     private fun getBatteryStatus(context: Context, userId: String): BatteryStatus {
         val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val batteryIntent = context.registerReceiver(null, ifilter)

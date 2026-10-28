@@ -994,7 +994,10 @@ class FirestoreManager {
                 put("lng", location.longitude)
                 put("name", location.userName)
                 put("childName", location.userName)
-                put("batteryLevel", 90)
+                val currentBattery = com.womensafety.system.manager.BatteryMonitoringManager.getCurrentBatteryPercentage()
+                val isCharging = com.womensafety.system.manager.BatteryMonitoringManager.isDeviceCharging()
+                put("batteryLevel", currentBattery)
+                put("isCharging", isCharging)
                 put("networkStatus", "ONLINE")
             }
 

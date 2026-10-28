@@ -415,10 +415,12 @@ service cloud.firestore {
     // ============================================================
 
     match /deviceBatteryStatus/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.uid == userId;
 
       match /history/{doc=**} {
-        allow read, write: if isSignedIn() && request.auth.uid == userId;
+        allow read: if true;
+        allow write: if isSignedIn() && request.auth.uid == userId;
       }
     }
 
