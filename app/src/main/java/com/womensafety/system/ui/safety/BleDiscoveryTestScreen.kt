@@ -79,10 +79,19 @@ fun BleDiscoveryTestScreen(
         appendLog("Initiating BLE test...")
         val uid = authManager.currentUserId ?: "test-user-${System.currentTimeMillis() % 1000}"
 
+        beaconManager.onAdvertisingStatusChanged = { active, errorReason ->
+            isAdvertising = active
+            if (active) {
+                appendLog("BLE Advertiser: SUCCESS (Broadcasting on air)")
+            } else {
+                appendLog("BLE Advertiser: FAILED - ${errorReason ?: "Stopped"}")
+            }
+        }
+
         // 1. Start Advertising
         val advStarted = beaconManager.startBeaconAdvertising(uid, "Test Device (${uid.take(4)})")
         isAdvertising = advStarted
-        appendLog("BLE Advertising status: $advStarted")
+        appendLog("BLE Advertising request: $advStarted")
 
         // 2. Start Scanning
         scannerManager.startScanning(uid)
